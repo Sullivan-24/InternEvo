@@ -11,10 +11,9 @@ from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.core.parallel.comm.utils import _gather, _split
 from internlm.utils.logger import get_logger
-from internlm.utils.utils import TensorParallelMode
+from internlm.utils.utils import TensorParallelMode, ModuleType
 
 logger = get_logger(__file__)
-
 
 def _split_data_for_sequence_parallel(data, label):
     _seq_dim = 1  # [batch, seqlen, ...]
@@ -210,10 +209,13 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
     assert len(indexes) == len(set(indexes)), indexes  # should have no duplicates
     assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
     return parts
-#FIX 
-def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement):
+#TODO
+def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
     parts = [[] for _ in range(pipeline_parallel_size)]
-    chunk_size = num_items // num_chunks // pipeline_parallel_size
+    if scheduler_type == ModuleType.CHIMERA.value:
+        chunk_size = num_items // pipeline_parallel_size
+    else:
+        chunk_size = num_items // num_chunks // pipeline_parallel_size
     for d in range(len(stage_placement)):
         for stage in stage_placement[d]:
             st = stage * chunk_size
@@ -223,12 +225,13 @@ def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num
     for _parts in parts:
         for s, e in _parts:
             indexes.extend(list(range(s, e)))
-    assert len(indexes) == len(set(indexes)), indexes  # should have no duplicates
-    assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
+    if scheduler_type != ModuleType.CHIMERA.value:
+        assert len(indexes) == len(set(indexes)), indexes  # should have no duplicates
+        assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
     return parts
 
 def pipeline_parallel_sharding_wrapper_unifiedPP(
-    num_layers: int, num_chunks: int, stage_placement, model_builder: Callable, device: torch.device, **kwargs
+    num_layers: int, num_chunks: int, stage_placement, scheduler_type, model_builder: Callable, device: torch.device, **kwargs
 ):
     """
     build generic model 1d
@@ -242,7 +245,7 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
-    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks,stage_placement)
+    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks,stage_placement,scheduler_type)
     parts = all_parts[pipeline_rank]
 
     if gpc.is_rank_for_log():

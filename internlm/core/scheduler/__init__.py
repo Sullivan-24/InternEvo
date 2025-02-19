@@ -5,7 +5,8 @@ from .pipeline_scheduler_zb import (
     ZeroBubblePipelineScheduler,
     ZeroBubblePipelineVShapeScheduler,
 )
-from .pipeline_scheduler_unified import UnifiedSingleChunkPipelineScheduler, UnifiedMultipleChunksPipelineScheduler
+from .pipeline_scheduler_unified import UnifiedSingleChunkPipelineScheduler, \
+    UnifiedMultipleChunksPipelineScheduler,UnifiedMultipleStreamsPipelineScheduler
 
 __all__ = [
     "BaseScheduler",
@@ -16,4 +17,5 @@ __all__ = [
     "ZeroBubblePipelineVShapeScheduler",
     "UnifiedSingleChunkPipelineScheduler",
     "UnifiedMultipleChunksPipelineScheduler",
+    "UnifiedMultipleStreamsPipelineScheduler"
 ]

@@ -64,6 +64,10 @@ class DataType(Enum):
     megatron = 3
     mocked = 4
 
+class ModuleType(Enum):
+    CHIMERA='Chimera'
+    INTERLEAVED = 'Interleaved'
+    VSHAPE = 'Vshape'
 
 class TensorParallelMode(Enum):
     mtp = 1

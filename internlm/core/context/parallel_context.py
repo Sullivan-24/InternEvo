@@ -331,6 +331,22 @@ class ParallelContext(metaclass=SingletonMeta):
             if self.virtual_pipeline_parallel_size is not None and self.virtual_pipeline_parallel_rank != 0:
                 return False
         return self.is_first_rank(ParallelMode.PIPELINE)
+    
+    def is_pipeline_first_stage_mutistream(self, ignore_virtual=False):
+        if not ignore_virtual:
+            if self.set_virtual_pipeline_parallel_rank == 0:
+                return self.is_first_rank(ParallelMode.PIPELINE)
+            else:
+                return self.is_last_rank(ParallelMode.PIPELINE)
+        return self.is_first_rank(ParallelMode.PIPELINE) or self.is_last_rank(ParallelMode.PIPELINE)
+
+    def is_pipeline_last_stage_mutistream(self, ignore_virtual=False):
+        if not ignore_virtual:
+            if self.set_virtual_pipeline_parallel_rank == 0:
+                return self.is_last_rank(ParallelMode.PIPELINE)
+            else:
+                return self.is_first_rank(ParallelMode.PIPELINE)
+        return self.is_first_rank(ParallelMode.PIPELINE) or self.is_last_rank(ParallelMode.PIPELINE)
 
     def is_pipeline_last_stage(self, ignore_virtual=False):
         if not ignore_virtual:

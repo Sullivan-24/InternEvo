@@ -24,6 +24,7 @@ from internlm.core.scheduler import (
     ZeroBubblePipelineVShapeScheduler,
     UnifiedSingleChunkPipelineScheduler,
     UnifiedMultipleChunksPipelineScheduler,
+    UnifiedMultipleStreamsPipelineScheduler
 )
 from internlm.core.scheduler.pipeline_scheduler_1f1b import get_tensor_shape
 from internlm.core.trainer import Trainer
@@ -32,7 +33,7 @@ from internlm.solver.optimizer.hybrid_zero_optim import BaseOptimizer
 from internlm.solver.schedulers.beta2_scheduler import Beta2Scheduler
 from internlm.utils.common import SchedulerHook, get_current_device
 from internlm.utils.parallel import is_using_isp
-
+from internlm.utils.utils import ModuleType
 
 def initialize_trainer(
     model: nn.Module,
@@ -109,6 +110,7 @@ def initialize_trainer(
             and pp_mode == "1F1B"
         )
         scatter_gather = gpc.is_initialized(ParallelMode.TENSOR)
+
         if use_interleaved:
             if isinstance(model, nn.Sequential):
                 model = nn.ModuleList([model])
@@ -147,19 +149,45 @@ def initialize_trainer(
             )
         elif pp_mode == "UNIFIED":
             if gpc.config.model.num_chunks > 1:
-                scheduler = UnifiedMultipleChunksPipelineScheduler(
-                num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                num_chunks=gpc.config.model.num_chunks,
-                dtype=gpc.config.model["dtype"],
-                data_process_func=_data_preparation_func,
-                tensor_shape=tensor_shape,
-                scatter_gather_tensors=scatter_gather,
-                scheduler_hooks=scheduler_hooks,
-                optimizer=optimizer,
-                unified_scheduler=gpc.config.unified_scheduler,
-                stage_placement = gpc.config.stage_placement,
-                comm_graph=gpc.config.comm_graph,
-                )
+                stage_placement = gpc.config.stage_placement
+                scheduler_type = gpc.config.scheduler_type
+                assert stage_placement is not None, "stage_placement must be provided for unified pipeline"
+                assert  scheduler_type is not None, "scheduler_type must be provided for unified pipeline"
+                if scheduler_type == ModuleType.CHIMERA.value:
+                    scheduler = UnifiedMultipleStreamsPipelineScheduler(
+                        num_microbatches=gpc.config.NUM_MICRO_BATCHES,
+                        num_chunks=gpc.config.model.num_chunks,
+                        dtype=gpc.config.model["dtype"],
+                        data_process_func=_data_preparation_func,
+                        tensor_shape=tensor_shape,
+                        scatter_gather_tensors=scatter_gather,
+                        scheduler_hooks=scheduler_hooks,
+                        optimizer=optimizer,
+                        unified_scheduler=gpc.config.unified_scheduler,
+                        stage_placement = gpc.config.stage_placement,
+                        comm_graph=gpc.config.comm_graph,
+                    )
+
+                else:
+                    scheduler = UnifiedMultipleChunksPipelineScheduler(
+                    num_microbatches=gpc.config.NUM_MICRO_BATCHES,
+                    num_chunks=gpc.config.model.num_chunks,
+                    dtype=gpc.config.model["dtype"],
+                    data_process_func=_data_preparation_func,
+                    tensor_shape=tensor_shape,
+                    scatter_gather_tensors=scatter_gather,
+                    scheduler_hooks=scheduler_hooks,
+                    optimizer=optimizer,
+                    unified_scheduler=gpc.config.unified_scheduler,
+                    stage_placement = gpc.config.stage_placement,
+                    comm_graph=gpc.config.comm_graph,
+                    )
+                    if scheduler_type == ModuleType.VSHAPE.value:
+                        gpc.v_shape = True
+
+                    elif scheduler_type == ModuleType.INTERLEAVED.value:
+                        gpc.v_shape = False
+
             else:
                 scheduler = UnifiedSingleChunkPipelineScheduler(
                     data_process_func=_data_preparation_func,
