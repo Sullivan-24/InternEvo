@@ -465,7 +465,7 @@ class PipelineScheduler(BaseScheduler):
 
         return output, label, accum_loss, accum_moe_loss
 
-    def _forward_backward_step(self, engine, return_loss=True, return_output_label=True, batch_count=0):
+    def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
         This function schedules the forward and backward computation of microbatches in the pipeline in a 1F1B manner.
         It consists of three stages: warmup, 1F1B, and cooldown.
@@ -670,7 +670,7 @@ class PipelineScheduler(BaseScheduler):
         return output, label, accum_loss, accum_moe_loss
 
     @llm_timeout(func_name="nointerleaved_forward_backward_step")
-    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True, batch_count=0):
+    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
@@ -699,7 +699,7 @@ class PipelineScheduler(BaseScheduler):
             )
         else:
             output, label, accum_loss, accum_moe_loss = self._forward_backward_step(
-                engine, return_loss, return_output_label, batch_count
+                engine, return_loss, return_output_label
             )
 
         # Compatible for non-moe
@@ -1371,7 +1371,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         self._run_cooldown_loop(engine, num_microsteps, num_1f1b_micropairs=num_1f1b_micropairs)
 
     @llm_timeout(func_name="interleaved_forward_backward_step")
-    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True, batch_count=0):
+    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Run interleaved 1F1B schedule (model split into model chunks), with
         communication between pipeline stages as needed.
 
