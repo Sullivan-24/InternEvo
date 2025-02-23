@@ -286,7 +286,7 @@ class TrainerBuilder(Trainer):
             return False
 
         timer("fwd-bwd").start()
-        loss, moe_loss = self._forward_backward(batch_count,batch)
+        loss, moe_loss = self._forward_backward(batch)
         timer("fwd-bwd").stop()
 
         success_update, grad_norm_groups = self._update_parameters()
@@ -310,14 +310,14 @@ class TrainerBuilder(Trainer):
             self.metric.set_current_type_ids(type_ids=batch[0].pop("type_ids", None))
         return batch, train_iter
 
-    def _forward_backward(self, batch_count, batch):
+    def _forward_backward(self, batch):
         self.zero_grad()
         if hasattr(gpc.config.model, "num_experts"):
             _, _, loss, moe_loss = self.execute_schedule(
-                batch, forward_only=False, return_loss=True, return_output_label=False, batch_count = batch_count
+                batch, forward_only=False, return_loss=True, return_output_label=False,
             )
         else:
-            _, _, loss = self.execute_schedule(batch, forward_only=False, return_loss=True, return_output_label=False, batch_count = batch_count)
+            _, _, loss = self.execute_schedule(batch, forward_only=False, return_loss=True, return_output_label=False,)
             moe_loss = None
         return loss, moe_loss
 

@@ -36,9 +36,9 @@ class WeightGradStore:
     pp_mode = None
     optim = None
     temp = []
-    @classmethod
-    def get_pp_mode(cls):
-        return cls.pp_mode
+    # @classmethod
+    # def get_pp_mode(cls):
+    #     return cls.pp_mode
 
     @classmethod
     def set_pp_mode(cls, mode):
@@ -143,7 +143,7 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
         WeightGradStore.set_pp_mode("ZBH1")
         WeightGradStore.set_optim(optimizer)
 
-    def _forward_backward_step(self, engine, return_loss=True, return_output_label=True, batch_count=0):
+    def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
         This function schedules the forward and backward computation of microbatches in the pipeline in a 1F1B manner.
         It consists of three stages: warmup, 1F1B, and cooldown.

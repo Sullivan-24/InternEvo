@@ -30,6 +30,7 @@ from internlm.utils.logger import get_logger
 if TYPE_CHECKING:
     from internlm.core.parallel.comm.isp import WPCommunicator
     from internlm.core.parallel.comm.tensor import TPCommunicator
+from internlm.utils.utils import ModuleType
 
 logger = get_logger(__file__)
 internlm_accelerator = get_accelerator()
@@ -140,27 +141,19 @@ class SPFusedDenseFunc(torch.autograd.Function):
             handle_x.wait()
 
             x = x.reshape(batch_dim, x.shape[-1])
-            # if gpc.is_using_parallel_mode(ParallelMode.PIPELINE) and (
-            #     (
-            #         gpc.config.parallel["pipeline"].get("mode", "1F1B") == "ZBH1"
-            #         and not gpc.is_first_rank(ParallelMode.PIPELINE)
-            #     )
-            #     or gpc.config.parallel["pipeline"].get("mode", "1F1B") == "ZBV"
-            # ):
-            #     from internlm.core.scheduler.pipeline_scheduler_zb import (
-            #         WeightGradStore,
-            #     )
-            from internlm.core.scheduler.pipeline_scheduler_zb import (
-                    WeightGradStore,
-                )
-
             if gpc.is_using_parallel_mode(ParallelMode.PIPELINE) and (
                 (
-                    WeightGradStore.get_pp_mode() == "ZBH1"
+                    gpc.config.parallel["pipeline"].get("mode", "1F1B") == "ZBH1"
                     and not gpc.is_first_rank(ParallelMode.PIPELINE)
                 )
-                or WeightGradStore.get_pp_mode() == "ZBV"
+                or gpc.config.parallel["pipeline"].get("mode", "1F1B") == "ZBV"
+                or gpc.config.scheduler_type == ModuleType.VSHAPE.value
+                or gpc.config.scheduler_type == ModuleType.CHIMERA.value
+                or gpc.config.scheduler_type == ModuleType.ZBH1.value
             ):
+                from internlm.core.scheduler.pipeline_scheduler_zb import (
+                    WeightGradStore,
+                )
 
                 WeightGradStore.put(weight, bias, x, grad_output, ctx.needs_input_grad[2], linear_backward_op)
                 grad_weight, grad_bias = None, None

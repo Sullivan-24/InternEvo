@@ -184,9 +184,8 @@ def initialize_trainer(
                     )
                     if scheduler_type == ModuleType.VSHAPE.value:
                         gpc.v_shape = True
-
-                    elif scheduler_type == ModuleType.INTERLEAVED.value:
-                        gpc.v_shape = False
+                    # elif scheduler_type == ModuleType.INTERLEAVED.value:
+                    #     gpc.v_shape = False
 
             else:
                 scheduler = UnifiedSingleChunkPipelineScheduler(
