@@ -96,11 +96,11 @@ def order_result_mutichunk(input: str, stage_alignment: list) -> None:
         device_id = _get_deviceid_by_alignment(stage_id, stage_alignment)
         chunk_id = _get_chunk_by_stage(stage_id, stage_alignment)
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
-    print('[')
-    for d in range(len(stage_alignment)):
-        device_steps[d].sort(key=lambda x: x[-2])
-        print(f'{device_steps[d]},')
-    print(']')
+    # print('[')
+    # for d in range(len(stage_alignment)):
+    #     device_steps[d].sort(key=lambda x: x[-2])
+    #     print(f'{device_steps[d]},')
+    # print(']')
     return device_steps
 def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_data 是之前生成的计算图
     # 初始化通信图
@@ -237,11 +237,11 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
         #print(communication_stage)
     #communication_graph = detect_cycle_deadlock_mutichunk(communication_graph,stage_alignment)
     communication_graph = detect_cross_deadlock_mutichunk(communication_graph,stage_alignment)
-    print('[')
-    # # 输出通信图
-    for rank_id, comm_stage in enumerate(communication_graph):
-        print(f'{comm_stage},')
-    print(']')
+    # print('[')
+    # # # 输出通信图
+    # for rank_id, comm_stage in enumerate(communication_graph):
+    #     print(f'{comm_stage},')
+    # print(']')
     return communication_graph
 
 def detect_cycle_deadlock_mutichunk(communication_graph, stage_alignment):

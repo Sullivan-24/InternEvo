@@ -425,11 +425,18 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         for ops in recvlist:
             recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _= ops
             if recv_op_type == Stage.FORWARD.value:
-                recv_f_buffer = comm.AsynCommunicator(
-                            recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
-                            prev_rank=recv_device_id,
-                            dtype=self.dtype,
-                            scatter_gather_tensors=self.scatter_gather_tensors,
+                # recv_f_buffer = comm.AsynCommunicator(
+                #             recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
+                #             prev_rank=recv_device_id,
+                #             dtype=self.dtype,
+                #             scatter_gather_tensors=self.scatter_gather_tensors,
+                #         )
+                # recv_f_buffer.start()
+                recv_f_buffer = comm.recv_forward(
+                            self._input_obj_shapes[recv_chunk_id],
+                            recv_device_id,
+                            self.dtype,
+                            self.scatter_gather_tensors,
                         )
                 recv_f_buffer.start()
                 # recv_f_buffer = comm.recv_forward(
@@ -534,7 +541,6 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 chunk_to_prev_global_rank[chunk_id] = _get_deviceid_by_placement(prev_stage,stage_placement)
             if next_stage <= last_stage:
                 chunk_to_next_global_rank[chunk_id] = _get_deviceid_by_placement(next_stage,stage_placement)
-
         for s in range(len(steps)):
             step_type, microbatch_id, stage_id, chunk_id, startTime, end_time = steps[s]
             prev_stage = chunk_to_prev_stage_id[chunk_id]
@@ -553,8 +559,12 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             if step_type == Stage.FORWARD.value:# Forward pass
                 input_obj = None
                 if stage_id>0:
-                    if async_communicator_recv_forward_queue[chunk_id].qsize()>0:
-                        input_obj = async_communicator_recv_forward_queue[chunk_id].get()
+                    # if async_communicator_recv_forward_queue[chunk_id].qsize()>0:
+                    #     input_obj = async_communicator_recv_forward_queue[chunk_id].get()
+                    # else:
+                    #     input_obj,_ = recv_forward_queue_list[chunk_id].get().wait_and_receive()
+                    if recv_forward_queue_list[chunk_id].qsize()>0:
+                        input_obj = recv_forward_queue_list[chunk_id].get()
                     else:
                         input_obj,_ = recv_forward_queue_list[chunk_id].get().wait_and_receive()
                     # if recv_forward_queue_list[chunk_id].qsize()>0:
@@ -676,8 +686,12 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             elif step_type == Stage.BACKWARD.value:# Backwaqsize
 
                 if stage_id<last_stage:
-                    if async_communicator_recv_backward_queue[chunk_id].qsize()>0:
-                        output_obj_grad = async_communicator_recv_backward_queue[chunk_id].get()
+                    # if async_communicator_recv_backward_queue[chunk_id].qsize()>0:
+                    #     output_obj_grad = async_communicator_recv_backward_queue[chunk_id].get()
+                    # else:
+                    #     _, output_obj_grad = recv_backward_queue_list[chunk_id].get().wait_and_receive()
+                    if recv_backward_queue_list[chunk_id].qsize()>0:
+                        output_obj_grad = recv_backward_queue_list[chunk_id].get()
                     else:
                         _, output_obj_grad = recv_backward_queue_list[chunk_id].get().wait_and_receive()
                     # if recv_backward_queue_list[chunk_id].qsize()>0:
