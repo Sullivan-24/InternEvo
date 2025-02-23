@@ -425,18 +425,11 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         for ops in recvlist:
             recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _= ops
             if recv_op_type == Stage.FORWARD.value:
-                # recv_f_buffer = comm.AsynCommunicator(
-                #             recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
-                #             prev_rank=recv_device_id,
-                #             dtype=self.dtype,
-                #             scatter_gather_tensors=self.scatter_gather_tensors,
-                #         )
-                # recv_f_buffer.start()
-                recv_f_buffer = comm.recv_forward(
-                            self._input_obj_shapes[recv_chunk_id],
-                            recv_device_id,
-                            self.dtype,
-                            self.scatter_gather_tensors,
+                recv_f_buffer = comm.AsynCommunicator(
+                            recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
+                            prev_rank=recv_device_id,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
                         )
                 recv_f_buffer.start()
                 # recv_f_buffer = comm.recv_forward(
@@ -559,12 +552,8 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             if step_type == Stage.FORWARD.value:# Forward pass
                 input_obj = None
                 if stage_id>0:
-                    # if async_communicator_recv_forward_queue[chunk_id].qsize()>0:
-                    #     input_obj = async_communicator_recv_forward_queue[chunk_id].get()
-                    # else:
-                    #     input_obj,_ = recv_forward_queue_list[chunk_id].get().wait_and_receive()
-                    if recv_forward_queue_list[chunk_id].qsize()>0:
-                        input_obj = recv_forward_queue_list[chunk_id].get()
+                    if async_communicator_recv_forward_queue[chunk_id].qsize()>0:
+                        input_obj = async_communicator_recv_forward_queue[chunk_id].get()
                     else:
                         input_obj,_ = recv_forward_queue_list[chunk_id].get().wait_and_receive()
                     # if recv_forward_queue_list[chunk_id].qsize()>0:
@@ -686,12 +675,8 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             elif step_type == Stage.BACKWARD.value:# Backwaqsize
 
                 if stage_id<last_stage:
-                    # if async_communicator_recv_backward_queue[chunk_id].qsize()>0:
-                    #     output_obj_grad = async_communicator_recv_backward_queue[chunk_id].get()
-                    # else:
-                    #     _, output_obj_grad = recv_backward_queue_list[chunk_id].get().wait_and_receive()
-                    if recv_backward_queue_list[chunk_id].qsize()>0:
-                        output_obj_grad = recv_backward_queue_list[chunk_id].get()
+                    if async_communicator_recv_backward_queue[chunk_id].qsize()>0:
+                        output_obj_grad = async_communicator_recv_backward_queue[chunk_id].get()
                     else:
                         _, output_obj_grad = recv_backward_queue_list[chunk_id].get().wait_and_receive()
                     # if recv_backward_queue_list[chunk_id].qsize()>0:
