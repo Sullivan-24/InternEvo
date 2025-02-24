@@ -233,6 +233,23 @@ class ParallelContext(metaclass=SingletonMeta):
         """
         self._check_parallel_mode(parallel_mode)
         return self._local_ranks.get(parallel_mode, 0)
+    
+    def get_global_rank_by_local_rank(self, parallel_mode: ParallelMode, local_rank: int):
+        """Returns the global rank of the device.
+
+        Args:
+            parallel_mode: The parallel mode for the rank.
+
+        Returns:
+            int: The global rank of the next device for `parallel_mode`.
+        """
+        self._check_parallel_mode(parallel_mode)
+
+        # get rank and world size
+        world_size = self.get_world_size(parallel_mode)
+        ranks_in_group = self.get_ranks_in_group(parallel_mode)
+
+        return ranks_in_group[(local_rank) % world_size]
 
     def get_next_global_rank(self, parallel_mode: ParallelMode):
         """Returns the global rank of the next device.

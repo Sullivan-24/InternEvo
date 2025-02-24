@@ -274,7 +274,7 @@ def detect_cycle_deadlock_mutichunk(communication_graph, stage_alignment):
             has_cycle, cycle_index = dfs(op,rec_stack, visited,communication_graph_copy,)
             if has_cycle and cycle_index != -1 and current_index < len_rank_ops - 1:
                 communication_graph[rank_id][current_index + 1]['B'].append(communication_graph[rank_id][current_index]['A'].pop(cycle_index))
-                print(f"cycle dead lock:{op['Infor']}")
+                #print(f"cycle dead lock:{op['Infor']}")
     return communication_graph
 
 def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
@@ -282,8 +282,8 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     communication_graph_copy = copy.deepcopy(communication_graph)
     for rank_id, rank_ops in enumerate(communication_graph_copy):
-        if rank_id%2 == 1 : #因为修改了通信，只判断偶数rank（收-算-发-收）
-            continue
+        # if rank_id%2 == 1 : #因为修改了通信，只判断偶数rank（收-算-发-收）
+        #     continue
         len_rank_ops = len(rank_ops)
         rank_ops_copy = copy.deepcopy(rank_ops)
         for current_index, op in enumerate(rank_ops_copy):
@@ -299,61 +299,122 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                 dst_rank_id = _get_deviceid_by_alignment(stage_id-1,stage_alignment)
             else:
                 continue
-
-            #死锁场景
-            #判断本次操作op计算后需要接收op['A']，如果本次op要接收的 和本次op要发往的 在同一个设备上，则需要下一步判断
-            needjude = op['A']
-            if current_index + 1 < len_rank_ops:
-                next_op = rank_ops[current_index + 1]
-                if len(next_op['B'])>0:
-                    needjude += next_op['B']
-            for judgeop in needjude:
-                recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _ = judgeop
-                if rank_id == recv_device_id or recv_device_id != dst_rank_id:
-                    continue
-                recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
-                goonjudge = True
-                for rc in (recvDevice_op['A']+recvDevice_op['B']):
-                    next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index,_ = rc
-                    if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
-                        goonjudge = False
-                        break
-                judgedistance = 0
-                if not goonjudge:
-                    break
-                while(goonjudge is True):
-                    judgedistance += 1
-                    if index+judgedistance < len_rank_ops :
-                        recvDevice_nextop_n = copy.deepcopy(communication_graph[recv_device_id][index+judgedistance])
-                        recvDevice_nextop_nb = recvDevice_nextop_n['B']
-                        for rnb, recvDevice_nextop_n_b in enumerate(recvDevice_nextop_nb):
-                            next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B,_ = recvDevice_nextop_n_b
-                            if (next_recv_op_type_B,next_recv_stage_id_B,next_recv_microbatch_id_B) == op['Infor']:
-                                rnbresult = communication_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
-                                communication_graph[recv_device_id][index]['A'].append(rnbresult)
-                                goonjudge = False
-                                break
-                        if not goonjudge:
+            if rank_id % 2 == 0:
+                #死锁场景
+                #判断本次操作op计算后需要接收op['A']，如果本次op要接收的 和本次op要发往的 在同一个设备上，则需要下一步判断
+                needjude = op['A']
+                if current_index + 1 < len_rank_ops:
+                    next_op = rank_ops_copy[current_index + 1]
+                    if len(next_op['B'])>0:
+                        needjude += next_op['B']
+                for judgeop in needjude:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _ = judgeop
+                    if rank_id == recv_device_id or recv_device_id != dst_rank_id:
+                        continue
+                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    goonjudge = True
+                    for rc in (recvDevice_op['A']+recvDevice_op['B']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index,_ = rc
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            goonjudge = False
                             break
-                        recvDevice_nextop_na = recvDevice_nextop_n['A']
-                        for rna, recvDevice_nextop_n_a in enumerate(recvDevice_nextop_na):
-                            next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A,_ = recvDevice_nextop_n_a
-                            if (next_recv_op_type_A,next_recv_stage_id_A,next_recv_microbatch_id_A) == op['Infor']:
-                                rnaresult = communication_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
-                                communication_graph[recv_device_id][index]['A'].append(rnaresult)
-                                goonjudge = False
-                                break
+                    judgedistance = 0
                     if not goonjudge:
                         break
-                    if index-judgedistance >= 0 :
-                        recvDevice_nextop_bab = communication_graph[recv_device_id][index-judgedistance]
-                        for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
-                            next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
-                            if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
-                                goonjudge = False
+                    while(goonjudge is True):
+                        judgedistance += 1
+                        if index+judgedistance < len_rank_ops :
+                            recvDevice_nextop_n = copy.deepcopy(communication_graph[recv_device_id][index+judgedistance])
+                            recvDevice_nextop_nb = recvDevice_nextop_n['B']
+                            for rnb, recvDevice_nextop_n_b in enumerate(recvDevice_nextop_nb):
+                                next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B,_ = recvDevice_nextop_n_b
+                                if (next_recv_op_type_B,next_recv_stage_id_B,next_recv_microbatch_id_B) == op['Infor']:
+                                    rnbresult = communication_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
+                                    communication_graph[recv_device_id][index]['A'].append(rnbresult)
+                                    goonjudge = False
+                                    break
+                            if not goonjudge:
                                 break
-                if not goonjudge:
-                    break
+                            recvDevice_nextop_na = recvDevice_nextop_n['A']
+                            for rna, recvDevice_nextop_n_a in enumerate(recvDevice_nextop_na):
+                                next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A,_ = recvDevice_nextop_n_a
+                                if (next_recv_op_type_A,next_recv_stage_id_A,next_recv_microbatch_id_A) == op['Infor']:
+                                    rnaresult = communication_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
+                                    communication_graph[recv_device_id][index]['A'].append(rnaresult)
+                                    goonjudge = False
+                                    break
+                        if not goonjudge:
+                            break
+                        if index-judgedistance >= 0 :
+                            recvDevice_nextop_bab = communication_graph[recv_device_id][index-judgedistance]
+                            for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    goonjudge = False
+                                    break
+                    if not goonjudge:
+                        break
+            else:
+                needjude = op['A']+op['B']
+                # if current_index + 1 < len_rank_ops:
+                #     next_op = rank_ops[current_index + 1]
+                #     if len(next_op['B'])>0:
+                #         needjude += next_op['B']
+                for judgeop in needjude:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_stream_id, recv_microbatch_id, index, _ = judgeop
+                    if rank_id == recv_device_id or recv_device_id != dst_rank_id:
+                        continue
+                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    goonjudge = True
+                    for rc in (recvDevice_op['A']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index,_ = rc
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            goonjudge = False
+                            break
+                    judgedistance = 0
+                    for rc_,rv in enumerate(recvDevice_op['B']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index,_ = rv
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index]['B'].pop(rc_))
+                            goonjudge = False
+                            break
+                    if not goonjudge:
+                        break
+                    opInfor = op['Infor']
+                    # print(f'opInfor:{opInfor}')
+                    # print(f'needjude:{judgeop}')
+                    # print(f'recvDevice_op:{recvDevice_op}')
+                    while(goonjudge is True):
+                        judgedistance += 1
+                        if index-judgedistance >= 0 :
+                            recvDevice_nextop_bab = copy.deepcopy(communication_graph[recv_device_id][index-judgedistance])
+                            for rnbab_id,rnbab in enumerate(recvDevice_nextop_bab['A']):
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['A'].pop(rnbab_id))
+                                    goonjudge = False
+                                    break
+                            if not goonjudge:
+                                break
+                            for rnbab__id,rnbab_ in enumerate(recvDevice_nextop_bab['B']):
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab_
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['B'].pop(rnbab__id))
+                                    goonjudge = False
+                                    break
+                        if not goonjudge:
+                            break
+                        if index+judgedistance < len_rank_ops :
+                            recvDevice_nextop_bab = communication_graph[recv_device_id][index+judgedistance]
+                            for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    goonjudge = False
+                                    break
+                    # print(judgedistance)
+                    # recvnum(communication_graph)
+                    if not goonjudge:
+                        break
     return communication_graph
 
 def _get_deviceid_mutistream(stream: int, stage_id: int, stage_alignment:list) -> int:
@@ -590,7 +651,7 @@ def detect_cross_deadlock_mutistream(communication_graph, stage_alignment):
                 #判断本次操作op计算后需要接收op['A']，如果本次op要接收的 和本次op要发往的 在同一个设备上，则需要下一步判断
                 needjude = op['A']
                 if current_index + 1 < len_rank_ops:
-                    next_op = rank_ops[current_index + 1]
+                    next_op = rank_ops_copy[current_index + 1]
                     if len(next_op['B'])>0:
                         needjude += next_op['B']
                 for judgeop in needjude:
@@ -723,7 +784,7 @@ def detect_cross_deadlock_mutistream(communication_graph, stage_alignment):
                     print(judgedistance)
                     recvnum(communication_graph)
                     if not goonjudge:
-                        break                
+                        break         
     return communication_graph
 def generate_():
 #     stage_alignment = [[0,4],[1,5],[2,6],[3,7]]
@@ -6112,461 +6173,1054 @@ b_31_0,4268,4276
     unified_scheduler = order_result_mutichunk(input_str,stage_alignment)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
     return stage_alignment, unified_scheduler, comm_graph
-if __name__ == '__main__':
-    stage_alignment = [[0,4],[1,5],[2,6],[3,7]]
-    input_str = '''f_0_0,0,12
-f_1_0,12,24
-f_0_1,12,24
-f_2_0,24,36
-f_1_1,24,36
-f_0_2,24,36
-f_3_0,36,48
-f_2_1,36,48
-f_1_2,36,48
-f_0_3,36,48
-f_0_4,48,60
-f_3_1,48,60
-f_2_2,48,60
-f_1_3,48,60
-f_1_4,60,72
-f_0_5,60,72
-f_3_2,60,72
-f_2_3,60,72
-f_2_4,72,84
-f_1_5,72,84
-f_0_6,72,84
-f_3_3,72,84
-f_3_4,84,96
-f_2_5,84,96
-f_1_6,84,96
-f_0_7,84,96
-f_4_0,96,108
-f_3_5,96,108
-b_0_7,96,120
-f_5_0,108,120
-f_2_6,120,132
-f_1_7,120,132
-b_0_6,132,156
-b_1_7,132,156
-f_4_1,156,168
-f_3_6,156,168
-f_2_7,156,168
-b_0_5,168,192
-b_1_6,168,192
-b_2_7,168,192
-f_6_0,192,204
-f_5_1,192,204
-f_4_2,192,204
-f_3_7,192,204
-b_0_4,204,228
-b_1_5,204,228
-b_2_6,204,228
-b_3_7,204,228
-f_7_0,228,240
-f_6_1,228,240
-f_5_2,228,240
-f_4_3,228,240
-b_1_4,240,264
-b_2_5,240,264
-b_3_6,240,264
-b_0_3,240,264
-f_4_4,264,276
-f_7_1,264,276
-f_6_2,264,276
-f_5_3,264,276
-b_2_4,276,300
-b_3_5,276,300
-b_0_2,276,300
-b_1_3,276,300
-f_5_4,300,312
-f_4_5,300,312
-f_7_2,300,312
-f_6_3,300,312
-b_3_4,312,336
-b_0_1,312,336
-b_1_2,312,336
-b_2_3,312,336
-f_6_4,336,348
-f_5_5,336,348
-f_4_6,336,348
-f_7_3,336,348
-b_0_0,348,372
-b_1_1,348,372
-b_2_2,348,372
-b_3_3,348,372
-f_7_4,372,384
-f_6_5,372,384
-f_5_6,372,384
-f_4_7,372,384
-b_1_0,384,408
-b_2_1,384,408
-b_3_2,384,408
-b_4_7,384,408
-f_8_0,408,420
-f_7_5,408,420
-f_6_6,408,420
-f_5_7,408,420
-b_2_0,420,444
-b_3_1,420,444
-b_4_6,420,444
-b_5_7,420,444
-f_9_0,444,456
-f_8_1,444,456
-f_7_6,444,456
-f_6_7,444,456
-b_3_0,456,480
-b_4_5,456,480
-b_5_6,456,480
-b_6_7,456,480
-f_10_0,480,492
-f_9_1,480,492
-f_8_2,480,492
-f_7_7,480,492
-b_4_4,492,516
-b_5_5,492,516
-b_6_6,492,516
-b_7_7,492,516
-f_11_0,516,528
-f_10_1,516,528
-f_9_2,516,528
-f_8_3,516,528
-b_5_4,528,552
-b_6_5,528,552
-b_7_6,528,552
-b_4_3,528,552
-f_8_4,552,564
-f_11_1,552,564
-f_10_2,552,564
-f_9_3,552,564
-b_6_4,564,588
-b_7_5,564,588
-b_4_2,564,588
-b_5_3,564,588
-f_9_4,588,600
-f_8_5,588,600
-f_11_2,588,600
-f_10_3,588,600
-b_7_4,600,624
-b_4_1,600,624
-b_5_2,600,624
-b_6_3,600,624
-f_10_4,624,636
-f_9_5,624,636
-f_8_6,624,636
-f_11_3,624,636
-b_4_0,636,660
-b_5_1,636,660
-b_6_2,636,660
-b_7_3,636,660
-f_11_4,660,672
-f_10_5,660,672
-f_9_6,660,672
-f_8_7,660,672
-b_5_0,672,696
-b_6_1,672,696
-b_7_2,672,696
-b_8_7,672,696
-f_12_0,696,708
-f_11_5,696,708
-f_10_6,696,708
-f_9_7,696,708
-b_6_0,708,732
-b_7_1,708,732
-b_8_6,708,732
-b_9_7,708,732
-f_13_0,732,744
-f_12_1,732,744
-f_11_6,732,744
-f_10_7,732,744
-b_7_0,744,768
-b_8_5,744,768
-b_9_6,744,768
-b_10_7,744,768
-f_14_0,768,780
-f_13_1,768,780
-f_12_2,768,780
-f_11_7,768,780
-b_8_4,780,804
-b_9_5,780,804
-b_10_6,780,804
-b_11_7,780,804
-f_15_0,804,816
-f_14_1,804,816
-f_13_2,804,816
-f_12_3,804,816
-b_9_4,816,840
-b_10_5,816,840
-b_11_6,816,840
-b_8_3,816,840
-f_12_4,840,852
-f_15_1,840,852
-f_14_2,840,852
-f_13_3,840,852
-b_10_4,852,876
-b_11_5,852,876
-b_8_2,852,876
-b_9_3,852,876
-f_13_4,876,888
-f_12_5,876,888
-f_15_2,876,888
-f_14_3,876,888
-b_11_4,888,912
-b_8_1,888,912
-b_9_2,888,912
-b_10_3,888,912
-f_14_4,912,924
-f_13_5,912,924
-f_12_6,912,924
-f_15_3,912,924
-b_8_0,924,948
-b_9_1,924,948
-b_10_2,924,948
-b_11_3,924,948
-f_15_4,948,960
-f_14_5,948,960
-f_13_6,948,960
-f_12_7,948,960
-b_9_0,960,984
-b_10_1,960,984
-b_11_2,960,984
-b_12_7,960,984
-b_10_0,984,1008
-f_15_5,984,996
-f_14_6,984,996
-f_13_7,984,996
-b_11_1,996,1020
-b_12_6,996,1020
-b_13_7,996,1020
-b_11_0,1020,1044
-b_12_5,1020,1044
-f_15_6,1020,1032
-f_14_7,1020,1032
-b_13_6,1032,1056
-b_14_7,1032,1056
-b_12_4,1044,1068
-b_13_5,1056,1080
-b_14_6,1056,1080
-f_15_7,1056,1068
-b_15_7,1068,1092
-b_13_4,1080,1104
-b_14_5,1080,1104
-b_15_6,1092,1116
-b_12_3,1092,1116
-b_14_4,1104,1128
-b_15_5,1116,1140
-b_12_2,1116,1140
-b_13_3,1116,1140
-b_15_4,1140,1164
-b_12_1,1140,1164
-b_13_2,1140,1164
-b_14_3,1140,1164
-b_12_0,1164,1188
-b_13_1,1164,1188
-b_14_2,1164,1188
-b_15_3,1164,1188
-b_13_0,1188,1212
-b_14_1,1188,1212
-b_15_2,1188,1212
-b_14_0,1212,1236
-b_15_1,1212,1236
-b_15_0,1236,1260'''
-    unified_scheduler = order_result_mutichunk(input_str,stage_alignment)
-    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
+# if __name__ == '__main__':
+#     #Interleaved
+#     pp_size = 8
+#     chunk_size = 4
+#     # stage_alignment = []
+#     # for i in range(pp_size):
+#     #     stages_in_ranks = []
+#     #     for j in range(chunk_size):
+#     #         stages_in_ranks.append(i+j*pp_size)
+#     #     stage_alignment.append(stages_in_ranks)
+#     # print(stage_alignment)
+#     #wave like
+#     stage_alignment = [[0 for _ in range(chunk_size)] for _ in range(pp_size)]
 
-#     input_str='''0_f_0_0,0.0,14.0
-# 0_b_0_0,288.0,300.0
-# 0_w_0_0,300.0,312.0
-# 0_f_1_0,14.0,28.0
-# 0_b_1_0,392.0,404.0
-# 0_w_1_0,404.0,416.0
-# 0_f_2_0,28.0,42.0
-# 0_b_2_0,496.0,508.0
-# 0_w_2_0,508.0,520.0
-# 0_f_3_0,42.0,56.0
-# 0_b_3_0,600.0,612.0
-# 0_w_3_0,612.0,624.0
-# 0_f_4_0,90.0,104.0
-# 0_b_4_0,704.0,716.0
-# 0_w_4_0,734.0,746.0
-# 0_f_5_0,104.0,118.0
-# 0_b_5_0,808.0,820.0
-# 0_w_5_0,820.0,832.0
-# 0_f_6_0,180.0,194.0
-# 0_b_6_0,878.0,890.0
-# 0_w_6_0,890.0,902.0
-# 0_f_7_0,194.0,208.0
-# 0_b_7_0,920.0,932.0
-# 0_w_7_0,932.0,944.0
-# 0_f_0_1,14.0,26.0
-# 0_b_0_1,276.0,288.0
-# 0_w_0_1,344.0,356.0
-# 0_f_1_1,38.0,50.0
-# 0_b_1_1,380.0,392.0
-# 0_w_1_1,448.0,460.0
-# 0_f_2_1,62.0,74.0
-# 0_b_2_1,484.0,496.0
-# 0_w_2_1,520.0,532.0
-# 0_f_3_1,86.0,98.0
-# 0_b_3_1,508.0,520.0
-# 0_w_3_1,544.0,556.0
-# 0_f_4_1,110.0,122.0
-# 0_b_4_1,594.0,606.0
-# 0_w_4_1,630.0,642.0
-# 0_f_5_1,190.0,202.0
-# 0_b_5_1,698.0,710.0
-# 0_w_5_1,722.0,734.0
-# 0_f_6_1,214.0,226.0
-# 0_b_6_1,768.0,780.0
-# 0_w_6_1,780.0,792.0
-# 0_f_7_1,320.0,332.0
-# 0_b_7_1,890.0,902.0
-# 0_w_7_1,902.0,914.0
-# 0_f_0_2,26.0,38.0
-# 0_b_0_2,238.0,250.0
-# 0_w_0_2,332.0,344.0
-# 0_f_1_2,50.0,62.0
-# 0_b_1_2,368.0,380.0
-# 0_w_1_2,404.0,416.0
-# 0_f_2_2,74.0,86.0
-# 0_b_2_2,416.0,428.0
-# 0_w_2_2,428.0,440.0
-# 0_f_3_2,98.0,110.0
-# 0_b_3_2,496.0,508.0
-# 0_w_3_2,520.0,532.0
-# 0_f_4_2,178.0,190.0
-# 0_b_4_2,582.0,594.0
-# 0_w_4_2,594.0,606.0
-# 0_f_5_2,214.0,226.0
-# 0_b_5_2,686.0,698.0
-# 0_w_5_2,710.0,722.0
-# 0_f_6_2,264.0,276.0
-# 0_b_6_2,756.0,768.0
-# 0_w_6_2,768.0,780.0
-# 0_f_7_2,356.0,368.0
-# 0_b_7_2,878.0,890.0
-# 0_w_7_2,902.0,914.0
-# 0_f_0_3,56.0,90.0
-# 0_b_0_3,118.0,146.0
-# 0_w_0_3,208.0,226.0
-# 0_f_1_3,146.0,180.0
-# 0_b_1_3,226.0,254.0
-# 0_w_1_3,312.0,330.0
-# 0_f_2_3,254.0,288.0
-# 0_b_2_3,330.0,358.0
-# 0_w_2_3,416.0,434.0
-# 0_f_3_3,358.0,392.0
-# 0_b_3_3,434.0,462.0
-# 0_w_3_3,582.0,600.0
-# 0_f_4_3,462.0,496.0
-# 0_b_4_3,554.0,582.0
-# 0_w_4_3,686.0,704.0
-# 0_f_5_3,520.0,554.0
-# 0_b_5_3,658.0,686.0
-# 0_w_5_3,756.0,774.0
-# 0_f_6_3,624.0,658.0
-# 0_b_6_3,728.0,756.0
-# 0_w_6_3,832.0,850.0
-# 0_f_7_3,774.0,808.0
-# 0_b_7_3,850.0,878.0
-# 0_w_7_3,902.0,920.0
-# 1_f_0_0,0.0,14.0
-# 1_b_0_0,288.0,300.0
-# 1_w_0_0,300.0,312.0
-# 1_f_1_0,14.0,28.0
-# 1_b_1_0,392.0,404.0
-# 1_w_1_0,404.0,416.0
-# 1_f_2_0,28.0,42.0
-# 1_b_2_0,496.0,508.0
-# 1_w_2_0,508.0,520.0
-# 1_f_3_0,42.0,56.0
-# 1_b_3_0,600.0,612.0
-# 1_w_3_0,612.0,624.0
-# 1_f_4_0,90.0,104.0
-# 1_b_4_0,704.0,716.0
-# 1_w_4_0,716.0,728.0
-# 1_f_5_0,104.0,118.0
-# 1_b_5_0,808.0,820.0
-# 1_w_5_0,820.0,832.0
-# 1_f_6_0,180.0,194.0
-# 1_b_6_0,878.0,890.0
-# 1_w_6_0,890.0,902.0
-# 1_f_7_0,194.0,208.0
-# 1_b_7_0,920.0,932.0
-# 1_w_7_0,932.0,944.0
-# 1_f_0_1,14.0,26.0
-# 1_b_0_1,276.0,288.0
-# 1_w_0_1,344.0,356.0
-# 1_f_1_1,38.0,50.0
-# 1_b_1_1,380.0,392.0
-# 1_w_1_1,392.0,404.0
-# 1_f_2_1,62.0,74.0
-# 1_b_2_1,472.0,484.0
-# 1_w_2_1,484.0,496.0
-# 1_f_3_1,86.0,98.0
-# 1_b_3_1,508.0,520.0
-# 1_w_3_1,532.0,544.0
-# 1_f_4_1,166.0,178.0
-# 1_b_4_1,606.0,618.0
-# 1_w_4_1,618.0,630.0
-# 1_f_5_1,190.0,202.0
-# 1_b_5_1,698.0,710.0
-# 1_w_5_1,722.0,734.0
-# 1_f_6_1,226.0,238.0
-# 1_b_6_1,804.0,816.0
-# 1_w_6_1,816.0,828.0
-# 1_f_7_1,320.0,332.0
-# 1_b_7_1,890.0,902.0
-# 1_w_7_1,914.0,926.0
-# 1_f_0_2,26.0,38.0
-# 1_b_0_2,240.0,252.0
-# 1_w_0_2,264.0,276.0
-# 1_f_1_2,50.0,62.0
-# 1_b_1_2,356.0,368.0
-# 1_w_1_2,368.0,380.0
-# 1_f_2_2,74.0,86.0
-# 1_b_2_2,460.0,472.0
-# 1_w_2_2,472.0,484.0
-# 1_f_3_2,98.0,110.0
-# 1_b_3_2,496.0,508.0
-# 1_w_3_2,532.0,544.0
-# 1_f_4_2,178.0,190.0
-# 1_b_4_2,566.0,578.0
-# 1_w_4_2,642.0,654.0
-# 1_f_5_2,202.0,214.0
-# 1_b_5_2,654.0,666.0
-# 1_w_5_2,710.0,722.0
-# 1_f_6_2,252.0,264.0
-# 1_b_6_2,792.0,804.0
-# 1_w_6_2,804.0,816.0
-# 1_f_7_2,332.0,344.0
-# 1_b_7_2,860.0,872.0
-# 1_w_7_2,914.0,926.0
-# 1_f_0_3,56.0,90.0
-# 1_b_0_3,118.0,146.0
-# 1_w_0_3,208.0,226.0
-# 1_f_1_3,146.0,180.0
-# 1_b_1_3,226.0,254.0
-# 1_w_1_3,312.0,330.0
-# 1_f_2_3,254.0,288.0
-# 1_b_2_3,330.0,358.0
-# 1_w_2_3,416.0,434.0
-# 1_f_3_3,358.0,392.0
-# 1_b_3_3,434.0,462.0
-# 1_w_3_3,520.0,538.0
-# 1_f_4_3,462.0,496.0
-# 1_b_4_3,538.0,566.0
-# 1_w_4_3,652.0,670.0
-# 1_f_5_3,566.0,600.0
-# 1_b_5_3,624.0,652.0
-# 1_w_5_3,716.0,734.0
-# 1_f_6_3,670.0,704.0
-# 1_b_6_3,746.0,774.0
-# 1_w_6_3,860.0,878.0
-# 1_f_7_3,774.0,808.0
-# 1_b_7_3,832.0,860.0
-# 1_w_7_3,902.0,920.0
-# '''
-#     stage_alignment = [[0,3],[1,2],[2,1],[3,0]]#[[0,7],[1,6],[2,5],[3,4]]#[[0,4],[1,5],[2,6],[3,7]]##[[0],[1],[2],[3],[4],[5],[6],[7]]
-#     result = order_result_mutistream(input_str,stage_alignment)
-#     comm_graph_mutistream(result,stage_alignment)
-
+#     # 修改 stage_alignment
+#     for i in range(chunk_size):
+#         if i % 2 == 0:
+#             stage_alignment[0][i] = pp_size * i
+#             for j in range(1, pp_size):
+#                 stage_alignment[j][i] = stage_alignment[j - 1][i] + 1
+#         else:
+#             stage_alignment[pp_size - 1][i] = pp_size * i
+#             for j in range(pp_size - 2, -1, -1):  # 修正循环范围
+#                 stage_alignment[j][i] = stage_alignment[j + 1][i] + 1
+#     print(stage_alignment)
+#     input_str = '''f_0_0,0,4
+# f_1_0,4,8
+# f_0_1,4,8
+# f_2_0,8,12
+# f_1_1,8,12
+# f_0_2,8,12
+# f_3_0,12,16
+# f_2_1,12,16
+# f_1_2,12,16
+# f_0_3,12,16
+# f_4_0,16,20
+# f_3_1,16,20
+# f_2_2,16,20
+# f_1_3,16,20
+# f_0_4,16,20
+# f_5_0,20,24
+# f_4_1,20,24
+# f_3_2,20,24
+# f_2_3,20,24
+# f_1_4,20,24
+# f_0_5,20,24
+# f_6_0,24,28
+# f_5_1,24,28
+# f_4_2,24,28
+# f_3_3,24,28
+# f_2_4,24,28
+# f_1_5,24,28
+# f_0_6,24,28
+# f_7_0,28,32
+# f_6_1,28,32
+# f_5_2,28,32
+# f_4_3,28,32
+# f_3_4,28,32
+# f_2_5,28,32
+# f_1_6,28,32
+# f_0_7,28,32
+# f_0_8,32,36
+# f_7_1,32,36
+# f_6_2,32,36
+# f_5_3,32,36
+# f_4_4,32,36
+# f_3_5,32,36
+# f_2_6,32,36
+# f_1_7,32,36
+# f_1_8,36,40
+# f_0_9,36,40
+# f_7_2,36,40
+# f_6_3,36,40
+# f_5_4,36,40
+# f_4_5,36,40
+# f_3_6,36,40
+# f_2_7,36,40
+# f_2_8,40,44
+# f_1_9,40,44
+# f_0_10,40,44
+# f_7_3,40,44
+# f_6_4,40,44
+# f_5_5,40,44
+# f_4_6,40,44
+# f_3_7,40,44
+# f_3_8,44,48
+# f_2_9,44,48
+# f_1_10,44,48
+# f_0_11,44,48
+# f_7_4,44,48
+# f_6_5,44,48
+# f_5_6,44,48
+# f_4_7,44,48
+# f_4_8,48,52
+# f_3_9,48,52
+# f_2_10,48,52
+# f_1_11,48,52
+# f_0_12,48,52
+# f_7_5,48,52
+# f_6_6,48,52
+# f_5_7,48,52
+# f_5_8,52,56
+# f_4_9,52,56
+# f_3_10,52,56
+# f_2_11,52,56
+# f_1_12,52,56
+# f_0_13,52,56
+# f_7_6,52,56
+# f_6_7,52,56
+# f_6_8,56,60
+# f_5_9,56,60
+# f_4_10,56,60
+# f_3_11,56,60
+# f_2_12,56,60
+# f_1_13,56,60
+# f_0_14,56,60
+# f_7_7,56,60
+# f_7_8,60,64
+# f_6_9,60,64
+# f_5_10,60,64
+# f_4_11,60,64
+# f_3_12,60,64
+# f_2_13,60,64
+# f_1_14,60,64
+# f_0_15,60,64
+# f_0_16,64,68
+# f_7_9,64,68
+# f_6_10,64,68
+# f_5_11,64,68
+# f_4_12,64,68
+# f_3_13,64,68
+# f_2_14,64,68
+# f_1_15,64,68
+# f_1_16,68,72
+# f_0_17,68,72
+# f_7_10,68,72
+# f_6_11,68,72
+# f_5_12,68,72
+# f_4_13,68,72
+# f_3_14,68,72
+# f_2_15,68,72
+# f_2_16,72,76
+# f_1_17,72,76
+# f_0_18,72,76
+# f_7_11,72,76
+# f_6_12,72,76
+# f_5_13,72,76
+# f_4_14,72,76
+# f_3_15,72,76
+# f_3_16,76,80
+# f_2_17,76,80
+# f_1_18,76,80
+# f_0_19,76,80
+# f_7_12,76,80
+# f_6_13,76,80
+# f_5_14,76,80
+# f_4_15,76,80
+# f_4_16,80,84
+# f_3_17,80,84
+# f_2_18,80,84
+# f_1_19,80,84
+# f_0_20,80,84
+# f_7_13,80,84
+# f_6_14,80,84
+# f_5_15,80,84
+# f_5_16,84,88
+# f_4_17,84,88
+# f_3_18,84,88
+# f_2_19,84,88
+# f_1_20,84,88
+# f_0_21,84,88
+# f_7_14,84,88
+# f_6_15,84,88
+# f_6_16,88,92
+# f_5_17,88,92
+# f_4_18,88,92
+# f_3_19,88,92
+# f_2_20,88,92
+# f_1_21,88,92
+# f_0_22,88,92
+# f_7_15,88,92
+# f_7_16,92,96
+# f_6_17,92,96
+# f_5_18,92,96
+# f_4_19,92,96
+# f_3_20,92,96
+# f_2_21,92,96
+# f_1_22,92,96
+# f_0_23,92,96
+# f_0_24,96,100
+# f_7_17,96,100
+# f_6_18,96,100
+# f_5_19,96,100
+# f_4_20,96,100
+# f_3_21,96,100
+# f_2_22,96,100
+# f_1_23,96,100
+# f_1_24,100,104
+# f_0_25,100,104
+# f_7_18,100,104
+# f_6_19,100,104
+# f_5_20,100,104
+# f_4_21,100,104
+# f_3_22,100,104
+# f_2_23,100,104
+# f_2_24,104,108
+# f_1_25,104,108
+# f_0_26,104,108
+# f_7_19,104,108
+# f_6_20,104,108
+# f_5_21,104,108
+# f_4_22,104,108
+# f_3_23,104,108
+# f_3_24,108,112
+# f_2_25,108,112
+# f_1_26,108,112
+# f_0_27,108,112
+# f_7_20,108,112
+# f_6_21,108,112
+# f_5_22,108,112
+# f_4_23,108,112
+# f_4_24,112,116
+# f_3_25,112,116
+# f_2_26,112,116
+# f_1_27,112,116
+# f_0_28,112,116
+# f_7_21,112,116
+# f_6_22,112,116
+# f_5_23,112,116
+# f_5_24,116,120
+# f_4_25,116,120
+# f_3_26,116,120
+# f_2_27,116,120
+# f_1_28,116,120
+# f_0_29,116,120
+# f_7_22,116,120
+# f_6_23,116,120
+# f_6_24,120,124
+# f_5_25,120,124
+# f_4_26,120,124
+# f_3_27,120,124
+# f_2_28,120,124
+# f_1_29,120,124
+# f_0_30,120,124
+# f_7_23,120,124
+# f_7_24,124,128
+# f_6_25,124,128
+# f_5_26,124,128
+# f_4_27,124,128
+# f_3_28,124,128
+# f_2_29,124,128
+# f_1_30,124,128
+# f_0_31,124,128
+# f_8_0,128,132
+# f_7_25,128,132
+# f_6_26,128,132
+# f_5_27,128,132
+# f_4_28,128,132
+# f_3_29,128,132
+# b_0_31,128,136
+# f_9_0,132,136
+# f_8_1,132,136
+# f_7_26,132,136
+# f_6_27,132,136
+# f_5_28,132,136
+# f_10_0,136,140
+# f_9_1,136,140
+# f_8_2,136,140
+# f_7_27,136,140
+# f_2_30,136,140
+# f_1_31,136,140
+# f_11_0,140,144
+# f_10_1,140,144
+# f_9_2,140,144
+# b_0_30,140,148
+# b_1_31,140,148
+# f_12_0,144,148
+# f_11_1,144,148
+# f_13_0,148,152
+# f_4_29,148,152
+# f_3_30,148,152
+# f_2_31,148,152
+# b_0_29,152,160
+# b_1_30,152,160
+# b_2_31,152,160
+# f_6_28,160,164
+# f_5_29,160,164
+# f_4_30,160,164
+# f_3_31,160,164
+# b_0_28,164,172
+# b_1_29,164,172
+# b_2_30,164,172
+# b_3_31,164,172
+# f_8_3,172,176
+# f_7_28,172,176
+# f_6_29,172,176
+# f_5_30,172,176
+# f_4_31,172,176
+# b_0_27,176,184
+# b_1_28,176,184
+# b_2_29,176,184
+# b_3_30,176,184
+# b_4_31,176,184
+# f_10_2,184,188
+# f_9_3,184,188
+# f_8_4,184,188
+# f_7_29,184,188
+# f_6_30,184,188
+# f_5_31,184,188
+# b_0_26,188,196
+# b_1_27,188,196
+# b_2_28,188,196
+# b_3_29,188,196
+# b_4_30,188,196
+# b_5_31,188,196
+# f_12_1,196,200
+# f_11_2,196,200
+# f_10_3,196,200
+# f_9_4,196,200
+# f_8_5,196,200
+# f_7_30,196,200
+# f_6_31,196,200
+# b_0_25,200,208
+# b_1_26,200,208
+# b_2_27,200,208
+# b_3_28,200,208
+# b_4_29,200,208
+# b_5_30,200,208
+# b_6_31,200,208
+# f_14_0,208,212
+# f_13_1,208,212
+# f_12_2,208,212
+# f_11_3,208,212
+# f_10_4,208,212
+# f_9_5,208,212
+# f_8_6,208,212
+# f_7_31,208,212
+# b_0_24,212,220
+# b_1_25,212,220
+# b_2_26,212,220
+# b_3_27,212,220
+# b_4_28,212,220
+# b_5_29,212,220
+# b_6_30,212,220
+# b_7_31,212,220
+# f_15_0,220,224
+# f_14_1,220,224
+# f_13_2,220,224
+# f_12_3,220,224
+# f_11_4,220,224
+# f_10_5,220,224
+# f_9_6,220,224
+# f_8_7,220,224
+# b_1_24,224,232
+# b_2_25,224,232
+# b_3_26,224,232
+# b_4_27,224,232
+# b_5_28,224,232
+# b_6_29,224,232
+# b_7_30,224,232
+# b_0_23,224,232
+# f_8_8,232,236
+# f_15_1,232,236
+# f_14_2,232,236
+# f_13_3,232,236
+# f_12_4,232,236
+# f_11_5,232,236
+# f_10_6,232,236
+# f_9_7,232,236
+# b_2_24,236,244
+# b_3_25,236,244
+# b_4_26,236,244
+# b_5_27,236,244
+# b_6_28,236,244
+# b_7_29,236,244
+# b_0_22,236,244
+# b_1_23,236,244
+# f_9_8,244,248
+# f_8_9,244,248
+# f_15_2,244,248
+# f_14_3,244,248
+# f_13_4,244,248
+# f_12_5,244,248
+# f_11_6,244,248
+# f_10_7,244,248
+# b_3_24,248,256
+# b_4_25,248,256
+# b_5_26,248,256
+# b_6_27,248,256
+# b_7_28,248,256
+# b_0_21,248,256
+# b_1_22,248,256
+# b_2_23,248,256
+# f_10_8,256,260
+# f_9_9,256,260
+# f_8_10,256,260
+# f_15_3,256,260
+# f_14_4,256,260
+# f_13_5,256,260
+# f_12_6,256,260
+# f_11_7,256,260
+# b_4_24,260,268
+# b_5_25,260,268
+# b_6_26,260,268
+# b_7_27,260,268
+# b_0_20,260,268
+# b_1_21,260,268
+# b_2_22,260,268
+# b_3_23,260,268
+# f_11_8,268,272
+# f_10_9,268,272
+# f_9_10,268,272
+# f_8_11,268,272
+# f_15_4,268,272
+# f_14_5,268,272
+# f_13_6,268,272
+# f_12_7,268,272
+# b_5_24,272,280
+# b_6_25,272,280
+# b_7_26,272,280
+# b_0_19,272,280
+# b_1_20,272,280
+# b_2_21,272,280
+# b_3_22,272,280
+# b_4_23,272,280
+# f_12_8,280,284
+# f_11_9,280,284
+# f_10_10,280,284
+# f_9_11,280,284
+# f_8_12,280,284
+# f_15_5,280,284
+# f_14_6,280,284
+# f_13_7,280,284
+# b_6_24,284,292
+# b_7_25,284,292
+# b_0_18,284,292
+# b_1_19,284,292
+# b_2_20,284,292
+# b_3_21,284,292
+# b_4_22,284,292
+# b_5_23,284,292
+# f_13_8,292,296
+# f_12_9,292,296
+# f_11_10,292,296
+# f_10_11,292,296
+# f_9_12,292,296
+# f_8_13,292,296
+# f_15_6,292,296
+# f_14_7,292,296
+# b_7_24,296,304
+# b_0_17,296,304
+# b_1_18,296,304
+# b_2_19,296,304
+# b_3_20,296,304
+# b_4_21,296,304
+# b_5_22,296,304
+# b_6_23,296,304
+# f_14_8,304,308
+# f_13_9,304,308
+# f_12_10,304,308
+# f_11_11,304,308
+# f_10_12,304,308
+# f_9_13,304,308
+# f_8_14,304,308
+# f_15_7,304,308
+# b_0_16,308,316
+# b_1_17,308,316
+# b_2_18,308,316
+# b_3_19,308,316
+# b_4_20,308,316
+# b_5_21,308,316
+# b_6_22,308,316
+# b_7_23,308,316
+# f_15_8,316,320
+# f_14_9,316,320
+# f_13_10,316,320
+# f_12_11,316,320
+# f_11_12,316,320
+# f_10_13,316,320
+# f_9_14,316,320
+# f_8_15,316,320
+# b_1_16,320,328
+# b_2_17,320,328
+# b_3_18,320,328
+# b_4_19,320,328
+# b_5_20,320,328
+# b_6_21,320,328
+# b_7_22,320,328
+# b_0_15,320,328
+# f_8_16,328,332
+# f_15_9,328,332
+# f_14_10,328,332
+# f_13_11,328,332
+# f_12_12,328,332
+# f_11_13,328,332
+# f_10_14,328,332
+# f_9_15,328,332
+# b_2_16,332,340
+# b_3_17,332,340
+# b_4_18,332,340
+# b_5_19,332,340
+# b_6_20,332,340
+# b_7_21,332,340
+# b_0_14,332,340
+# b_1_15,332,340
+# f_9_16,340,344
+# f_8_17,340,344
+# f_15_10,340,344
+# f_14_11,340,344
+# f_13_12,340,344
+# f_12_13,340,344
+# f_11_14,340,344
+# f_10_15,340,344
+# b_3_16,344,352
+# b_4_17,344,352
+# b_5_18,344,352
+# b_6_19,344,352
+# b_7_20,344,352
+# b_0_13,344,352
+# b_1_14,344,352
+# b_2_15,344,352
+# f_10_16,352,356
+# f_9_17,352,356
+# f_8_18,352,356
+# f_15_11,352,356
+# f_14_12,352,356
+# f_13_13,352,356
+# f_12_14,352,356
+# f_11_15,352,356
+# b_4_16,356,364
+# b_5_17,356,364
+# b_6_18,356,364
+# b_7_19,356,364
+# b_0_12,356,364
+# b_1_13,356,364
+# b_2_14,356,364
+# b_3_15,356,364
+# f_11_16,364,368
+# f_10_17,364,368
+# f_9_18,364,368
+# f_8_19,364,368
+# f_15_12,364,368
+# f_14_13,364,368
+# f_13_14,364,368
+# f_12_15,364,368
+# b_5_16,368,376
+# b_6_17,368,376
+# b_7_18,368,376
+# b_0_11,368,376
+# b_1_12,368,376
+# b_2_13,368,376
+# b_3_14,368,376
+# b_4_15,368,376
+# f_12_16,376,380
+# f_11_17,376,380
+# f_10_18,376,380
+# f_9_19,376,380
+# f_8_20,376,380
+# f_15_13,376,380
+# f_14_14,376,380
+# f_13_15,376,380
+# b_6_16,380,388
+# b_7_17,380,388
+# b_0_10,380,388
+# b_1_11,380,388
+# b_2_12,380,388
+# b_3_13,380,388
+# b_4_14,380,388
+# b_5_15,380,388
+# f_13_16,388,392
+# f_12_17,388,392
+# f_11_18,388,392
+# f_10_19,388,392
+# f_9_20,388,392
+# f_8_21,388,392
+# f_15_14,388,392
+# f_14_15,388,392
+# b_7_16,392,400
+# b_0_9,392,400
+# b_1_10,392,400
+# b_2_11,392,400
+# b_3_12,392,400
+# b_4_13,392,400
+# b_5_14,392,400
+# b_6_15,392,400
+# f_14_16,400,404
+# f_13_17,400,404
+# f_12_18,400,404
+# f_11_19,400,404
+# f_10_20,400,404
+# f_9_21,400,404
+# f_8_22,400,404
+# f_15_15,400,404
+# b_0_8,404,412
+# b_1_9,404,412
+# b_2_10,404,412
+# b_3_11,404,412
+# b_4_12,404,412
+# b_5_13,404,412
+# b_6_14,404,412
+# b_7_15,404,412
+# f_15_16,412,416
+# f_14_17,412,416
+# f_13_18,412,416
+# f_12_19,412,416
+# f_11_20,412,416
+# f_10_21,412,416
+# f_9_22,412,416
+# f_8_23,412,416
+# b_1_8,416,424
+# b_2_9,416,424
+# b_3_10,416,424
+# b_4_11,416,424
+# b_5_12,416,424
+# b_6_13,416,424
+# b_7_14,416,424
+# b_0_7,416,424
+# f_8_24,424,428
+# f_15_17,424,428
+# f_14_18,424,428
+# f_13_19,424,428
+# f_12_20,424,428
+# f_11_21,424,428
+# f_10_22,424,428
+# f_9_23,424,428
+# b_2_8,428,436
+# b_3_9,428,436
+# b_4_10,428,436
+# b_5_11,428,436
+# b_6_12,428,436
+# b_7_13,428,436
+# b_0_6,428,436
+# b_1_7,428,436
+# f_9_24,436,440
+# f_8_25,436,440
+# f_15_18,436,440
+# f_14_19,436,440
+# f_13_20,436,440
+# f_12_21,436,440
+# f_11_22,436,440
+# f_10_23,436,440
+# b_3_8,440,448
+# b_4_9,440,448
+# b_5_10,440,448
+# b_6_11,440,448
+# b_7_12,440,448
+# b_0_5,440,448
+# b_1_6,440,448
+# b_2_7,440,448
+# f_10_24,448,452
+# f_9_25,448,452
+# f_8_26,448,452
+# f_15_19,448,452
+# f_14_20,448,452
+# f_13_21,448,452
+# f_12_22,448,452
+# f_11_23,448,452
+# b_4_8,452,460
+# b_5_9,452,460
+# b_6_10,452,460
+# b_7_11,452,460
+# b_0_4,452,460
+# b_1_5,452,460
+# b_2_6,452,460
+# b_3_7,452,460
+# f_11_24,460,464
+# f_10_25,460,464
+# f_9_26,460,464
+# f_8_27,460,464
+# f_15_20,460,464
+# f_14_21,460,464
+# f_13_22,460,464
+# f_12_23,460,464
+# b_5_8,464,472
+# b_6_9,464,472
+# b_7_10,464,472
+# b_0_3,464,472
+# b_1_4,464,472
+# b_2_5,464,472
+# b_3_6,464,472
+# b_4_7,464,472
+# f_12_24,472,476
+# f_11_25,472,476
+# f_10_26,472,476
+# f_9_27,472,476
+# f_8_28,472,476
+# f_15_21,472,476
+# f_14_22,472,476
+# f_13_23,472,476
+# b_6_8,476,484
+# b_7_9,476,484
+# b_0_2,476,484
+# b_1_3,476,484
+# b_2_4,476,484
+# b_3_5,476,484
+# b_4_6,476,484
+# b_5_7,476,484
+# f_13_24,484,488
+# f_12_25,484,488
+# f_11_26,484,488
+# f_10_27,484,488
+# f_9_28,484,488
+# f_8_29,484,488
+# f_15_22,484,488
+# f_14_23,484,488
+# b_7_8,488,496
+# b_0_1,488,496
+# b_1_2,488,496
+# b_2_3,488,496
+# b_3_4,488,496
+# b_4_5,488,496
+# b_5_6,488,496
+# b_6_7,488,496
+# f_14_24,496,500
+# f_13_25,496,500
+# f_12_26,496,500
+# f_11_27,496,500
+# f_10_28,496,500
+# f_9_29,496,500
+# f_8_30,496,500
+# f_15_23,496,500
+# b_0_0,500,508
+# b_1_1,500,508
+# b_2_2,500,508
+# b_3_3,500,508
+# b_4_4,500,508
+# b_5_5,500,508
+# b_6_6,500,508
+# b_7_7,500,508
+# f_15_24,508,512
+# f_14_25,508,512
+# f_13_26,508,512
+# f_12_27,508,512
+# f_11_28,508,512
+# f_10_29,508,512
+# f_9_30,508,512
+# f_8_31,508,512
+# b_1_0,512,520
+# b_2_1,512,520
+# b_3_2,512,520
+# b_4_3,512,520
+# b_5_4,512,520
+# b_6_5,512,520
+# b_7_6,512,520
+# b_8_31,512,520
+# b_2_0,520,528
+# f_15_25,520,524
+# f_14_26,520,524
+# f_13_27,520,524
+# f_12_28,520,524
+# f_11_29,520,524
+# f_10_30,520,524
+# f_9_31,520,524
+# b_3_1,524,532
+# b_4_2,524,532
+# b_5_3,524,532
+# b_6_4,524,532
+# b_7_5,524,532
+# b_8_30,524,532
+# b_9_31,524,532
+# b_3_0,532,540
+# b_4_1,532,540
+# f_15_26,532,536
+# f_14_27,532,536
+# f_13_28,532,536
+# f_12_29,532,536
+# f_11_30,532,536
+# f_10_31,532,536
+# b_5_2,536,544
+# b_6_3,536,544
+# b_7_4,536,544
+# b_8_29,536,544
+# b_9_30,536,544
+# b_10_31,536,544
+# b_4_0,540,548
+# b_5_1,544,552
+# b_6_2,544,552
+# f_15_27,544,548
+# f_14_28,544,548
+# f_13_29,544,548
+# f_12_30,544,548
+# f_11_31,544,548
+# b_7_3,548,556
+# b_8_28,548,556
+# b_9_29,548,556
+# b_10_30,548,556
+# b_11_31,548,556
+# b_5_0,552,560
+# b_6_1,552,560
+# b_7_2,556,564
+# b_8_27,556,564
+# f_15_28,556,560
+# f_14_29,556,560
+# f_13_30,556,560
+# f_12_31,556,560
+# b_6_0,560,568
+# b_9_28,560,568
+# b_10_29,560,568
+# b_11_30,560,568
+# b_12_31,560,568
+# b_7_1,564,572
+# b_8_26,564,572
+# b_9_27,568,576
+# b_10_28,568,576
+# f_15_29,568,572
+# f_14_30,568,572
+# f_13_31,568,572
+# b_7_0,572,580
+# b_8_25,572,580
+# b_11_29,572,580
+# b_12_30,572,580
+# b_13_31,572,580
+# b_9_26,576,584
+# b_10_27,576,584
+# b_8_24,580,588
+# b_11_28,580,588
+# b_12_29,580,588
+# f_15_30,580,584
+# f_14_31,580,584
+# b_9_25,584,592
+# b_10_26,584,592
+# b_13_30,584,592
+# b_14_31,584,592
+# b_11_27,588,596
+# b_12_28,588,596
+# b_9_24,592,600
+# b_10_25,592,600
+# b_13_29,592,600
+# b_14_30,592,600
+# f_15_31,592,596
+# b_11_26,596,604
+# b_12_27,596,604
+# b_15_31,596,604
+# b_10_24,600,608
+# b_13_28,600,608
+# b_14_29,600,608
+# b_11_25,604,612
+# b_12_26,604,612
+# b_15_30,604,612
+# b_8_23,604,612
+# b_13_27,608,616
+# b_14_28,608,616
+# b_11_24,612,620
+# b_12_25,612,620
+# b_15_29,612,620
+# b_8_22,612,620
+# b_9_23,612,620
+# b_13_26,616,624
+# b_14_27,616,624
+# b_12_24,620,628
+# b_15_28,620,628
+# b_8_21,620,628
+# b_9_22,620,628
+# b_10_23,620,628
+# b_13_25,624,632
+# b_14_26,624,632
+# b_15_27,628,636
+# b_8_20,628,636
+# b_9_21,628,636
+# b_10_22,628,636
+# b_11_23,628,636
+# b_13_24,632,640
+# b_14_25,632,640
+# b_15_26,636,644
+# b_8_19,636,644
+# b_9_20,636,644
+# b_10_21,636,644
+# b_11_22,636,644
+# b_12_23,636,644
+# b_14_24,640,648
+# b_15_25,644,652
+# b_8_18,644,652
+# b_9_19,644,652
+# b_10_20,644,652
+# b_11_21,644,652
+# b_12_22,644,652
+# b_13_23,644,652
+# b_15_24,652,660
+# b_8_17,652,660
+# b_9_18,652,660
+# b_10_19,652,660
+# b_11_20,652,660
+# b_12_21,652,660
+# b_13_22,652,660
+# b_14_23,652,660
+# b_8_16,660,668
+# b_9_17,660,668
+# b_10_18,660,668
+# b_11_19,660,668
+# b_12_20,660,668
+# b_13_21,660,668
+# b_14_22,660,668
+# b_15_23,660,668
+# b_9_16,668,676
+# b_10_17,668,676
+# b_11_18,668,676
+# b_12_19,668,676
+# b_13_20,668,676
+# b_14_21,668,676
+# b_15_22,668,676
+# b_8_15,668,676
+# b_10_16,676,684
+# b_11_17,676,684
+# b_12_18,676,684
+# b_13_19,676,684
+# b_14_20,676,684
+# b_15_21,676,684
+# b_8_14,676,684
+# b_9_15,676,684
+# b_11_16,684,692
+# b_12_17,684,692
+# b_13_18,684,692
+# b_14_19,684,692
+# b_15_20,684,692
+# b_8_13,684,692
+# b_9_14,684,692
+# b_10_15,684,692
+# b_12_16,692,700
+# b_13_17,692,700
+# b_14_18,692,700
+# b_15_19,692,700
+# b_8_12,692,700
+# b_9_13,692,700
+# b_10_14,692,700
+# b_11_15,692,700
+# b_13_16,700,708
+# b_14_17,700,708
+# b_15_18,700,708
+# b_8_11,700,708
+# b_9_12,700,708
+# b_10_13,700,708
+# b_11_14,700,708
+# b_12_15,700,708
+# b_14_16,708,716
+# b_15_17,708,716
+# b_8_10,708,716
+# b_9_11,708,716
+# b_10_12,708,716
+# b_11_13,708,716
+# b_12_14,708,716
+# b_13_15,708,716
+# b_15_16,716,724
+# b_8_9,716,724
+# b_9_10,716,724
+# b_10_11,716,724
+# b_11_12,716,724
+# b_12_13,716,724
+# b_13_14,716,724
+# b_14_15,716,724
+# b_8_8,724,732
+# b_9_9,724,732
+# b_10_10,724,732
+# b_11_11,724,732
+# b_12_12,724,732
+# b_13_13,724,732
+# b_14_14,724,732
+# b_15_15,724,732
+# b_9_8,732,740
+# b_10_9,732,740
+# b_11_10,732,740
+# b_12_11,732,740
+# b_13_12,732,740
+# b_14_13,732,740
+# b_15_14,732,740
+# b_8_7,732,740
+# b_10_8,740,748
+# b_11_9,740,748
+# b_12_10,740,748
+# b_13_11,740,748
+# b_14_12,740,748
+# b_15_13,740,748
+# b_8_6,740,748
+# b_9_7,740,748
+# b_11_8,748,756
+# b_12_9,748,756
+# b_13_10,748,756
+# b_14_11,748,756
+# b_15_12,748,756
+# b_8_5,748,756
+# b_9_6,748,756
+# b_10_7,748,756
+# b_12_8,756,764
+# b_13_9,756,764
+# b_14_10,756,764
+# b_15_11,756,764
+# b_8_4,756,764
+# b_9_5,756,764
+# b_10_6,756,764
+# b_11_7,756,764
+# b_13_8,764,772
+# b_14_9,764,772
+# b_15_10,764,772
+# b_8_3,764,772
+# b_9_4,764,772
+# b_10_5,764,772
+# b_11_6,764,772
+# b_12_7,764,772
+# b_14_8,772,780
+# b_15_9,772,780
+# b_8_2,772,780
+# b_9_3,772,780
+# b_10_4,772,780
+# b_11_5,772,780
+# b_12_6,772,780
+# b_13_7,772,780
+# b_15_8,780,788
+# b_8_1,780,788
+# b_9_2,780,788
+# b_10_3,780,788
+# b_11_4,780,788
+# b_12_5,780,788
+# b_13_6,780,788
+# b_14_7,780,788
+# b_8_0,788,796
+# b_9_1,788,796
+# b_10_2,788,796
+# b_11_3,788,796
+# b_12_4,788,796
+# b_13_5,788,796
+# b_14_6,788,796
+# b_15_7,788,796
+# b_9_0,796,804
+# b_10_1,796,804
+# b_11_2,796,804
+# b_12_3,796,804
+# b_13_4,796,804
+# b_14_5,796,804
+# b_15_6,796,804
+# b_10_0,804,812
+# b_11_1,804,812
+# b_12_2,804,812
+# b_13_3,804,812
+# b_14_4,804,812
+# b_15_5,804,812
+# b_11_0,812,820
+# b_12_1,812,820
+# b_13_2,812,820
+# b_14_3,812,820
+# b_15_4,812,820
+# b_12_0,820,828
+# b_13_1,820,828
+# b_14_2,820,828
+# b_15_3,820,828
+# b_13_0,828,836
+# b_14_1,828,836
+# b_15_2,828,836
+# b_14_0,836,844
+# b_15_1,836,844
+# b_15_0,844,852'''
+#     unified_scheduler = order_result_mutichunk(input_str,stage_alignment)
+#     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
