@@ -589,7 +589,7 @@ def fused_send_recv_tensor(
     return tensor_recv_prev, tensor_recv_next
 
 
-class AsynCommunicator:
+class AsynCommunicator_origin:
     """AsynCommunicator for managing async communication."""
 
     def __init__(
@@ -634,7 +634,7 @@ def write_json(jsonpath, content):
     with open(jsonpath, 'a',encoding='utf-8') as f:
         json.dump(content, f)
         f.write('\n')
-class AsynCommunicator_unified:
+class AsynCommunicator:
     """AsynCommunicator for managing async communication."""
     def __init__(
         self,
