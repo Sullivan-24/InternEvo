@@ -1,5 +1,5 @@
 
-from preprocess import generate_Wavelike_4pp_20chunk_16mb
+from preprocess import generate_Wavelike_4pp_20chunk_16mb, generate_Interleaved_4pp_20chunk_16mb
 from internlm.utils.utils import judge_scheduler_type, judge_split_backward
 # {
 #   "architectures": [
@@ -245,6 +245,6 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-stage_placement,unified_scheduler,comm_graph = generate_Wavelike_4pp_20chunk_16mb()
+stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
 scheduler_type = judge_scheduler_type(stage_placement)
 split_backward = judge_split_backward(unified_scheduler)
