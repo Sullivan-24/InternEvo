@@ -30,7 +30,7 @@ from internlm.utils.logger import get_logger
 if TYPE_CHECKING:
     from internlm.core.parallel.comm.isp import WPCommunicator
     from internlm.core.parallel.comm.tensor import TPCommunicator
-from internlm.utils.utils import ModuleType
+# from internlm.utils.utils import ModuleType
 
 logger = get_logger(__file__)
 internlm_accelerator = get_accelerator()
@@ -147,9 +147,9 @@ class SPFusedDenseFunc(torch.autograd.Function):
                     and not gpc.is_first_rank(ParallelMode.PIPELINE)
                 )
                 or gpc.config.parallel["pipeline"].get("mode", "1F1B") == "ZBV"
-                or gpc.config.scheduler_type == ModuleType.VSHAPE.value
-                or gpc.config.scheduler_type == ModuleType.CHIMERA.value
-                or gpc.config.scheduler_type == ModuleType.ZBH1.value
+                or (gpc.config.parallel["pipeline"].get("mode", "1F1B") == "UNIFIED" and 
+                    gpc.config.split_backward
+                )
             ):
                 from internlm.core.scheduler.pipeline_scheduler_zb import (
                     WeightGradStore,

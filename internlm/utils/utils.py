@@ -64,7 +64,10 @@ class DataType(Enum):
     megatron = 3
     mocked = 4
 
-
+class Step(Enum):
+    FORWARD = 'f'
+    BACKWARD = 'b'
+    WEIGHT = 'w'
 class ModuleType(Enum):
     CHIMERA='Chimera'
     INTERLEAVED = 'Interleaved'
@@ -84,6 +87,24 @@ class ActivationType(Enum):
     gelu = 2
 
 
+def judge_scheduler_type(stage_placement):
+    ranks = len(stage_placement)
+    rank0 = stage_placement[0]
+    rank1 = stage_placement[1]
+    sum_rank0 = sum(rank0)
+    sum_rank1 = sum(rank1)
+    if sum_rank0 == ranks-1:
+        return ModuleType.CHIMERA.value
+    elif sum_rank0 >= ranks:
+        if sum_rank1 == sum_rank0:
+            return ModuleType.VSHAPE.value
+        elif sum_rank1>sum_rank0:
+            return ModuleType.INTERLEAVED.value
+def judge_split_backward(unified_scheduler):
+    if unified_scheduler[0][-1][0] == Step.WEIGHT.value:
+        return True
+    else:
+        return False
 def check_attention_argument(*args, **kwargs) -> str:
     # self, qkv, ...
     # self, q, kv, ....

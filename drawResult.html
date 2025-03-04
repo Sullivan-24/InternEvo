@@ -25,8 +25,8 @@ function processData(data) {
 
     // Adjust times and convert to milliseconds
     data.forEach(block => {
-        block.start_time = (block.start_time - minTime) / mintimespan*10;
-        block.timespan = block.timespan / mintimespan*10;
+        block.start_time = (block.start_time - minTime) / mintimespan;
+        block.timespan = block.timespan / mintimespan;
     });
 
     // Group by local_rank and operation type
@@ -95,26 +95,29 @@ function drawTimeline(data) {
         data[localRank].compute.forEach(block => {
             var x = block.start_time+ xOffset;
             var width = block.timespan;// 增加宽度最小值，避免block太小
-            var alpha = 0.5-(block.chunk_id/2);//(maxChunkId+1);
+            var alpha = 1-(block.chunk_id/20);//maxChunkId;
             // 根据step_type设置颜色
             switch (block.step_type) {
                 case 'f':
-                    color = 'rgba(0, 0, 255)';
-                    if (block.chunk_id == 1){
-                        color = 'rgba(0, 0, 255, 0.5)'
-                    }
+                    //color = 'rgba(0, 0, 255)'
+                    color = `rgba(0, 0, 255, ${alpha})`; 
+                    // if (block.chunk_id == 1){
+                    //     color = 'rgba(0, 0, 255, 0.5)'
+                    // }
                     break;
                 case 'b':
-                    color = 'rgba(255, 255, 0)';
-                    if (block.chunk_id == 1){
-                        color = 'rgba(255, 255, 0, 0.5)'
-                    }
+                    color = `rgba(255, 255, 0, ${alpha})`; 
+                    // color = 'rgba(255, 255, 0)';
+                    // if (block.chunk_id == 1){
+                    //     color = 'rgba(255, 255, 0, 0.5)'
+                    // }
                     break;
                 case 'w':
-                    color = 'rgba(0, 255, 0)';
-                    if (block.chunk_id == 1){
-                        color = 'rgba(0, 255, 0, 0.5)';
-                    }
+                    color = `rgba(0, 255, 0, ${alpha})`;
+                    // color = 'rgba(0, 255, 0)';
+                    // if (block.chunk_id == 1){
+                    //     color = 'rgba(0, 255, 0, 0.5)';
+                    // }
                     break;
                 default:
                     // 可以添加默认的颜色和位置设置
@@ -129,57 +132,96 @@ function drawTimeline(data) {
             // 添加文本
             ctx.fillStyle = 'black'//block.step_type === 'b' ? 'black' : 'white';
             ctx.font = '10px Arial';
-            ctx.fillText(block.microbatch_id, x+(width/2), y + blockHeight - 10);
+            ctx.fillText(`${block.microbatch_id}`, x+(width/2), y + blockHeight - 10);
         });
 
 //绘制communicate类型的block
 // 假设 data、localRank、ctx 已经正确定义
 // 假设 y 和 xOffset 已经正确定义
-        // data[localRank].communicate.forEach(block => {
-        //     const x = block.start_time + xOffset;
-        //     const width = block.timespan; // 增加宽度最小值，避免 block 太小
-        //     let y2;
-        //     let color;
-        //     //const alpha = 1- block.chunk_id/maxChunkId;
-        //     const communicate_type = block.operation.split(':').at(-1).split(";")[0];
-        //     switch (communicate_type) {
-        //         case 'send_forward':
-        //             color = 'rgba(0, 0, 255, 0.5)';
-        //             y2 = y + blockHeight;
-        //             break;
-        //         case 'send_backward':
-        //             color = 'rgba(255, 255, 0, 0.5)';
-        //             y2 = y - blockHeightY ;
-        //             break;
-        //         case 'recv_forward':
-        //             color = 'rgba(0, 0, 255, 0.5)';
-        //             y2 = y - blockHeightY ;
-        //             break;
-        //         case 'recv_backward':
-        //             color = 'rgba(255, 255, 0, 0.5)';
-        //             y2 = y + blockHeight;
-        //             break;
-        //         default:
-        //             // 可以添加默认的颜色和位置设置
-        //             color = 'gray';
-        //             y2 = 0;
-        //     }
+        data[localRank].communicate.forEach(block => {
+            const x = block.start_time + xOffset;
+            const width = block.timespan; // 增加宽度最小值，避免 block 太小
+            let y2;
+            let color;
+            //const alpha = 1- block.chunk_id/maxChunkId;
+            const communicate_type = block.operation.split(':').at(-1).split(";")[0];
+            var alpha = 1-(block.chunk_id/20);//maxChunkId;
+            switch (communicate_type) {
+                case 'send_forward':
+                    color = `rgba(0, 0, 255, ${alpha})`;
+                    y2 = y + blockHeight;
+                    break;
+                case 'send_backward':
+                    color = `rgba(255, 255, 0, ${alpha})`;
+                    y2 = y - blockHeightY ;
+                    break;
+                case 'recv_forward':
+                    color = `rgba(0, 0, 255, ${alpha})`;
+                    y2 = y - blockHeightY ;
+                    break;
+                case 'recv_backward':
+                    color = `rgba(255, 255, 0, ${alpha})`;
+                    y2 = y + blockHeight;
+                    break;
+                default:
+                    // 可以添加默认的颜色和位置设置
+                    color = 'gray';
+                    y2 = 0;
+            }
 
-        //     ctx.fillStyle = color;
-        //     ctx.fillRect(x, y2, width, blockHeightY);
-        //     ctx.strokeRect(x, y2, width, blockHeightY);
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y2, width, blockHeightY);
+            ctx.strokeRect(x, y2, width, blockHeightY);
 
 
-        //     //添加文本
-        //     ctx.fillStyle = 'black';
-        //     ctx.font = '10px Arial';
-        //     ctx.fillText(block.microbatch_id, x+(width/2), y2 + blockHeightY/2);
-        // });
+            //添加文本
+            ctx.fillStyle = 'black';
+            ctx.font = '10px Arial';
+            ctx.fillText(block.microbatch_id, x+(width/2), y2 + blockHeightY/2);
+        });
     });
 }
+// const fs = require('fs');
+// const path = require('path');
+// const __dirname = '/jsonResult/async/Interleaved_pp4_chunk20_mb16/'
+// // 配置路径
+// const inputFolder = __dirname; // 替换为你的文件夹路径
+// const outputFile = path.join(__dirname, 'merged.json');   // 合并后的输出路径
 
+// try {
+//   // 读取并过滤 JSON 文件
+//   const files = fs.readdirSync(inputFolder)
+//     .filter(file => path.extname(file) === '.json');
+
+//   // 合并数据容器
+//   const mergedData = [];
+
+//   // 遍历处理每个 JSON 文件
+//   files.forEach(file => {
+//     try {
+//       const filePath = path.join(inputFolder, file);
+//       const rawData = fs.readFileSync(filePath, 'utf8');
+//       const jsonData = JSON.parse(rawData);
+      
+//       // 处理数组和非数组类型文件
+//       Array.isArray(jsonData) 
+//         ? mergedData.push(...jsonData) 
+//         : mergedData.push(jsonData);
+      
+//     } catch (error) {
+//       console.error(`[!] 处理文件 ${file} 时出错:`, error.message);
+//     }
+//   });
+
+//   // 写入合并结果
+//   fs.writeFileSync(outputFile, JSON.stringify(mergedData, null, 2));
+//   console.log(`✅ 合并完成，共处理 ${files.length} 个文件，输出至: ${outputFile}`);
+
+// } catch (error) {
+//   console.error('❌ 初始化错误:', error.message);
+// }
 // 处理数据并绘制图形
-fetch('/jsonResult/async/Chimera_pp4_mb8/iter_0_opeartion_list.json')
+fetch('/jsonResult/async/Vshape_pp4_chunk20_mb16/merged.json')
     .then(response => response.text())
     .then(text => {
         // 将文本按JSON对象分割并解析
@@ -190,7 +232,115 @@ fetch('/jsonResult/async/Chimera_pp4_mb8/iter_0_opeartion_list.json')
         drawTimeline(processedData);
     })
     .catch(error => console.error('Error loading the file:', error));
+// 处理数据并绘制图形
+// fetch('/jsonResult/async/Interleaved_pp8_mb32/iter_0_opeartion_list.json')
+//     .then(response => response.text())
+//     .then(text => {
+//         // 将文本按 JSON 对象分割
+//         const regex = /{[^}]+}/g;
+//         const matches = text.matchAll(regex);
 
+//         // 解析每个 JSON 对象，跳过不合法的数据
+//         const data = [];
+//         for (const match of matches) {
+//             try {
+//                 const jsonObject = JSON.parse(match[0]); // 尝试解析 JSON
+//                 data.push(jsonObject); // 如果解析成功，添加到数组中
+//             } catch (error) {
+//                 console.warn('Skipping invalid JSON:', match[0]); // 如果解析失败，跳过并记录警告
+//             }
+//         }
+
+//         // 使用解析后的数据
+//         const processedData = processData(data);
+//         drawTimeline(processedData);
+//     })
+//     .catch(error => console.error('Error loading the file:', error));
+// 新增函数：修复 JSON 字符串中大括号不匹配的问题
+// function fixJsonBraces(text) {
+//     let stack = [];
+//     let inString = false;
+//     let escape = false;
+//     let fixedText = text.split('');
+
+//     // 遍历字符，跟踪括号嵌套
+//     for (let i = 0; i < fixedText.length; i++) {
+//         const char = fixedText[i];
+        
+//         // 处理转义字符
+//         if (escape) {
+//             escape = false;
+//             continue;
+//         }
+//         if (char === '\\') {
+//             escape = true;
+//             continue;
+//         }
+        
+//         // 处理字符串边界
+//         if (char === '"') {
+//             inString = !inString;
+//             continue;
+//         }
+//         if (inString) continue;
+
+//         // 跟踪大括号
+//         if (char === '{') {
+//             stack.push({ type: '{', index: i });
+//         } else if (char === '}') {
+//             if (stack.length > 0 && stack[stack.length - 1].type === '{') {
+//                 stack.pop();
+//             } else {
+//                 // 发现多余的闭合括号，暂时标记为删除
+//                 fixedText[i] = '';
+//             }
+//         }
+//     }
+
+//     // 补充缺失的闭合括号
+//     while (stack.length > 0) {
+//         fixedText.push('}');
+//         stack.pop();
+//     }
+
+//     return fixedText.join('');
+// }
+
+// // 改进后的数据加载逻辑
+// fetch('/jsonResult/async/Interleaved_pp4_chunk20_mb16/iter_0_opeartion_list.json')
+//     .then(response => response.text())
+//     .then(text => {
+//         // 步骤 1: 修复大括号
+//         const fixedText = fixJsonBraces(text);
+        
+//         // 步骤 2: 尝试解析完整 JSON
+//         try {
+//             const fullData = JSON.parse(fixedText);
+//             const processedData = processData(fullData);
+//             drawTimeline(processedData);
+//             return;
+//         } catch (e) {
+//             console.warn('完整 JSON 解析失败，尝试分段解析:', e.message);
+//         }
+
+//         // 步骤 3: 分段解析（兼容旧逻辑）
+//         const regex = /{[^{}]*}/g;  // 基础匹配（假设无嵌套）
+//         const matches = fixedText.match(regex) || [];
+//         const data = matches
+//             .map(match => {
+//                 try {
+//                     return JSON.parse(match);
+//                 } catch (e) {
+//                     console.error('分段解析失败:', e.message);
+//                     return null;
+//                 }
+//             })
+//             .filter(item => item !== null);
+
+//         const processedData = processData(data);
+//         drawTimeline(processedData);
+//     })
+//     .catch(error => console.error('文件加载失败:', error));
 </script>
 </body>
 </html>
