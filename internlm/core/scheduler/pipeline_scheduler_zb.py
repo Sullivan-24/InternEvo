@@ -15,7 +15,6 @@ from internlm.core.scheduler import comm
 from internlm.utils.common import SchedulerHook, get_current_device
 from internlm.utils.logger import get_logger
 from internlm.utils.parallel import is_using_isp
-
 from .pipeline_scheduler_1f1b import (
     InterleavedPipelineScheduler,
     PipelineScheduler,
@@ -196,7 +195,11 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
             if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
             else None
         )
-        accum_moe_loss = torch.zeros(1, device=get_current_device())
+
+        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
+            accum_moe_loss = torch.zeros(1, device=get_current_device())
+        else:
+            accum_moe_loss = None
 
         # Used for tensor meta information communication
         forward_recv_shapes = self.tensor_shape
@@ -355,8 +358,8 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             dist.all_reduce(accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
 
-        if accum_loss is not None:
-            accum_loss += accum_moe_loss
+            if accum_loss is not None:
+                accum_loss += accum_moe_loss
 
         return output, label, accum_loss, accum_moe_loss
 

@@ -16,7 +16,7 @@ from internlm.core.context import global_context as gpc
 from internlm.utils.common import get_current_device
 
 from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
-import time
+
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 internlm_accelerator = get_accelerator()
 
@@ -42,6 +42,15 @@ def _get_tensor_shape(tensor_shape: TensorShape, chunk_tensor: bool = False) -> 
     else:
         tensor_chunk_shape = tensor_shape
     return tensor_chunk_shape, chunk_tensor
+
+
+def _p2p_func(_comm_op, _obj, _comm_rank):
+    if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+        op_or_handle = dist.P2POp(_comm_op, _obj, _comm_rank)
+    else:
+        op_or_handle = _comm_op(_obj, _comm_rank)
+
+    return op_or_handle
 
 
 def create_recv_buffer_with_shapes(recv_shapes, dtype, scatter_gather_tensors):
@@ -78,12 +87,10 @@ def process_object_to_send(object_send, scatter_gather_tensors):
 
 def filling_ops_queue(obj, comm_op, comm_rank, ops_queue):
     if isinstance(obj, torch.Tensor):
-        op_to_add = dist.P2POp(comm_op, obj, comm_rank)
-        ops_queue.append(op_to_add)
+        ops_queue.append(_p2p_func(comm_op, obj, comm_rank))
     else:
         for tensor_to_comm in obj:
-            op_to_add = dist.P2POp(comm_op, tensor_to_comm, comm_rank)
-            ops_queue.append(op_to_add)
+            ops_queue.append(_p2p_func(comm_op, tensor_to_comm, comm_rank))
 
 
 def _communicate(
@@ -156,23 +163,42 @@ def _communicate(
         object_send_next = process_object_to_send(object_send_next, scatter_gather_tensors)
 
     ops = []
-    if object_send_prev is not None:
-        filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
 
-    if tensor_recv_prev is not None:
-        filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
+    if gpc.get_local_rank(ParallelMode.PIPELINE) % 2 == 0:
+        if object_send_next is not None:
+            filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
 
-    if tensor_recv_next is not None:
-        filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+        if tensor_recv_prev is not None:
+            filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
 
-    if object_send_next is not None:
-        filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
+        if object_send_prev is not None:
+            filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
+
+        if tensor_recv_next is not None:
+            filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+    else:
+        if tensor_recv_prev is not None:
+            filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
+
+        if object_send_next is not None:
+            filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
+
+        if tensor_recv_next is not None:
+            filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+
+        if object_send_prev is not None:
+            filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
+
     if len(ops) > 0:
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
-        # To protect against race condition when using batch_isend_irecv().
-        internlm_accelerator.synchronize()
+        if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+            reqs = dist.batch_isend_irecv(ops)
+            for req in reqs:
+                req.wait()
+            # To protect against race condition when using batch_isend_irecv().
+            internlm_accelerator.synchronize()
+        else:
+            for req in ops:
+                req.wait()
 
     if recv_prev and recv_prev_split:
         if isinstance(tensor_recv_prev, torch.Tensor):
@@ -206,7 +232,6 @@ def _communicate_async(
     next_rank: int = None,
     dtype: torch.dtype = None,
     scatter_gather_tensors: bool = False,
-    #tag: int = 0,
 ):
     """
     Adapted from megatron.p2p_communication.
@@ -266,29 +291,47 @@ def _communicate_async(
         object_send_next = process_object_to_send(object_send_next, scatter_gather_tensors)
 
     ops = []
-    if object_send_prev is not None:
-        filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
 
-    if tensor_recv_prev is not None:
-        filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
+    if gpc.get_local_rank(ParallelMode.PIPELINE) % 2 == 0:
+        if object_send_next is not None:
+            filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
 
-    if tensor_recv_next is not None:
-        filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+        if tensor_recv_prev is not None:
+            filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
 
-    if object_send_next is not None:
-        filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
+        if object_send_prev is not None:
+            filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
 
-    if len(ops) > 0:
+        if tensor_recv_next is not None:
+            filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+    else:
+        if tensor_recv_prev is not None:
+            filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
+
+        if object_send_next is not None:
+            filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
+
+        if tensor_recv_next is not None:
+            filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
+
+        if object_send_prev is not None:
+            filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
+
+    if len(ops) > 0 and getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
         reqs = dist.batch_isend_irecv(ops)
 
     # return and do other things
     yield
 
     if len(ops) > 0:
-        for req in reqs:  # pylint: disable=E0601
-            req.wait()
-        # To protect against race condition when using batch_isend_irecv().
-        internlm_accelerator.synchronize()
+        if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+            for req in reqs:
+                req.wait()
+            # To protect against race condition when using batch_isend_irecv().
+            internlm_accelerator.synchronize()
+        else:
+            for req in ops:
+                req.wait()
 
     if recv_prev and recv_prev_split:
         if isinstance(tensor_recv_prev, torch.Tensor):
@@ -589,7 +632,7 @@ def fused_send_recv_tensor(
     return tensor_recv_prev, tensor_recv_next
 
 
-class AsynCommunicator_origin:
+class AsynCommunicator:
     """AsynCommunicator for managing async communication."""
 
     def __init__(
@@ -629,12 +672,13 @@ class AsynCommunicator_origin:
         self._coroutine.close()
 
         return received
+
 import json
 def write_json(jsonpath, content):
     with open(jsonpath, 'a',encoding='utf-8') as f:
         json.dump(content, f)
         f.write('\n')
-class AsynCommunicator:
+class AsynCommunicator_unified:
     """AsynCommunicator for managing async communication."""
     def __init__(
         self,

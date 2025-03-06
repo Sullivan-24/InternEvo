@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+# Copyright (c) InternLM. All rights reserved.
 
 import argparse
 import os
@@ -96,9 +97,6 @@ def args_sanity_check():
     if "pipeline" not in gpc.config.parallel:
         gpc.config.parallel._add_item("pipeline", dict(size=1, interleaved_overlap=False, mode="1F1B"))
 
-    if isinstance(gpc.config.parallel.pipeline, dict) and "mode" not in gpc.config.parallel.pipeline:
-        gpc.config.parallel.pipeline._add_item("mode", "1F1B")
-
     if "tensor" not in gpc.config.parallel:
         gpc.config.parallel._add_item("tensor", dict(size=1, mode=TensorParallelMode.mtp.name))
 
@@ -117,8 +115,15 @@ def args_sanity_check():
 
     if isinstance(gpc.config.parallel.pipeline, int):
         pp = gpc.config.parallel.pipeline
+        gpc.config.parallel._add_item("pipeline", dict(size=pp, interleaved_overlap=False))
     else:
         pp = gpc.config.parallel.pipeline.size
+
+    if isinstance(gpc.config.parallel.pipeline, dict) and "mode" not in gpc.config.parallel.pipeline:
+        gpc.config.parallel.pipeline._add_item("mode", "1F1B")
+
+    if "batch_p2p_comm" not in gpc.config.parallel.pipeline:
+        gpc.config.parallel.pipeline["batch_p2p_comm"] = False
 
     if isinstance(gpc.config.parallel.pipeline, dict):
         gpc.config.parallel.pipeline["mode"] = gpc.config.parallel.pipeline["mode"].upper()
@@ -308,6 +313,9 @@ def args_sanity_check():
         logger.info(f"clip_grad_norm: {clip_grad_norm}")
 
     model = gpc.config.model
+    # if "enable_qkv_fusion" not in model:
+    #     model._add_item("enable_qkv_fusion", True)
+
     if "dtype" not in model:
         logger.warning("dtype is not set, use torch.float16 by defalut!")
         model._add_item("dtype", torch.float16)

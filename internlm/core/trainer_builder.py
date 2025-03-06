@@ -389,5 +389,5 @@ class TrainerBuilder(Trainer):
     def _update_profilers(self, batch_count: int, prof):
         if self.memory_profiler is not None:
             self.memory_profiler.step()
-        if batch_count % 2 == 0:
+        if batch_count % 1 == 0:
             prof.step()
