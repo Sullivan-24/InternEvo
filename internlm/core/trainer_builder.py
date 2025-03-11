@@ -280,7 +280,8 @@ class TrainerBuilder(Trainer):
 
         batch, train_iter = self._load_and_prepare_batch(batch_count, train_iter)
         if self.batch_skipper(batch_count):
-            if gpc.is_rank_for_log():
+            #TODO,chimear just use only one pipe result
+            if gpc.is_rank_for_log():#mth rewrite just for hetpipe
                 logger.info(f"Skip batch count:`{batch_count}`...")
             timer("one-batch").stop()
             return False
@@ -288,7 +289,7 @@ class TrainerBuilder(Trainer):
         timer("fwd-bwd").start()
         loss, moe_loss = self._forward_backward(batch)
         timer("fwd-bwd").stop()
-
+        #TODO, how chimera do this
         success_update, grad_norm_groups = self._update_parameters()
         self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
         timer("one-batch").stop()

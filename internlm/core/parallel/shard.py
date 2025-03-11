@@ -211,16 +211,18 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
     return parts
 #TODO
 def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
-    parts = [[] for _ in range(pipeline_parallel_size)]
-    if scheduler_type == ModuleType.CHIMERA.value:
-        chunk_size = num_items // pipeline_parallel_size
-    else:
-        chunk_size = num_items // num_chunks // pipeline_parallel_size
-    for d in range(len(stage_placement)):
+    assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
+    last_stage = max(max(row) for row in stage_placement)
+    first_stage = min(min(row) for row in stage_placement)
+    num_stages = last_stage - first_stage + 1
+    chunk_size = num_items // num_stages
+    parts = []
+    for d in range(pipeline_parallel_size):
+        part = []
         for stage in stage_placement[d]:
             st = stage * chunk_size
-            parts[d].append((st, st+chunk_size))
-
+            part.append((st, st+chunk_size))
+        parts.append(part)
     indexes = []
     for _parts in parts:
         for s, e in _parts:
@@ -250,14 +252,17 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
 
     if gpc.is_rank_for_log():
         logger.info("The layer sharding is %r.", all_parts)
-
     models = []
-
+    if gpc.config.layerwise and pipeline_rank == 0:
+        all_parts.append((num_layers,num_layers)) 
     for start, end in parts:
         kwargs["num_layers"] = end - start
-        kwargs["first"] = start == 0
+        kwargs["first"] = start == 0 #and start == end
         # If there is no content in the final layer, assign the last layer.
-        kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
+        if gpc.config.layerwise:
+            kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0 and start == end
+        else:
+            kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
         kwargs["device"] = device
         kwargs["start_layer_idx"] = start
 
