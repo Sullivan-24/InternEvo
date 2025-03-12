@@ -74,6 +74,7 @@ class ModuleType(Enum):
     VSHAPE = 'Vshape'
     ONEFONEB = '1f1b'
     ZBH1 = 'Zbh1'
+    HET = 'Het'
 
 class TensorParallelMode(Enum):
     mtp = 1
@@ -89,10 +90,15 @@ class ActivationType(Enum):
 
 def judge_scheduler_type(stage_placement):
     ranks = len(stage_placement)
-    rank0 = stage_placement[0]
-    rank1 = stage_placement[1]
-    sum_rank0 = sum(rank0)
-    sum_rank1 = sum(rank1)
+    if ranks <= 1:
+        return None
+    stagesInRank0 = stage_placement[0]
+    for i in range(1,ranks):
+        if len(stage_placement[i]) != len(stagesInRank0):
+            return ModuleType.HET.value
+    stagesInRank1 = stage_placement[1]
+    sum_rank0 = sum(stagesInRank0)
+    sum_rank1 = sum(stagesInRank1)
     if sum_rank0 == ranks-1:
         return ModuleType.CHIMERA.value
     elif sum_rank0 >= ranks:

@@ -19,7 +19,7 @@ from internlm.accelerator import get_accelerator
 from internlm.utils.common import SingletonMeta
 from internlm.utils.logger import get_logger
 from internlm.utils.timeout import LLM_NCCL_TIMEOUT
-from internlm.utils.utils import TensorParallelMode
+from internlm.utils.utils import TensorParallelMode,ModuleType
 
 from .process_group_initializer import (
     GroupConfig,
@@ -170,6 +170,8 @@ class ParallelContext(metaclass=SingletonMeta):
         self._expert_parallel_group_names = []
         self.is_evaluating = False
         self.v_shape = False
+        self.het = False
+        self.devices_have_lastStage = False#this is for hetpipe and chimera
 
     @property
     def config(self):
@@ -317,12 +319,18 @@ class ParallelContext(metaclass=SingletonMeta):
             and self.is_first_rank(ParallelMode.DATA)
             and self.is_first_rank(ParallelMode.WEIGHT_DATA)
         )
-
-        if not self.v_shape:
-            is_log_rank = is_log_rank and self.is_last_rank(ParallelMode.PIPELINE)
-        else:
+        
+        # if not self.v_shape:
+        #     is_log_rank = is_log_rank and self.is_last_rank(ParallelMode.PIPELINE)
+        # else:
+        #     is_log_rank = is_log_rank and self.is_first_rank(ParallelMode.PIPELINE)
+        if self.v_shape:
             is_log_rank = is_log_rank and self.is_first_rank(ParallelMode.PIPELINE)
-
+        elif self.het:
+            is_log_rank = is_log_rank and self.devices_have_lastStage
+        else:
+            is_log_rank = is_log_rank and self.is_last_rank(ParallelMode.PIPELINE)
+        
         return is_log_rank
 
     def is_last_rank(self, parallel_mode: ParallelMode):
@@ -379,11 +387,16 @@ class ParallelContext(metaclass=SingletonMeta):
 
     def is_no_pp_or_last_stage(self):
         # NOTICE!!!, this will ignore virutal stage
-        if not self.v_shape:
-            return not self.is_initialized(ParallelMode.PIPELINE) or self.is_last_rank(ParallelMode.PIPELINE)
-        else:
+        # if not self.v_shape:
+        #     return not self.is_initialized(ParallelMode.PIPELINE) or self.is_last_rank(ParallelMode.PIPELINE)
+        # else:
+        #     return not self.is_initialized(ParallelMode.PIPELINE) or self.is_first_rank(ParallelMode.PIPELINE) 
+        if self.v_shape:
             return not self.is_initialized(ParallelMode.PIPELINE) or self.is_first_rank(ParallelMode.PIPELINE)
-
+        elif self.het:
+            return not self.is_initialized(ParallelMode.PIPELINE) or self.devices_have_lastStage
+        else:
+            return not self.is_initialized(ParallelMode.PIPELINE) or self.is_last_rank(ParallelMode.PIPELINE)
     def get_world_size(self, parallel_mode: ParallelMode):
         """Returns the world size for `parallel_mode`.
 
