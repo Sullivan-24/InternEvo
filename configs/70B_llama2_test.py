@@ -4,20 +4,27 @@ from internlm.utils.utils import judge_scheduler_type, judge_split_backward
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
+HETER_DEVICE = False
 
-VOCAB_SIZE = 131072
+VOCAB_SIZE = 128256
 SEQ_LEN = 4096
 HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 80
-PP_SIZE = 8
-TP_SIZE = 8
+NUM_LAYER = 24
+PP_SIZE = 4
+TP_SIZE = 2
+NUM_MICRO = PP_SIZE * 4
 ZERO_SZIE = 1
 # ['1f1b', 'zbh1', 'zbv', 'unified']
 PP_MODE = "unified"
+PP_MODE = "1f1b"
+# PP_MODE = "zbv"
 CHUNK_NUM = NUM_LAYER // PP_SIZE
+if PP_MODE in ('zbv', 'zbh1'):
+    CHUNK_NUM = 1
+
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -52,7 +59,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=32,
+    micro_num=NUM_MICRO,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -60,7 +67,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=10,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -97,7 +104,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=False,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -213,6 +220,7 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-stage_placement,unified_scheduler,comm_graph = generate(layer_num=NUM_LAYER, chunk_size=CHUNK_NUM)
-scheduler_type = judge_scheduler_type(stage_placement)
-split_backward = judge_split_backward(unified_scheduler)
+if PP_MODE == "unified":
+    stage_placement,unified_scheduler,comm_graph = generate(layer_num=NUM_LAYER, chunk_size=CHUNK_NUM)
+    scheduler_type = judge_scheduler_type(stage_placement)
+    split_backward = judge_split_backward(unified_scheduler)

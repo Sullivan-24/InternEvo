@@ -3,13 +3,17 @@ model_type = "QWEN2"
 DO_ALERT = False
 
 VOCAB_SIZE = 152064
-SEQ_LEN = 2048
-HIDDEN_SIZE = 3584
-NUM_ATTENTION_HEAD = 28
+SEQ_LEN = 4096
+HIDDEN_SIZE = 5120
+NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 4
 MLP_RATIO = 5.25
-NUM_LAYER = 28
+NUM_LAYER = 64
 
+PP_SIZE = 1
+TP_SIZE = 8
+ZERO_SZIE = 8
+CHUNK_NUM = NUM_LAYER // PP_SIZE
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts_qwen2/xxxx/"
 # Ckpt folder format:
@@ -30,7 +34,7 @@ ckpt = dict(
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
     # load function such as "llama"
-    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -50,7 +54,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=32,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -133,7 +137,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     embed_split_hidden=True,
@@ -189,9 +193,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    zero1=dict(size=ZERO_SZIE),
+    tensor=dict(size=TP_SIZE, mode="fsp"),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 

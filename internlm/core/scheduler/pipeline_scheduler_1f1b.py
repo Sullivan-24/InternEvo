@@ -6,6 +6,8 @@
 from contextlib import contextmanager
 from typing import Callable, List, Optional, Tuple, Union
 
+import copy
+import time
 import torch
 import torch.distributed as dist
 
@@ -872,7 +874,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
             assert input_obj is not None, f"{gpc.get_global_rank()} input is None"
         micro_batch_data = self.load_micro_batch(chunk_id)
         data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
-
+        temp_data = copy.deepcopy(data)
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
             output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
@@ -881,6 +883,17 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         # Convert output_obj to fp32 when last model chunk of last stage
         if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
             output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
+
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            if hasattr(gpc.config.model, "num_experts"):
+                temp_output_obj, temp_moe_losses = self._call_engine(engine.model[chunk_id], temp_data)
+            else:
+                temp_output_obj = self._call_engine(engine.model[chunk_id], temp_data)
+            # Convert output_obj to fp32 when last model chunk of last stage
+            if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
+                temp_output_obj = engine.model[chunk_id].convert_to_fp32(temp_output_obj)
+
         self._call_hooks("after_forward", output_obj)
 
         if gpc.is_pipeline_last_stage():
@@ -943,7 +956,9 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         moe_loss = self._moe_losses[chunk_id].pop(0)
 
         input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
-
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            time.sleep(0.030)
         return input_obj_grad
 
     def _get_chunk_by_microbatch(self, step_id: int, backward: bool = False) -> int:

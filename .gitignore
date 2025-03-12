@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+result.txt
+placement.txt
 
 *profiling_
 
@@ -147,3 +149,10 @@ llm_ckpts
 events.*
 memory_trace
 RUN*/
+configs/heter_device_internlm2.py
+internlm/core/scheduler/pipeline_scheduler_1f1b.py
+preprocess.py
+train.py
+configs/7B_llama2.py
+configs/7B_qwen2.py
+configs/70B_llama2_test.py

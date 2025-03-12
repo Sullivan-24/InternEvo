@@ -115,7 +115,7 @@ def order_result_mutichunk(input: str, stage_alignment: list, chunks: int, num_m
     # print('[')
     for d in range(len(stage_alignment)):
         f_num, b_num, w_num = count_steps(device_steps[d])
-        assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
+        assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, {each_steps_num} f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
         device_steps[d].sort(key=lambda x: x[-2])
     #     print(f'{device_steps[d]},')
     # print(']')
@@ -16252,7 +16252,7 @@ def generate(layer_num, chunk_size):
 def get_num_microbatches(schedule:str):
     max_mid = -1
     for line in schedule.split('\n'):
-        if line.startswith("w_"):
+        if line.startswith("b_"):
             mid = eval(line.split('_')[1])
             max_mid = max(mid, max_mid)
     return max_mid + 1

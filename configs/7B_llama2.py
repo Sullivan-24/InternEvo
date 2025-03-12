@@ -2,15 +2,17 @@ JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
-VOCAB_SIZE = 32000
-SEQ_LEN = 2048
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
+VOCAB_SIZE = 131072
+SEQ_LEN = 4096
+HIDDEN_SIZE = 8192
+NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 32
-
-
+NUM_LAYER = 80
+PP_SIZE = 16
+TP_SIZE = 2
+ZERO_SZIE = 2
+CHUNK_NUM = NUM_LAYER // PP_SIZE
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -45,7 +47,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=32,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -128,7 +130,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -181,9 +183,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    zero1=dict(size=ZERO_SZIE),
+    tensor=dict(size=TP_SIZE, mode="fsp"),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 

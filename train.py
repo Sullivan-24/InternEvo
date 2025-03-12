@@ -15,10 +15,12 @@ from internlm.core.context import ParallelMode
 import os
 from internlm.accelerator import get_accelerator
 
-# internlm_accelerator=get_accelerator()
+internlm_accelerator=get_accelerator()
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
     # initialize model
+    if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and (gpc.is_pipeline_first_stage() or gpc.is_pipeline_last_stage() or gpc.get_local_rank(ParallelMode.PIPELINE) == 1):
+        internlm_accelerator.memory._record_memory_history()
     model = create_model(model_type=gpc.config.model_type)
 
     # initialize train dataloader
@@ -31,21 +33,19 @@ def main(args):
     merged_args = {**vars(args), "dataset_types": dataset_types}
     trainer = TrainerBuilder(model, train_dl, val_dls, **merged_args)
 
-    # if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and (gpc.is_pipeline_first_stage() or gpc.is_pipeline_last_stage() or gpc.get_local_rank(ParallelMode.PIPELINE) == 1):
-    #     internlm_accelerator.memory._record_memory_history()
     # training
     trainer.fit()
 
-    # if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and (gpc.is_pipeline_first_stage() or gpc.is_pipeline_last_stage() or gpc.get_local_rank(ParallelMode.PIPELINE) == 1):
-    #     slurm_job_id = os.getenv('SLURM_JOB_ID')
-    #     snapshot_dir_path = f"/mnt/petrelfs/matenghui/InternEvo/ci_scripts/train/output/async/{slurm_job_id}_/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
-    #     snapshot_file_name = (
-    #         f"snapshot{gpc.get_global_rank()}_recomp{gpc._config['model']['checkpoint']}_mb{gpc.micro_num}_"
-    #         + f"tp{gpc.expert_tensor_parallel_size}_pp{gpc.pipeline_parallel_size}_{gpc._config['parallel']['pipeline']['mode']}_chunks{gpc._config['model']['num_chunks']}_"
-    #         + f"seq{gpc._config['data']['seq_len']}_hidden{gpc._config['model']['hidden_size']}.pickle"
-    #     )
-    #     os.makedirs(snapshot_dir_path, exist_ok=True)
-    #     internlm_accelerator.memory._dump_snapshot(os.path.join(snapshot_dir_path, snapshot_file_name))
+    if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and (gpc.is_pipeline_first_stage() or gpc.is_pipeline_last_stage() or gpc.get_local_rank(ParallelMode.PIPELINE) == 1):
+        slurm_job_id = os.getenv('SLURM_JOB_ID')
+        snapshot_dir_path = f"/mnt/petrelfs/guojihu/AutoPipelineGenerate/memory/{slurm_job_id}_/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
+        snapshot_file_name = (
+            f"snapshot{gpc.get_global_rank()}_recomp{gpc._config['model']['checkpoint']}_mb{gpc.micro_num}_"
+            + f"tp{gpc.expert_tensor_parallel_size}_pp{gpc.pipeline_parallel_size}_{gpc._config['parallel']['pipeline']['mode']}_chunks{gpc._config['model']['num_chunks']}_"
+            + f"seq{gpc._config['data']['seq_len']}_hidden{gpc._config['model']['hidden_size']}.pickle"
+        )
+        os.makedirs(snapshot_dir_path, exist_ok=True)
+        internlm_accelerator.memory._dump_snapshot(os.path.join(snapshot_dir_path, snapshot_file_name))
 
 if __name__ == "__main__":
     args = parse_args()
