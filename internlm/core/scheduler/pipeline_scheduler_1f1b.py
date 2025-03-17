@@ -945,7 +945,34 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
 
         return input_obj_grad
+    #This is spcial method for hetpipe
+    def _backward_step_(self, engine, chunk_id, step_id, stage_id):
+        """
+        Backward step for passed-in model. If it is the last stage, the input tensor
+        is obtained from the previous forward step, otherwise the passed-in input_obj is used.
+        Returns input tensor gradient. This is a helper function and can be ignored by users.
 
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            chunk_id (int): The id of model chunks.
+            step_id (int): The current step id.
+
+        Returns:
+            Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: input tensor gradient.
+        """
+        gpc.set_virtual_pipeline_parallel_rank(chunk_id)
+
+        if stage_id == self.last_stage and len(self._output_obj_grads[chunk_id]) == 0:
+            self._output_obj_grads[chunk_id].append(None)
+
+        input_obj = self._input_objs[chunk_id].pop(0)
+        output_obj = self._output_objs[chunk_id].pop(0)
+        output_obj_grad = self._output_obj_grads[chunk_id].pop(0)
+        moe_loss = self._moe_losses[chunk_id].pop(0)
+
+        input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
+
+        return input_obj_grad
     def _get_chunk_by_microbatch(self, step_id: int, backward: bool = False) -> int:
         """Helper method to get the model chunk ID given the iteration number."""
         microbatch_id_in_group = step_id % (self._pp_size * self._num_chunks)
