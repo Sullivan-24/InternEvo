@@ -503,6 +503,11 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
 
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            import time
+            time.sleep(gpc._config['SLEEP_TIME'] * 2)
+
         return input_obj_grad
 
     def _schedule_backward(self, engine, chunk_id):

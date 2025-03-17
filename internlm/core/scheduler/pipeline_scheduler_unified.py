@@ -919,7 +919,14 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         # Convert output_obj to fp32 when last model chunk of last stage
         if stage_id == self.last_stage and isinstance(engine.model[chunk_id], NaiveAMPModel):
             output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
+
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            import time
+            time.sleep(gpc._config['SLEEP_TIME'])
+            
         self._call_hooks("after_forward", output_obj)
+        
 
         if stage_id == self.last_stage:
             self._call_hooks("post_helper_func", output_obj, label)

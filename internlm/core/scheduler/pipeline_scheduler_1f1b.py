@@ -300,6 +300,12 @@ class PipelineScheduler(BaseScheduler):
             output_obj, moe_losses = self._call_engine(engine.model, data)
         else:
             output_obj = self._call_engine(engine.model, data)
+        
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            import time
+            time.sleep(gpc._config['SLEEP_TIME'])
+
         self._call_hooks("after_forward", output_obj)
 
         if gpc.is_last_rank(ParallelMode.PIPELINE):
@@ -389,6 +395,12 @@ class PipelineScheduler(BaseScheduler):
                 input_obj_grad = []
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
+        
+        # NOTE add for heter device test
+        if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
+            import time
+            time.sleep(gpc._config['SLEEP_TIME'] * 2)
+
         self._call_hooks("after_backward", input_obj_grad)
 
         return input_obj_grad
@@ -886,13 +898,15 @@ class InterleavedPipelineScheduler(PipelineScheduler):
 
         # NOTE add for heter device test
         if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
-            if hasattr(gpc.config.model, "num_experts"):
-                temp_output_obj, temp_moe_losses = self._call_engine(engine.model[chunk_id], temp_data)
-            else:
-                temp_output_obj = self._call_engine(engine.model[chunk_id], temp_data)
-            # Convert output_obj to fp32 when last model chunk of last stage
-            if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
-                temp_output_obj = engine.model[chunk_id].convert_to_fp32(temp_output_obj)
+            # if hasattr(gpc.config.model, "num_experts"):
+            #     temp_output_obj, temp_moe_losses = self._call_engine(engine.model[chunk_id], temp_data)
+            # else:
+            #     temp_output_obj = self._call_engine(engine.model[chunk_id], temp_data)
+            # # Convert output_obj to fp32 when last model chunk of last stage
+            # if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
+            #     temp_output_obj = engine.model[chunk_id].convert_to_fp32(temp_output_obj)
+            import time
+            time.sleep(gpc._config['SLEEP_TIME'])
 
         self._call_hooks("after_forward", output_obj)
 
@@ -958,7 +972,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
         # NOTE add for heter device test
         if gpc._config['HETER_DEVICE'] and gpc.get_local_rank(ParallelMode.PIPELINE) > gpc._config['PP_SIZE'] // 2:
-            time.sleep(0.030)
+            time.sleep(gpc._config['SLEEP_TIME'] * 2)
         return input_obj_grad
     #This is spcial method for hetpipe
     def _backward_step_(self, engine, chunk_id, step_id, stage_id):

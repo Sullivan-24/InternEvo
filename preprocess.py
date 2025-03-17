@@ -114,6 +114,7 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
     # print('[')
     for d in range(len(stage_alignment)):
+        each_steps_num = len(stage_alignment[d])*num_microbatches
         f_num, b_num, w_num = count_steps(device_steps[d])
         each_steps_num = len(stage_alignment[d])*num_microbatches
         assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'

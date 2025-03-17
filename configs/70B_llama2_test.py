@@ -4,7 +4,7 @@ from internlm.utils.utils import judge_scheduler_type, judge_split_backward
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
-HETER_DEVICE = False
+layerwise = False
 
 VOCAB_SIZE = 128256
 SEQ_LEN = 4096
@@ -12,18 +12,29 @@ HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 24
+NUM_LAYER = 80
 PP_SIZE = 4
-TP_SIZE = 2
+TP_SIZE = 4
 NUM_MICRO = PP_SIZE * 4
-ZERO_SZIE = 1
+ZERO_SZIE = 4
 # ['1f1b', 'zbh1', 'zbv', 'unified']
 PP_MODE = "unified"
 PP_MODE = "1f1b"
+# PP_MODE = "zbh1"
 # PP_MODE = "zbv"
 CHUNK_NUM = NUM_LAYER // PP_SIZE
+CHUNK_NUM = 2
+
+HETER_DEVICE = False
+SLEEP_TIME = 0.1 / CHUNK_NUM 
+
 if PP_MODE in ('zbv', 'zbh1'):
+    if PP_MODE == 'zbv':
+        SLEEP_TIME = 0.1 / 2 
+    else:
+        SLEEP_TIME = 0.1 
     CHUNK_NUM = 1
+
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:

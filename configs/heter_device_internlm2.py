@@ -14,7 +14,7 @@ NUM_KV_ATTENTION_HEAD = 8
 MLP_RATIO = 3.5
 NUM_LAYER = 32
 PP_SIZE = 8
-TP_SIZE = 2
+TP_SIZE = 4
 ZERO_SZIE = 1
 # ['1f1b', 'zbh1', 'zbv', 'unified']
 PP_MODE = "unified"
