@@ -212,17 +212,29 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
 #TODO
 def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
     assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
-    last_stage = max(max(row) for row in stage_placement)
-    first_stage = min(min(row) for row in stage_placement)
-    num_stages = last_stage - first_stage + 1
-    chunk_size = num_items // num_stages
     parts = []
-    for d in range(pipeline_parallel_size):
-        part = []
-        for stage in stage_placement[d]:
-            st = stage * chunk_size
-            part.append((st, st+chunk_size))
-        parts.append(part)
+    if gpc.config.layerwise:
+        chunk_size = num_items // (pipeline_parallel_size*num_chunks)
+        for d in range(pipeline_parallel_size):
+            part = []
+            for stage_index in range(num_chunks):
+                stage = stage_placement[d][stage_index]
+                st = stage * chunk_size
+                part.append((st, st+chunk_size))
+            parts.append(part)
+        parts[0].append((num_items,num_items))
+        assert len(parts[0]) == len(stage_placement[0])
+    else:
+        last_stage = max(max(row) for row in stage_placement)
+        first_stage = min(min(row) for row in stage_placement)
+        num_stages = last_stage - first_stage + 1
+        chunk_size = num_items // num_stages
+        for d in range(pipeline_parallel_size):
+            part = []
+            for stage in stage_placement[d]:
+                st = stage * chunk_size
+                part.append((st, st+chunk_size))
+            parts.append(part)
     indexes = []
     for _parts in parts:
         for s, e in _parts:
@@ -253,11 +265,14 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
     if gpc.is_rank_for_log():
         logger.info("The layer sharding is %r.", all_parts)
     models = []
-    if gpc.config.layerwise and pipeline_rank == 0:
-        all_parts.append((num_layers,num_layers)) 
+    # if gpc.config.layerwise :
+    #     if pipeline_rank == 0:# head
+    #         all_parts.append((num_layers,num_layers))
+    #     # if pipeline_rank == 1: #Embedding
+    #     #     all_parts.insert(0,(0,0))
     for start, end in parts:
         kwargs["num_layers"] = end - start
-        kwargs["first"] = start == 0 #and start == end
+        kwargs["first"] = start == 0 #TODO,and start == end
         # If there is no content in the final layer, assign the last layer.
         if gpc.config.layerwise:
             kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0 and start == end
