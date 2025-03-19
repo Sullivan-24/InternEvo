@@ -19,21 +19,29 @@
 function processData(data) {
     // Find minimum start time
     const minTime = Math.min(...data.map(block => block.start_time));
+    console.log("minTime:", minTime);
     const mintimespan = Math.min(...data.map(block => block.timespan));
+    console.log("mintimespan:", mintimespan);
     //
-    const maxChunkId = Math.max(...data.map(block => block.chunk_id));
-
     // Adjust times and convert to milliseconds
     data.forEach(block => {
-        block.start_time = (block.start_time - minTime) / mintimespan;
-        block.timespan = block.timespan / mintimespan;
+        block.start_time = (block.start_time - minTime) / mintimespan*15;
+        block.timespan = block.timespan / mintimespan*15;
     });
 
     // Group by local_rank and operation type
     const groupedData = {};
+    // data.forEach(block => {
+    //     if (!groupedData[block.local_rank]) {
+    //         groupedData[block.local_rank] = {
+    //             compute: [],
+    //             communicate: []
+    //         };
+    //     }
     data.forEach(block => {
-        if (!groupedData[block.local_rank]) {
-            groupedData[block.local_rank] = {
+        const rank = Number(block.local_rank); // 强制转为数值
+        if (!groupedData[rank]) {
+            groupedData[rank] = {
                 compute: [],
                 communicate: []
             };
@@ -66,14 +74,19 @@ function drawTimeline(data) {
 
     // Calculate canvas dimensions
     const stages = Object.keys(data).sort((a, b) => Number(a) - Number(b));
-
+    console.log("Detected ranks:", stages);
     // 计算最大时间，来确定画布的宽度
     const maxTime = Math.max(...Object.values(data).flatMap(stage => 
         [...stage.compute, ...stage.communicate].map(block => 
             block.start_time + block.timespan
         )
     ));
-
+    const maxChunkId = Math.max(...Object.values(data).flatMap(stage => 
+        [...stage.compute].map(block => 
+            block.chunk_id
+        )
+    ));
+    console.log("maxChunkId:", maxChunkId);
     // 根据最大时间设置画布宽度，宽度为时间的10倍，确保足够显示
     canvas.width = 50000//maxTime+ xOffset; 
     canvas.height = stages.length * rowHeight + yOffset * 2;
@@ -95,7 +108,7 @@ function drawTimeline(data) {
         data[localRank].compute.forEach(block => {
             var x = block.start_time+ xOffset;
             var width = block.timespan;// 增加宽度最小值，避免block太小
-            var alpha = 1-(block.chunk_id/20);//maxChunkId;
+            var alpha = 1-(block.chunk_id/(maxChunkId+1));//maxChunkId;
             // 根据step_type设置颜色
             switch (block.step_type) {
                 case 'f':
@@ -131,54 +144,55 @@ function drawTimeline(data) {
 
             // 添加文本
             ctx.fillStyle = 'black'//block.step_type === 'b' ? 'black' : 'white';
-            ctx.font = '10px Arial';
-            ctx.fillText(`${block.microbatch_id}`, x+(width/2), y + blockHeight - 10);
+            ctx.font = '15px Arial';
+            ctx.fillText(`${block.stage_id}_`+`${block.microbatch_id}`, x+(width/2), y + blockHeight - 10);
+            //ctx.fillText(`${block.stage_id}_`+`${block.microbatch_id}`, x+(width/2), y + blockHeight - 10);
         });
 
 //绘制communicate类型的block
 // 假设 data、localRank、ctx 已经正确定义
 // 假设 y 和 xOffset 已经正确定义
-        data[localRank].communicate.forEach(block => {
-            const x = block.start_time + xOffset;
-            const width = block.timespan; // 增加宽度最小值，避免 block 太小
-            let y2;
-            let color;
-            //const alpha = 1- block.chunk_id/maxChunkId;
-            const communicate_type = block.operation.split(':').at(-1).split(";")[0];
-            var alpha = 1-(block.chunk_id/20);//maxChunkId;
-            switch (communicate_type) {
-                case 'send_forward':
-                    color = `rgba(0, 0, 255, ${alpha})`;
-                    y2 = y + blockHeight;
-                    break;
-                case 'send_backward':
-                    color = `rgba(255, 255, 0, ${alpha})`;
-                    y2 = y - blockHeightY ;
-                    break;
-                case 'recv_forward':
-                    color = `rgba(0, 0, 255, ${alpha})`;
-                    y2 = y - blockHeightY ;
-                    break;
-                case 'recv_backward':
-                    color = `rgba(255, 255, 0, ${alpha})`;
-                    y2 = y + blockHeight;
-                    break;
-                default:
-                    // 可以添加默认的颜色和位置设置
-                    color = 'gray';
-                    y2 = 0;
-            }
+        // data[localRank].communicate.forEach(block => {
+        //     const x = block.start_time + xOffset;
+        //     const width = block.timespan; // 增加宽度最小值，避免 block 太小
+        //     let y2;
+        //     let color;
+        //     //const alpha = 1- block.chunk_id/maxChunkId;
+        //     const communicate_type = block.operation.split(':').at(-1).split(";")[0];
+        //     var alpha = 1-(block.chunk_id/20);//maxChunkId;
+        //     switch (communicate_type) {
+        //         case 'send_forward':
+        //             color = `rgba(0, 0, 255, ${alpha})`;
+        //             y2 = y + blockHeight;
+        //             break;
+        //         case 'send_backward':
+        //             color = `rgba(255, 255, 0, ${alpha})`;
+        //             y2 = y - blockHeightY ;
+        //             break;
+        //         case 'recv_forward':
+        //             color = `rgba(0, 0, 255, ${alpha})`;
+        //             y2 = y - blockHeightY ;
+        //             break;
+        //         case 'recv_backward':
+        //             color = `rgba(255, 255, 0, ${alpha})`;
+        //             y2 = y + blockHeight;
+        //             break;
+        //         default:
+        //             // 可以添加默认的颜色和位置设置
+        //             color = 'gray';
+        //             y2 = 0;
+        //     }
 
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y2, width, blockHeightY);
-            ctx.strokeRect(x, y2, width, blockHeightY);
+        //     ctx.fillStyle = color;
+        //     ctx.fillRect(x, y2, width, blockHeightY);
+        //     ctx.strokeRect(x, y2, width, blockHeightY);
 
 
-            //添加文本
-            ctx.fillStyle = 'black';
-            ctx.font = '10px Arial';
-            ctx.fillText(block.microbatch_id, x+(width/2), y2 + blockHeightY/2);
-        });
+        //     //添加文本
+        //     ctx.fillStyle = 'black';
+        //     ctx.font = '10px Arial';
+        //     ctx.fillText(block.microbatch_id, x+(width/2), y2 + blockHeightY/2);
+        // });
     });
 }
 // const fs = require('fs');
@@ -221,7 +235,7 @@ function drawTimeline(data) {
 //   console.error('❌ 初始化错误:', error.message);
 // }
 // 处理数据并绘制图形
-fetch('/jsonResult/async/Vshape_pp4_chunk20_mb16/merged.json')
+fetch('/jsonResult/async/Interleaved_pp4_chunk20_mb16/merged.json')
     .then(response => response.text())
     .then(text => {
         // 将文本按JSON对象分割并解析
@@ -232,6 +246,7 @@ fetch('/jsonResult/async/Vshape_pp4_chunk20_mb16/merged.json')
         drawTimeline(processedData);
     })
     .catch(error => console.error('Error loading the file:', error));
+
 // 处理数据并绘制图形
 // fetch('/jsonResult/async/Interleaved_pp8_mb32/iter_0_opeartion_list.json')
 //     .then(response => response.text())

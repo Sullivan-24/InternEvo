@@ -152,7 +152,6 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
             # if op != 'f' and op !='b':
             #     communication_stage.append(comm_op)
             #     continue
-            
             # 处理上一个 stage (stage-1)
             for i in range(len(needrecv['F_stage'])):
                 recvFstage_id = needrecv['F_stage'][i]
@@ -172,7 +171,7 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n, 0))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
-
+                    
                     # 计算时间区间
                     interval_start = prev_end_time
                     interval_end = prev_stage_ops[n + 1][-2] if n + 1 < len(prev_stage_ops) else prev_end_time
@@ -381,7 +380,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     if rank_id == recv_device_id or recv_device_id != dst_rank_id:
                         continue
                     if recv_op_type == op_type and microbatch_id == recv_microbatch_id and ((op_type == "f" and recv_stage_id>stage_id) or (op_type == "b" and recv_stage_id<stage_id)):
-                        communication_graph[rank_id][current_index+1]['B'].append(judgeop)
+                        communication_graph[rank_id][current_index+1]['B'].insert(0,judgeop)
                         if judgeop in op['A']:
                             communication_graph[rank_id][current_index]['A'].remove(judgeop)
                         else:
@@ -851,9 +850,10 @@ def generate_Wavelike_4pp_20chunk_16mb():
 def generate_():
     stage_placement = ""
     input_str=""
-    with open('/mnt/petrelfs/matenghui/InternEvo/placement.txt', 'r', encoding='utf-8') as file:
+    file_path = '/mnt/petrelfs/matenghui/InternEvo'
+    with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
-    with open('/mnt/petrelfs/matenghui/InternEvo/result.txt', 'r', encoding='utf-8') as file:
+    with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
     num_microbatches = 16
@@ -861,7 +861,7 @@ def generate_():
     unified_scheduler = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
     result = {'stage_placement':stage_placement, 'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
-    with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json','w') as file:
+    with open(file_path+'/runtime.json','w') as file:
         json.dump(result,file)
 
 if __name__ == '__main__':
