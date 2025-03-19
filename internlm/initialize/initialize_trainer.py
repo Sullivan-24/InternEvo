@@ -159,7 +159,7 @@ def initialize_trainer(
                 if scheduler_type == ModuleType.CHIMERA.value:
                     scheduler = UnifiedMultipleStreamsPipelineScheduler(
                         num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                        num_chunks=gpc.config.model.num_chunks,
+                        num_chunks=num_chunks,
                         dtype=gpc.config.model["dtype"],
                         data_process_func=_data_preparation_func,
                         tensor_shape=tensor_shape,

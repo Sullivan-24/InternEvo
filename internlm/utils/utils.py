@@ -92,20 +92,32 @@ def judge_scheduler_type(stage_placement):
     ranks = len(stage_placement)
     if ranks <= 1:
         return None
-    stagesInRank0 = stage_placement[0]
-    for i in range(1,ranks):
-        if len(stage_placement[i]) != len(stagesInRank0):
+    num_chunks_per_device = {}
+    sum_stageId_per_device = {}
+
+    for i in range(ranks):
+        num_chunks_per_device.add(len(stage_placement[i]))
+        sum_stageId = sum(stage_placement[i])
+        sum_stageId_per_device.add(sum_stageId)
+
+    if len(num_chunks_per_device) > 1:
+        return ModuleType.HET.value
+    else:
+        if len(sum_stageId_per_device) == 1:
+            if sum_stageId_per_device[0] == ranks-1:
+                return ModuleType.CHIMERA.value
+            else:
+                return ModuleType.VSHAPE.value
+        elif 1< len(sum_stageId_per_device) < ranks :
             return ModuleType.HET.value
-    stagesInRank1 = stage_placement[1]
-    sum_rank0 = sum(stagesInRank0)
-    sum_rank1 = sum(stagesInRank1)
-    if sum_rank0 == ranks-1:
-        return ModuleType.CHIMERA.value
-    elif sum_rank0 >= ranks:
-        if sum_rank1 == sum_rank0:
-            return ModuleType.VSHAPE.value
-        elif sum_rank1>sum_rank0:
-            return ModuleType.INTERLEAVED.value
+        else:# len(sum_stageId_per_device) == ranks
+            num_chunks = num_chunks_per_device[0]
+            for i in range(1,ranks):
+                if sum_stageId_per_device[i] - sum_stageId_per_device[i-1] != num_chunks:
+                    return ModuleType.HET.value
+            return ModuleType.INTERLEAVED
+
+
 def judge_split_backward(unified_scheduler):
     if unified_scheduler[0][-1][0] == Step.WEIGHT.value:
         return True
