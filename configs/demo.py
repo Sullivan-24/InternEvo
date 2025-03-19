@@ -1,7 +1,7 @@
 # Copyright (c) InternLM. All rights reserved.
 from internlm.utils.utils import read_base
 from preprocess import generate_
-from internlm.utils.utils import ModuleType
+from internlm.utils.utils import judge_scheduler_type, judge_split_backward
 with read_base():
     from configs._base_.default_runtime import *  # pylint: disable=W0401,W0614  # noqa: F401
     from configs._base_.models.internlm2_7B import *  # pylint: disable=W0401,W0614  # noqa: F401
@@ -156,9 +156,9 @@ use_fp32_norm = False
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
 parallel = dict(
-    zero1=dict(size=1),
-    tensor=dict(size=8, mode="mtp"),
-    #pipeline=dict(size=4, interleaved_overlap=True, mode="1f1b"),
+    zero1=dict(size=-1),
+    tensor=dict(size=8, mode="fsp"),
+    #pipeline=dict(size=8, interleaved_overlap=True, mode="1f1b"),
     pipeline=dict(size=8, interleaved_overlap=True, mode="unified"),
     weight=dict(size=1, overlap=True),
 )
@@ -183,6 +183,7 @@ parallel = dict(
 #     layer_norm_epsilon=1e-5,
 #     rope_base=1000000,
 # )
+
 # model_type = "qwen2"
 model = dict(
     num_chunks=10,  # if num_chunks > 1, interleaved pipeline scheduler is used.
@@ -204,6 +205,7 @@ model = dict(
     layer_norm_epsilon=1e-5,
     rope_base=1000000,
 )
+
 stage_placement,unified_scheduler,comm_graph = generate_()
 #1f1b 4P 8M
 # unified_scheduler = [
@@ -431,18 +433,6 @@ stage_placement,unified_scheduler,comm_graph = generate_()
 # [{'Infor': ('f', 1, 1, 0), 'B': [('f', 14.0, 3, 0, 1, 0, 0, 0)], 'A': [('f', 26.0, 1, 1, 0, 0, 0, 0), ('f', 28.0, 3, 0, 1, 1, 1, 0)]}, {'Infor': ('f', 2, 0, 0), 'B': [], 'A': [('f', 42.0, 3, 0, 1, 2, 2, 0)]}, {'Infor': ('f', 1, 1, 1), 'B': [], 'A': [('f', 50.0, 1, 1, 0, 1, 2, 0)]}, {'Infor': ('f', 2, 0, 1), 'B': [], 'A': [('f', 56.0, 3, 0, 1, 3, 3, 0)]}, {'Infor': ('f', 1, 1, 2), 'B': [], 'A': [('f', 74.0, 1, 1, 0, 2, 4, 0)]}, {'Infor': ('f', 2, 0, 2), 'B': [], 'A': []}, {'Infor': ('f', 1, 1, 3), 'B': [], 'A': [('f', 98.0, 1, 1, 0, 3, 6, 0), ('f', 104.0, 3, 0, 1, 4, 5, 0)]}, {'Infor': ('f', 2, 0, 3), 'B': [], 'A': [('f', 118.0, 3, 0, 1, 5, 6, 0)]}, {'Infor': ('f', 1, 1, 4), 'B': [('f', 122.0, 1, 1, 0, 4, 8, 0), ('b', 146.0, 3, 3, 0, 0, 7, 0)], 'A': []}, {'Infor': ('f', 2, 0, 4), 'B': [], 'A': [('f', 194.0, 3, 0, 1, 6, 9, 0)]}, {'Infor': ('f', 1, 1, 5), 'B': [], 'A': [('f', 202.0, 1, 1, 0, 5, 10, 0), ('f', 208.0, 3, 0, 1, 7, 10, 0)]}, {'Infor': ('f', 2, 0, 5), 'B': [], 'A': [('f', 226.0, 1, 1, 0, 6, 12, 0)]}, {'Infor': ('f', 1, 1, 6), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 0), 'B': [], 'A': [('b', 252.0, 1, 2, 1, 0, 13, 0), ('b', 254.0, 3, 3, 0, 1, 12, 0)]}, {'Infor': ('f', 2, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 1, 1, 0), 'B': [], 'A': []}, {'Infor': ('f', 1, 1, 7), 'B': [], 'A': [('f', 332.0, 1, 1, 0, 7, 17, 0)]}, {'Infor': ('w', 2, 0, 0), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 0), 'B': [], 'A': []}, {'Infor': ('f', 2, 0, 7), 'B': [], 'A': [('b', 368.0, 1, 2, 1, 1, 20, 0), ('b', 358.0, 3, 3, 0, 2, 17, 0)]}, {'Infor': ('b', 2, 0, 1), 'B': [], 'A': []}, {'Infor': ('b', 1, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 2, 0, 1), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 2), 'B': [], 'A': []}, {'Infor': ('w', 2, 0, 2), 'B': [], 'A': []}, {'Infor': ('b', 1, 1, 2), 'B': [('b', 462.0, 3, 3, 0, 3, 22, 0), ('b', 472.0, 1, 2, 1, 2, 24, 0)], 'A': []}, {'Infor': ('w', 1, 1, 2), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 3), 'B': [], 'A': [('b', 508.0, 1, 2, 1, 3, 27, 0)]}, {'Infor': ('b', 1, 1, 3), 'B': [], 'A': []}, {'Infor': ('w', 2, 0, 3), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 3), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 4), 'B': [('b', 578.0, 1, 2, 1, 4, 32, 0), ('b', 582.0, 3, 3, 0, 4, 27, 0)], 'A': []}, {'Infor': ('w', 2, 0, 4), 'B': [], 'A': []}, {'Infor': ('b', 1, 1, 4), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 4), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 5), 'B': [('b', 666.0, 1, 2, 1, 5, 36, 0), ('b', 686.0, 3, 3, 0, 5, 32, 0)], 'A': []}, {'Infor': ('b', 1, 1, 5), 'B': [], 'A': []}, {'Infor': ('w', 2, 0, 5), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 5), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 6), 'B': [('b', 756.0, 3, 3, 0, 6, 36, 0)], 'A': []}, {'Infor': ('w', 2, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 1, 1, 6), 'B': [('b', 804.0, 1, 2, 1, 6, 42, 0)], 'A': []}, {'Infor': ('w', 1, 1, 6), 'B': [], 'A': []}, {'Infor': ('b', 2, 0, 7), 'B': [('b', 872.0, 1, 2, 1, 7, 44, 0), ('b', 878.0, 3, 3, 0, 7, 42, 0)], 'A': []}, {'Infor': ('b', 1, 1, 7), 'B': [], 'A': []}, {'Infor': ('w', 2, 0, 7), 'B': [], 'A': []}, {'Infor': ('w', 1, 1, 7), 'B': [], 'A': []}],
 # [{'Infor': ('f', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 2), 'B': [], 'A': [('f', 38.0, 2, 2, 0, 0, 1, 0)]}, {'Infor': ('f', 0, 1, 3), 'B': [], 'A': [('f', 62.0, 2, 2, 0, 1, 3, 0)]}, {'Infor': ('f', 3, 0, 0), 'B': [], 'A': [('f', 86.0, 2, 2, 0, 2, 5, 0)]}, {'Infor': ('f', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 5), 'B': [], 'A': [('f', 110.0, 2, 2, 0, 3, 7, 0)]}, {'Infor': ('b', 3, 0, 0), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 6), 'B': [], 'A': [('f', 190.0, 2, 2, 0, 4, 9, 0)]}, {'Infor': ('f', 0, 1, 7), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 0), 'B': [], 'A': [('f', 226.0, 2, 2, 0, 5, 11, 0)]}, {'Infor': ('b', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 2), 'B': [], 'A': [('f', 276.0, 2, 2, 0, 6, 14, 0)]}, {'Infor': ('b', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 2), 'B': [], 'A': [('f', 368.0, 2, 2, 0, 7, 19, 0)]}, {'Infor': ('f', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 2), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 2), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 2), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 3), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 3), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 5), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 5), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 6), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 6), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 7), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 7), 'B': [], 'A': []}],
 # ]
-def judge_scheduler_type(stage_placement):
-    ranks = len(stage_placement)
-    rank0 = stage_placement[0]
-    rank1 = stage_placement[1]
-    sum_rank0 = sum(rank0)
-    sum_rank1 = sum(rank1)
-    if sum_rank0 == ranks-1:
-        return ModuleType.CHIMERA.value
-    elif sum_rank0 >= ranks:
-        if sum_rank1 == sum_rank0:
-            return ModuleType.VSHAPE.value
-        elif sum_rank1>sum_rank0:
-            return ModuleType.INTERLEAVED.value
 
 scheduler_type = judge_scheduler_type(stage_placement)
+split_backward = judge_split_backward(unified_scheduler)

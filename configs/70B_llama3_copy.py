@@ -42,12 +42,12 @@ model_type = "LLAMA2"
 DO_ALERT = False
 
 VOCAB_SIZE = 128256
-SEQ_LEN = 4096
+SEQ_LEN = 2048
 HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 80
+NUM_LAYER = 64
 
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
@@ -130,7 +130,7 @@ grad_scaler = dict(
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
     overlap_sync_grad=False,
-    overlap_sync_param=False,
+    overlap_sync_param=True,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
     # grad clipping
@@ -166,8 +166,8 @@ beta2_scheduler = dict(
 
 use_fp32_norm = False
 model = dict(
-    checkpoint=False,
-    num_chunks=20,
+    checkpoint=1,
+    num_chunks=16, #TODO,后续改为bool，仅代表多chunk或单chunk
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -220,10 +220,10 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=4),
-    tensor=dict(size=4, mode="fsp"),
-    pipeline=dict(size=4, interleaved_overlap=True),
-    #pipeline=dict(size=4, interleaved_overlap=True, mode="unified"),
+    zero1=dict(size=1),
+    tensor=dict(size=8, mode="fsp"),
+    #pipeline=dict(size=4, interleaved_overlap=True),
+    pipeline=dict(size=4, interleaved_overlap=True, mode="unified"),
     weight=dict(size=1, overlap=True),
 )
 
@@ -246,11 +246,13 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-# input_info = {}
-# with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
-#     input_info = json.load(file)
-# stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
-# # stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
-# scheduler_type = judge_scheduler_type(stage_placement)
-# split_backward = judge_split_backward(unified_scheduler)
-# layerwise = False
+
+input_info = {}
+with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
+    input_info = json.load(file)
+stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
+# stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
+scheduler_type = judge_scheduler_type(stage_placement)
+split_backward = judge_split_backward(unified_scheduler)
+layerwise = False
+
