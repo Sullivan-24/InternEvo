@@ -168,7 +168,7 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         continue
                     # 如果本次操作为f 且microbatch_id 相同
                     if op == 'f' and prev_microbatch_id == microbatch_id and prev_stage_id == stage_id-1:           
-                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n, 0))
+                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
                     
@@ -186,11 +186,11 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                     #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
 
                     if min_dist == current_start_dist:
-                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n, 0))
+                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
                     elif min_dist == current_end_dist:
-                        comm_op['A'].append(('f',prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n, 0))
+                        comm_op['A'].append(('f',prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
                     elif min_dist == next_start_dist:
@@ -215,7 +215,7 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         continue
                     # 如果本次操作为b 且 microbatch_id 相同
                     if op == 'b' and next_microbatch_id == microbatch_id and next_stage_id == stage_id+1:
-                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n,0))
+                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)  # 标记为已接收
                         continue
 
@@ -233,11 +233,11 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                     #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
                     
                     if min_dist == current_start_dist:
-                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n,0))
+                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)
                         continue
                     elif min_dist == current_end_dist:
-                        comm_op['A'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n,0))
+                        comm_op['A'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)
                         continue
                     elif min_dist == next_start_dist:
@@ -327,13 +327,13 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     if len(next_op['B'])>0:
                         needjude += next_op['B']
                 for judgeop in needjude:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _ = judgeop
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = judgeop
                     if rank_id == recv_device_id or recv_device_id != dst_rank_id:
                         continue
                     recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
                     goonjudge = True
                     for rc in (recvDevice_op['A']+recvDevice_op['B']):
-                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index,_ = rc
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index = rc
                         if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
                             goonjudge = False
                             break
@@ -346,7 +346,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                             recvDevice_nextop_n = copy.deepcopy(communication_graph[recv_device_id][index+judgedistance])
                             recvDevice_nextop_nb = recvDevice_nextop_n['B']
                             for rnb, recvDevice_nextop_n_b in enumerate(recvDevice_nextop_nb):
-                                next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B,_ = recvDevice_nextop_n_b
+                                next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B = recvDevice_nextop_n_b
                                 if (next_recv_op_type_B,next_recv_stage_id_B,next_recv_microbatch_id_B) == op['Infor']:
                                     rnbresult = communication_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
                                     communication_graph[recv_device_id][index]['A'].append(rnbresult)
@@ -356,7 +356,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                                 break
                             recvDevice_nextop_na = recvDevice_nextop_n['A']
                             for rna, recvDevice_nextop_n_a in enumerate(recvDevice_nextop_na):
-                                next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A,_ = recvDevice_nextop_n_a
+                                next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A = recvDevice_nextop_n_a
                                 if (next_recv_op_type_A,next_recv_stage_id_A,next_recv_microbatch_id_A) == op['Infor']:
                                     rnaresult = communication_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
                                     communication_graph[recv_device_id][index]['A'].append(rnaresult)
@@ -367,7 +367,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                         if index-judgedistance >= 0 :
                             recvDevice_nextop_bab = communication_graph[recv_device_id][index-judgedistance]
                             for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
-                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab= rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
                                     goonjudge = False
                                     break
@@ -376,7 +376,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
             else:
                 needjude = list(reversed(op['A']))+op['B']#TODO
                 for judgeop in needjude:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_stream_id, recv_microbatch_id, index, _ = judgeop
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_stream_id, recv_microbatch_id, index= judgeop
                     if rank_id == recv_device_id or recv_device_id != dst_rank_id:
                         continue
                     if recv_op_type == op_type and microbatch_id == recv_microbatch_id and ((op_type == "f" and recv_stage_id>stage_id) or (op_type == "b" and recv_stage_id<stage_id)):
@@ -390,13 +390,13 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
                     goonjudge = True
                     for rc in (recvDevice_op['A']):
-                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index,_ = rc
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rc
                         if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
                             goonjudge = False
                             break
                     judgedistance = 0
                     for rv_,rv in enumerate(recvDevice_op['B']):
-                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index,_ = rv
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rv
                         if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
                             communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index]['B'].pop(rv_))
                             goonjudge = False
@@ -412,7 +412,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                         if index-judgedistance >= 0 :
                             recvDevice_nextop_bab = copy.deepcopy(communication_graph[recv_device_id][index-judgedistance])
                             for rnbab_id,rnbab in enumerate(recvDevice_nextop_bab['A']):
-                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
                                     communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['A'].pop(rnbab_id))
                                     goonjudge = False
@@ -420,7 +420,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                             if not goonjudge:
                                 break
                             for rnbab__id,rnbab_ in enumerate(recvDevice_nextop_bab['B']):
-                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab_
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab_
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
                                     communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['B'].pop(rnbab__id))
                                     goonjudge = False
@@ -430,7 +430,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                         if index+judgedistance < len(communication_graph_copy[recv_device_id]) :
                             recvDevice_nextop_bab = communication_graph[recv_device_id][index+judgedistance]
                             for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
-                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab,_ = rnbab
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
                                     goonjudge = False
                                     break
@@ -522,7 +522,7 @@ def comm_graph_mutistream(grouped_data, stage_alignment):   # 假设 grouped_dat
 
                     # 如果本次操作为f 且microbatch_id 相同
                     if op == 'f' and prev_microbatch_id == microbatch_id and prev_stage_id == stage_id-1:           
-                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n, 0))
+                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
 
@@ -536,15 +536,14 @@ def comm_graph_mutistream(grouped_data, stage_alignment):   # 假设 grouped_dat
                     next_start_dist = distence((stage_ops[m + 1][-2] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
                     next_end_dist = distence((stage_ops[m + 1][-1] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
                     # 找到最小距离
-                    min_dist = min(current_start_dist, current_end_dist, next_start_dist,next_end_dist)
-                    #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
+                    min_dist = min(current_start_dist, current_end_dist, next_start_dist,next_end_dist)     
 
                     if min_dist == current_start_dist:
-                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n, 0))
+                        comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
                     elif min_dist == current_end_dist:
-                        comm_op['A'].append(('f',prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n, 0))
+                        comm_op['A'].append(('f',prev_end_time, recvFdevice_id, prev_stage_id,prev_stream_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
                     elif min_dist == next_start_dist:
@@ -570,7 +569,7 @@ def comm_graph_mutistream(grouped_data, stage_alignment):   # 假设 grouped_dat
                         continue
                     # 如果本次操作为b 且 microbatch_id 相同
                     if op == 'b' and next_microbatch_id == microbatch_id and next_stage_id == stage_id+1:
-                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n,0))
+                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)  # 标记为已接收
                         continue
 
@@ -588,11 +587,11 @@ def comm_graph_mutistream(grouped_data, stage_alignment):   # 假设 grouped_dat
                     #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
                     
                     if min_dist == current_start_dist:
-                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n,0))
+                        comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)
                         continue
                     elif min_dist == current_end_dist:
-                        comm_op['A'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n,0))
+                        comm_op['A'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_stream_id, next_microbatch_id,n))
                         received_next_stage.add(next_op)
                         continue
                     elif min_dist == next_start_dist:
@@ -850,13 +849,13 @@ def generate_Wavelike_4pp_20chunk_16mb():
 def generate_():
     stage_placement = ""
     input_str=""
-    file_path = '/mnt/petrelfs/matenghui/InternEvo'
+    file_path = '/cpfs01/user/matenghui/InternEvo'
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    num_microbatches = 16
+    num_microbatches = 32
 
     unified_scheduler = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)

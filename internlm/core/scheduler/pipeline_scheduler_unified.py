@@ -270,7 +270,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                     send_forward_once = False
 
                 for after_ops  in  after_recv_list:
-                    op, mutex = after_ops[0],after_ops[-1]
+                    op = after_ops[0]
                     if op == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
                             recv_prev_shape=forward_recv_shapes,
@@ -334,7 +334,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                     send_backward_once = False
 
                 for after_ops  in  after_recv_list:
-                    op, mutex = after_ops[0],after_ops[-1]
+                    op = after_ops[0]
                     if op == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
                             recv_prev_shape=forward_recv_shapes,
@@ -457,7 +457,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
     def recv_all(self,recv_forward_queue_list,recv_backward_queue_list,recvlist):
         for ops in recvlist:
-            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _= ops
+            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = ops
             recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
             if recv_op_type == Step.FORWARD.value:
                 recv_f_buffer = comm.AsynCommunicator(
@@ -649,7 +649,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                     send_forward_once = False
 
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
@@ -748,7 +748,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         ).start()
                     send_backward_once = False
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
@@ -990,7 +990,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
     def recv_all(self,recv_forward_queue_list,recv_backward_queue_list,recvlist):
         for ops in recvlist:
-            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _= ops
+            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = ops
             recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
             #
             if recv_op_type == Step.FORWARD.value:
@@ -1181,7 +1181,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                     send_forward_once = False
 
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
@@ -1278,7 +1278,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         ).start()
                     send_backward_once = False
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
@@ -1437,7 +1437,7 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
     
     def recv_all(self,recv_forward_queue_list,recv_backward_queue_list,recvlist):
         for ops in recvlist:
-            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, _= ops
+            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = ops
             if recv_op_type == Step.FORWARD.value:
                 recv_f_buffer = comm.AsynCommunicator(
                             recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
@@ -1715,7 +1715,7 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
                     send_forward_once = False
 
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
                                     recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
@@ -1791,7 +1791,7 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
                         ).start()
                     send_backward_once = False
                 for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index, mutex = after_ops      
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
                     if recv_op_type == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator(
                                     recv_prev_shape=self._input_obj_shapes[recv_chunk_id],
