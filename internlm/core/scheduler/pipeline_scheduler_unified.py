@@ -412,6 +412,8 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         scheduler_type: ModuleType = None,
         split_backward: bool = False,
         layerwise: bool = False,
+        first_stage: int = None,
+        last_stage: int = None,
     ):
         super().__init__(
             num_microbatches,
@@ -433,19 +435,13 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self.layerwise = layerwise
         self.local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
         self.num_layers = gpc.config.model.get("num_layers", torch.half)
+        self.first_stage = first_stage
+        self.last_stage = last_stage
         file_path = f"./jsonResult/async/{scheduler_type}_pp{gpc.pipeline_parallel_size}_chunk{num_chunks}_mb{num_microbatches}"
-
-        self.NumChunksInDevice = [len(self.stage_placement[i]) for i in range(len(self.stage_placement))]
-        self.last_stage = max(max(row) for row in self.stage_placement)
-        self.first_stage = min(min(row) for row in self.stage_placement)
-        self.TheDevices_containing_last_stage = [i for i, row in enumerate(self.stage_placement) if self.last_stage in row]
-        #self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
- 
         os.makedirs(file_path, exist_ok=True)
         gpc._config['jsonpath'] = file_path+f"/iter0_rank{self.local_rank}_opeartion_list.json"
-
         if split_backward:
-            self._backward_step_num = [0]*self.NumChunksInDevice[self.local_rank]
+            self._backward_step_num = [0]*num_chunks
             self._num_microbatches = num_microbatches
 
     def _clear_state(self) -> None:
@@ -544,7 +540,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         stage_placement=self.stage_placement
         steps = self.unified_scheduler[local_rank]
         stages_in_this_device = stage_placement[local_rank]
-        chunks = len(stages_in_this_device)
+        chunks = self._num_chunks
         comm_list = self.comm_graph[local_rank]
         chunk_to_prev_stage_id = [-100 for _ in range(chunks)]
         chunk_to_next_stage_id = [self.last_stage+1 for _ in range(chunks)]
@@ -827,7 +823,8 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         scheduler_type: ModuleType = None,
         split_backward: bool = False,
         layerwise: bool = False,
-
+        first_stage: int = None,
+        last_stage: int = None
     ):
         super().__init__(
             num_microbatches,
@@ -849,21 +846,15 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self.layerwise = layerwise
         self.local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
         self.num_layers = gpc.config.model.get("num_layers", torch.half)
-
-        self.NumChunksInDevice = [len(self.stage_placement[i]) for i in range(len(self.stage_placement))]
-        self.last_stage = max(max(row) for row in self.stage_placement)
-        self.first_stage = min(min(row) for row in self.stage_placement)
-        self.TheDevices_containing_last_stage = [i for i, row in enumerate(self.stage_placement) if self.last_stage in row]
-        if self.local_rank in self.TheDevices_containing_last_stage:
-            gpc.devices_have_lastStage = True
-        #self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
+        self.first_stage = first_stage
+        self.last_stage = last_stage
         file_path = f"./jsonResult/het/{scheduler_type}_pp{gpc.pipeline_parallel_size}_layers{self.num_layers}_mb{num_microbatches}"
         os.makedirs(file_path, exist_ok=True)
 
         gpc._config['jsonpath'] = file_path+f"/iter0_rank{self.local_rank}_opeartion_list.json"
         #TODO, num_chunks is different in different rank
         if split_backward:
-            self._backward_step_num = [0]*self.NumChunksInDevice[self.local_rank]
+            self._backward_step_num = [0]*num_chunks
             self._num_microbatches = num_microbatches
 
     def _clear_state(self) -> None:
@@ -1069,7 +1060,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         global_rank = gpc.get_global_rank()
         steps = self.unified_scheduler[local_rank]
         stages_in_this_device = self.stage_placement[local_rank]
-        chunks = self.NumChunksInDevice[self.local_rank]
+        chunks = self._num_chunks
         comm_list = self.comm_graph[local_rank]
         chunk_to_prev_stage_id = [-100 for _ in range(chunks)]
         chunk_to_next_stage_id = [self.last_stage+1 for _ in range(chunks)]
@@ -1358,8 +1349,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         self.load_batch(engine, data_iter)
 
-        local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-        if return_loss and local_rank in self.TheDevices_containing_last_stage:
+        if return_loss and gpc.devices_have_lastStage:
             self._accum_loss = torch.zeros(1, device=get_current_device())
         
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
@@ -1380,8 +1370,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         accum_loss = self._accum_loss
         accum_moe_loss = self._accum_moe_loss
-        # if local_rank in self.TheDevices_containing_last_stage:
-        #     print(f"local_rank:{gpc.get_local_rank(ParallelMode.PIPELINE)}, accum_loss:{accum_loss}")
+
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             dist.all_reduce(self._accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
             accum_moe_loss = self._accum_moe_loss

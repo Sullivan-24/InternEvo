@@ -154,6 +154,9 @@ def initialize_trainer(
                 scheduler_type = gpc.config.scheduler_type
                 local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
                 num_chunks = len(stage_placement[local_rank])
+                Devices_containing_last_stage = gpc.config.Devices_containing_last_stage
+                if local_rank in Devices_containing_last_stage:
+                    gpc.devices_have_lastStage = True
                 assert stage_placement is not None, "stage_placement must be provided for unified pipeline"
                 assert  scheduler_type is not None, "scheduler_type must be provided for unified pipeline"
                 if scheduler_type == ModuleType.CHIMERA.value:
@@ -186,12 +189,14 @@ def initialize_trainer(
                     scheduler_type=scheduler_type,
                     split_backward=gpc.config.split_backward,
                     layerwise=gpc.config.layerwise,
+                    first_stage=gpc.config.first_stage,
+                    last_stage=gpc.config.last_stage
                     )
                     gpc.het = True
                 else:
                     scheduler = UnifiedMultipleChunksPipelineScheduler(
                     num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                    num_chunks=gpc.config.model.num_chunks,
+                    num_chunks=num_chunks,
                     dtype=gpc.config.model["dtype"],
                     data_process_func=_data_preparation_func,
                     tensor_shape=tensor_shape,
@@ -204,6 +209,8 @@ def initialize_trainer(
                     scheduler_type=scheduler_type,
                     split_backward=gpc.config.split_backward,
                     layerwise=gpc.config.layerwise,
+                    first_stage=gpc.config.first_stage,
+                    last_stage=gpc.config.last_stage
                     )
                     if scheduler_type == ModuleType.VSHAPE.value:
                         gpc.v_shape = True

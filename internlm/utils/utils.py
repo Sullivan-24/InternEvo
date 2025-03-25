@@ -75,54 +75,15 @@ class ModuleType(Enum):
     ONEFONEB = '1f1b'
     ZBH1 = 'Zbh1'
     HET = 'Het'
-
 class TensorParallelMode(Enum):
     mtp = 1
     msp = 2
     fsp = 3
     isp = 4
-
-
 class ActivationType(Enum):
     swiglu = 1
     gelu = 2
 
-
-def judge_scheduler_type(stage_placement):
-    ranks = len(stage_placement)
-    if ranks <= 1:
-        return None
-    num_chunks_per_device = {}
-    sum_stageId_per_device = {}
-
-    for i in range(ranks):
-        num_chunks_per_device.add(len(stage_placement[i]))
-        sum_stageId = sum(stage_placement[i])
-        sum_stageId_per_device.add(sum_stageId)
-
-    if len(num_chunks_per_device) > 1:
-        return ModuleType.HET.value
-    else:
-        if len(sum_stageId_per_device) == 1:
-            if sum_stageId_per_device[0] == ranks-1:
-                return ModuleType.CHIMERA.value
-            else:
-                return ModuleType.VSHAPE.value
-        elif 1< len(sum_stageId_per_device) < ranks :
-            return ModuleType.HET.value
-        else:# len(sum_stageId_per_device) == ranks
-            num_chunks = num_chunks_per_device[0]
-            for i in range(1,ranks):
-                if sum_stageId_per_device[i] - sum_stageId_per_device[i-1] != num_chunks:
-                    return ModuleType.HET.value
-            return ModuleType.INTERLEAVED
-
-
-def judge_split_backward(unified_scheduler):
-    if unified_scheduler[0][-1][0] == Step.WEIGHT.value:
-        return True
-    else:
-        return False
 def check_attention_argument(*args, **kwargs) -> str:
     # self, qkv, ...
     # self, q, kv, ....

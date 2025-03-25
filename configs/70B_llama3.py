@@ -1,41 +1,13 @@
 
-from preprocess import generate_Wavelike_4pp_20chunk_16mb, generate_Interleaved_4pp_20chunk_16mb
-from internlm.utils.utils import judge_scheduler_type, judge_split_backward
+from preprocess import generate_
+
 import json
-# {
-#   "architectures": [
-#     "LlamaForCausalLM"
-#   ],
-#   "attention_bias": false,
-#   "attention_dropout": 0.0,
-#   "bos_token_id": 128000,
-#   "eos_token_id": 128001,
-#   "hidden_act": "silu",
-#   "hidden_size": 8192,
-#   "initializer_range": 0.02,
-#   "intermediate_size": 28672,
-#   "max_position_embeddings": 131072,
-#   "mlp_bias": false,
-#   "model_type": "llama",
-#   "num_attention_heads": 64,
-#   "num_hidden_layers": 80,
-#   "num_key_value_heads": 8,
-#   "pretraining_tp": 1,
-#   "rms_norm_eps": 1e-05,
-#   "rope_scaling": {
-#     "factor": 8.0,
-#     "low_freq_factor": 1.0,
-#     "high_freq_factor": 4.0,
-#     "original_max_position_embeddings": 8192,
-#     "rope_type": "llama3"
-#   },
-#   "rope_theta": 500000.0,
-#   "tie_word_embeddings": false,
-#   "torch_dtype": "bfloat16",
-#   "transformers_version": "4.43.0.dev0",
-#   "use_cache": true,
-#   "vocab_size": 128256
-# }
+num_microbatches, pp_size, stage_placement, scheduler_type ,\
+split_backward, unified_scheduler, comm_graph, first_stage ,\
+last_stage, Devices_containing_last_stage = generate_()
+layerwise = False
+num_chunks = 2
+pp_mode = "unified"
 
 JOB_NAME = "70b_llama3_train"
 model_type = "LLAMA2"
@@ -47,9 +19,9 @@ HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 80
-
-
+NUM_LAYER = 48
+if pp_mode == "unified" and layerwise:
+    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interle
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -84,7 +56,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=16,
+    micro_num=num_microbatches,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -167,7 +139,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=20,
+    num_chunks=num_chunks,
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -220,10 +192,10 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=4),
-    tensor=dict(size=4, mode="fsp"),
-    pipeline=dict(size=4, interleaved_overlap=True),
-    #pipeline=dict(size=4, interleaved_overlap=True, mode="unified"),
+    zero1=dict(size=1),
+    tensor=dict(size=2, mode="fsp"),
+    #pipeline=dict(size=8, interleaved_overlap=True),
+    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
     weight=dict(size=1, overlap=True),
 )
 
@@ -246,11 +218,4 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-# input_info = {}
-# with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
-#     input_info = json.load(file)
-# stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
-# # stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
-# scheduler_type = judge_scheduler_type(stage_placement)
-# split_backward = judge_split_backward(unified_scheduler)
-# layerwise = False
+

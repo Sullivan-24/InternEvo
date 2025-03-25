@@ -213,7 +213,7 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
 def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
     assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
     parts = []
-    if gpc.config.layerwise:
+    if gpc.config.layerwise:#!only for Interleaved-base-type
         chunk_size = num_items // (pipeline_parallel_size*num_chunks)
         for d in range(pipeline_parallel_size):
             part = []
@@ -259,17 +259,13 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
-    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks,stage_placement,scheduler_type)
+    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks, stage_placement, scheduler_type)
     parts = all_parts[pipeline_rank]
 
     if gpc.is_rank_for_log():
         logger.info("The layer sharding is %r.", all_parts)
     models = []
-    # if gpc.config.layerwise :
-    #     if pipeline_rank == 0:# head
-    #         all_parts.append((num_layers,num_layers))
-    #     # if pipeline_rank == 1: #Embedding
-    #     #     all_parts.insert(0,(0,0))
+
     for start, end in parts:
         kwargs["num_layers"] = end - start
         kwargs["first"] = start == 0 #TODO,and start == end

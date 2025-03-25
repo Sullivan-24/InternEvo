@@ -1,41 +1,25 @@
 
-from preprocess import generate_Wavelike_4pp_20chunk_16mb, generate_Interleaved_4pp_20chunk_16mb
-from internlm.utils.utils import judge_scheduler_type, judge_split_backward
+from preprocess import generate_
 import json
-# {
-#   "architectures": [
-#     "LlamaForCausalLM"
-#   ],
-#   "attention_bias": false,
-#   "attention_dropout": 0.0,
-#   "bos_token_id": 128000,
-#   "eos_token_id": 128001,
-#   "hidden_act": "silu",
-#   "hidden_size": 8192,
-#   "initializer_range": 0.02,
-#   "intermediate_size": 28672,
-#   "max_position_embeddings": 131072,
-#   "mlp_bias": false,
-#   "model_type": "llama",
-#   "num_attention_heads": 64,
-#   "num_hidden_layers": 80,
-#   "num_key_value_heads": 8,
-#   "pretraining_tp": 1,
-#   "rms_norm_eps": 1e-05,
-#   "rope_scaling": {
-#     "factor": 8.0,
-#     "low_freq_factor": 1.0,
-#     "high_freq_factor": 4.0,
-#     "original_max_position_embeddings": 8192,
-#     "rope_type": "llama3"
-#   },
-#   "rope_theta": 500000.0,
-#   "tie_word_embeddings": false,
-#   "torch_dtype": "bfloat16",
-#   "transformers_version": "4.43.0.dev0",
-#   "use_cache": true,
-#   "vocab_size": 128256
-# }
+# input_info = {}
+# with open('/cpfs01/user/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
+#     input_info = json.load(file)
+# num_microbatches=input_info['num_microbatches']
+# pp_size=input_info['pp_size']
+# stage_placement=input_info['stage_placement'] 
+# scheduler_type=input_info['scheduler_type']
+# split_backward=input_info['split_backward']
+# unified_scheduler=input_info['unified_scheduler']
+# comm_graph=input_info['comm_graph']
+# first_stage = input_info['first_stage'], 
+# last_stage=input_info['last_stage'] 
+# Devices_containing_last_stage=input_info['Devices_containing_last_stage']
+num_microbatches, pp_size, stage_placement, scheduler_type ,\
+split_backward, unified_scheduler, comm_graph, first_stage ,\
+last_stage, Devices_containing_last_stage = generate_()
+layerwise = False
+num_chunks = 2
+pp_mode = "unified"
 
 JOB_NAME = "70b_llama3_train"
 model_type = "LLAMA2"
@@ -47,8 +31,10 @@ HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 64
+NUM_LAYER = 16
 
+if pp_mode == "unified" and layerwise:
+    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -84,7 +70,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=16,
+    micro_num=num_microbatches,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -130,7 +116,7 @@ grad_scaler = dict(
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
     overlap_sync_grad=False,
-    overlap_sync_param=True,
+    overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
     # grad clipping
@@ -165,9 +151,10 @@ beta2_scheduler = dict(
 )
 
 use_fp32_norm = False
+
 model = dict(
-    checkpoint=1,
-    num_chunks=16, #TODO,后续改为bool，仅代表多chunk或单chunk
+    checkpoint=False,
+    num_chunks=num_chunks, #TODO,后续改为bool，2仅代表多chunk,单chunk为1
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -221,9 +208,9 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=1),
-    tensor=dict(size=8, mode="fsp"),
+    tensor=dict(size=1, mode="fsp"),
     #pipeline=dict(size=4, interleaved_overlap=True),
-    pipeline=dict(size=4, interleaved_overlap=True, mode="unified"),
+    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
     weight=dict(size=1, overlap=True),
 )
 
@@ -246,13 +233,4 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-
-input_info = {}
-with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
-    input_info = json.load(file)
-stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
-# stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
-scheduler_type = judge_scheduler_type(stage_placement)
-split_backward = judge_split_backward(unified_scheduler)
-layerwise = False
 

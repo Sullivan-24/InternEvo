@@ -248,7 +248,7 @@ monitor = dict(
 # metric_dtype = "fp32"
 
 input_info = {}
-with open('/mnt/petrelfs/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
+with open('/cpfs01/user/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
     input_info = json.load(file)
 stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
 # stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
