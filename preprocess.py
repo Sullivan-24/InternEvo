@@ -863,5 +863,31 @@ def generate_():
     with open(file_path+'/runtime.json','w') as file:
         json.dump(result,file)
 
+import os
+def generate():
+    stage_alignment = read_placement_from_file()
+    pp_size = len(stage_alignment)
+    schedule = read_input_str_in_result_file()
+    num_microbatches = get_num_microbatches(schedule=schedule)
+    unified_scheduler = order_result_mutichunk(schedule,stage_alignment, num_microbatches)
+    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
+    return stage_alignment, unified_scheduler, comm_graph
+
+def get_num_microbatches(schedule:str):
+    max_mid = -1
+    for line in schedule.split('\n'):
+        if line.startswith("w_"):
+            mid = eval(line.split('_')[1])
+            max_mid = max(mid, max_mid)
+    return max_mid + 1
+
+def read_input_str_in_result_file(filepath="InternEvo/result.txt"):
+    input_str = open(file=filepath, mode='r').read()
+    return input_str
+
+def read_placement_from_file(filepath="InternEvo/placement.txt"):
+    stage_alignment = eval(open(file=filepath, mode='r').read())
+    return stage_alignment
+
 if __name__ == '__main__':
     generate_()
