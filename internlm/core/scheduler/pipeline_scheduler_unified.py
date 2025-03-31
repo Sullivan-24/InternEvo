@@ -552,7 +552,10 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         recv_forward_queue_list = [queue.Queue() for _ in range(chunks)]
         async_communicator_recv_forward_queue = [queue.Queue() for _ in range(chunks)]
         async_communicator_recv_backward_queue = [queue.Queue() for _ in range(chunks)]
-        input_obj_grad_queue_list = [queue.Queue() for _ in range(chunks)]
+        input_obj_grad_map = [
+        [[] for _ in range(self.num_microbatches)] 
+        for _ in range(chunks)
+        ]
         jsonpath = gpc._config['jsonpath']
         for i in range(chunks):
             chunk_id = i
@@ -710,7 +713,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
                     input_obj_grad = self._schedule_backward(engine, chunk_id)
-                    input_obj_grad_queue_list[chunk_id].put(input_obj_grad)
+                    input_obj_grad_map[chunk_id][microbatch_id] = input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step(self, engine, chunk_id, microbatch_id)
                 # end_time = time.perf_counter()
@@ -798,7 +801,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time = time.time()
                 # start_time_ = time.perf_counter()
                 WeightGradStore.pop()
-                self._call_hooks("after_backward",input_obj_grad_queue_list[chunk_id].get())
+                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
                 engine.optimizer.skip_grad_reduce = origin_skip
                 # end_time = time.perf_counter()
                 # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
@@ -1072,7 +1075,10 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         recv_forward_queue_list = [queue.Queue() for _ in range(chunks)]
         async_communicator_recv_forward_queue = [queue.Queue() for _ in range(chunks)]
         async_communicator_recv_backward_queue = [queue.Queue() for _ in range(chunks)]
-        input_obj_grad_queue_list = [queue.Queue() for _ in range(chunks)]
+        input_obj_grad_map = [
+        [[] for _ in range(self.num_microbatches)] 
+        for _ in range(chunks)
+        ]
         jsonpath = gpc._config['jsonpath']
 
         for i in range(chunks):
@@ -1232,7 +1238,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
                     input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id)
-                    input_obj_grad_queue_list[chunk_id].put(input_obj_grad)
+                    input_obj_grad_map[chunk_id][microbatch_id]=input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
                 # end_time = time.perf_counter()
@@ -1317,7 +1323,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time = time.time()
                 # start_time_ = time.perf_counter()
                 WeightGradStore.pop()
-                self._call_hooks("after_backward",input_obj_grad_queue_list[chunk_id].get())
+                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
                 engine.optimizer.skip_grad_reduce = origin_skip
                 # end_time = time.perf_counter()
                 # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
