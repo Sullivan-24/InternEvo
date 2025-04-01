@@ -23,98 +23,18 @@ from .pipeline_scheduler_1f1b import (
 
 logger = get_logger(__file__)
 import time
-
-# class WeightGradStore:
-#     """
-#     When using zero bubble pp, WeightGradStore is used to store the args and func for computating weight grad.
-#     """
-
-#     _cache = []
-#     _weight_grad_queue = queue.Queue()
-#     _hooks = {}
-#     pp_mode = None
-#     optim = None
-#     temp = []
-#     # @classmethod
-#     # def get_pp_mode(cls):
-#     #     return cls.pp_mode
-
-#     @classmethod
-#     def set_pp_mode(cls, mode):
-#         cls.pp_mode = mode
-
-#     @classmethod
-#     def set_optim(cls, optim):
-#         cls.optim = optim
-
-#     @classmethod
-#     def size(cls):
-#         return cls._weight_grad_queue.qsize()
-
-#     @classmethod
-#     def put(cls, weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args):
-#         if cls.pp_mode == "ZBH1":
-#             assert not gpc.is_first_rank(ParallelMode.PIPELINE), "pp rank 0 should not arrive here"
-#         # Store the weight gradient computation of linear layers.
-#         cls._cache.append((weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args))
-
-#     @classmethod
-#     def flush(cls):
-#         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
-#             return
-#         # Collect all stored computations during backward as a W for each micro batch.
-#         cls._weight_grad_queue.put(cls._cache)
-#         cls._cache = []
-
-#     @classmethod
-#     def pop(cls):
-#         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
-#             return
-#         assert cls._weight_grad_queue.qsize() > 0
-#         stored_w_grad_computation = cls._weight_grad_queue.get()
-#         # Run computation for a single W.
-#         for weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args in stored_w_grad_computation:
-#             assert weight.requires_grad
-#             grad_weight, grad_bias = grad_compute_func(input_tensor, grad_output, has_d_bias)
-#             if is_using_isp():
-#                 isp_grad_hook = args[0]
-#                 module = args[1]
-#                 grad_weight, handle_weight = isp_grad_hook(grad_weight, async_op=True, is_bias=False, module=module)
-#                 handle_weight.wait()
-#                 if grad_bias is not None:
-#                     grad_bias, handle_bias = isp_grad_hook(grad_bias, async_op=True, is_bias=True, module=module)
-#                     handle_bias.wait()
-
-#             # Gradient Accumulation
-#             weight.grad = weight.grad.data + grad_weight if weight.grad is not None else grad_weight
-#             if has_d_bias:
-#                 bias.grad = bias.grad.data + grad_bias if bias.grad is not None else grad_bias
-
-#             # overlap hook
-#             if weight in cls._hooks:
-#                 for hook in cls._hooks[weight]:
-#                     hook()
-#                 if has_d_bias:
-#                     for hook in cls._hooks[bias]:
-#                         hook()
-
-#     @classmethod
-#     def register_hook(cls, param, hooks):
-#         cls._hooks[param] = hooks
 class WeightGradStore:
     """
     When using zero bubble pp, WeightGradStore is used to store the args and func for computating weight grad.
     """
 
     _cache = []
-    _weight_grad_queue = []
+    _weight_grad_queue = queue.Queue()
     _hooks = {}
     pp_mode = None
     optim = None
     temp = []
-    # @classmethod
-    # def get_pp_mode(cls):
-    #     return cls.pp_mode
+
     @classmethod
     def set_weight_grad_queue(cls, num_chunks, num_microbatches):
         cls._weight_grad_queue = [
@@ -142,20 +62,26 @@ class WeightGradStore:
         cls._cache.append((weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args))
 
     @classmethod
-    def flush(cls, chunk_id, microbatch_id):
+    def flush(cls, chunk_id=0, microbatch_id=0):
         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
             return
         # Collect all stored computations during backward as a W for each micro batch.
-        cls._weight_grad_queue[chunk_id][microbatch_id].append(cls._cache)
+        if isinstance(cls._weight_grad_queue, queue.Queue):
+            cls._weight_grad_queue.put(cls._cache)
+        else:
+            cls._weight_grad_queue[chunk_id][microbatch_id].append(cls._cache)
         cls._cache = []
 
     @classmethod
-    def pop(cls, chunk_id, microbatch_id):
+    def pop(cls, chunk_id=0, microbatch_id=0):
         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
             return
-        assert len(cls._weight_grad_queue[chunk_id][microbatch_id]) > 0
-        stored_w_grad_computation = cls._weight_grad_queue[chunk_id][microbatch_id].pop(0)
-
+        if isinstance(cls._weight_grad_queue, queue.Queue):
+            assert cls._weight_grad_queue.qsize() > 0
+            stored_w_grad_computation = cls._weight_grad_queue.get()
+        else:
+            assert len(cls._weight_grad_queue[chunk_id][microbatch_id]) > 0
+            stored_w_grad_computation = cls._weight_grad_queue[chunk_id][microbatch_id].pop(0)
         # Run computation for a single W.
         for weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args in stored_w_grad_computation:
             assert weight.requires_grad
@@ -588,7 +514,7 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
 
         return input_obj_grad
 
-    def _schedule_backward(self, engine, chunk_id, microbatch_id):
+    def _schedule_backward(self, engine, chunk_id, microbatch_id=0):
         """
         Backward step for passed-in model. If it is the last stage, the input tensor
         is obtained from the previous forward step, otherwise the passed-in input_obj is used.
