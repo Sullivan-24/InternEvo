@@ -409,7 +409,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         unified_scheduler: List[tuple] = None,
         stage_placement: List[List[int]] = None,
         comm_graph: List[List[tuple]] = None,
-        scheduler_type: ModuleType = None,
+        scheduler_type: str = None,
         split_backward: bool = False,
         layerwise: bool = False,
         first_stage: int = None,
@@ -443,6 +443,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         if split_backward:
             self._backward_step_num = [0]*num_chunks
             self._num_microbatches = num_microbatches
+        WeightGradStore.set_weight_grad_queue(num_chunks=num_chunks, num_microbatches=num_microbatches)
 
     def _clear_state(self) -> None:
         super()._clear_state()
@@ -596,9 +597,9 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time_ = time.perf_counter()
                 output_obj = self._forward_step(engine, chunk_id, input_obj)  
                 # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", \
-                #                 "start_time":start_time, "timespan":(end_time - start_time_), "output_obj_shape": output_obj.shape if output_obj is not None else 0, \
-                #                 "self._output_obj_shapes[1]": self._output_obj_shapes[1] if self._output_obj_shapes[1] is not None else 0}
+                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
+                #                 # "start_time":start_time, "timespan":(end_time - start_time_), "output_obj_shape": output_obj.shape if output_obj is not None else 0, \
+                #                 # "self._output_obj_shapes[1]": self._output_obj_shapes[1] if self._output_obj_shapes[1] is not None else 0}
                 # write_json(jsonpath, json_content)
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
@@ -712,13 +713,13 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time_ = time.perf_counter()
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
-                    input_obj_grad = self._schedule_backward(engine, chunk_id)
+                    input_obj_grad = self._schedule_backward(engine, chunk_id, microbatch_id)
                     input_obj_grad_map[chunk_id][microbatch_id] = input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step(self, engine, chunk_id, microbatch_id)
                 # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", \
-                #                 "start_time":start_time, "timespan":(end_time - start_time_), "input_obj_grad_shape": input_obj_grad.shape if input_obj_grad is not None else 0}
+                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "input_obj_grad_shape": input_obj_grad.shape if input_obj_grad is not None else 0}
+                #                 #"start_time":start_time, "timespan":(end_time - start_time_), "input_obj_grad_shape": input_obj_grad.shape if input_obj_grad is not None else 0}
                 # write_json(jsonpath, json_content)
                 for chunk in range (chunks):
                     if recv_forward_queue_list[chunk].qsize()>0:
@@ -800,11 +801,12 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             elif step_type == Step.WEIGHT.value: #Weight update
                 # start_time = time.time()
                 # start_time_ = time.perf_counter()
-                WeightGradStore.pop()
+                WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
                 self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
+                input_obj_grad_map[chunk_id][microbatch_id]=0
                 engine.optimizer.skip_grad_reduce = origin_skip
                 # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
+                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "input_obj_grad.shape":input_obj_grad_map[chunk_id][microbatch_id].shape if input_obj_grad_map[chunk_id][microbatch_id] is not None else 0}#"operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
                 # write_json(jsonpath, json_content)
                 recv_forward_queue_list, recv_backward_queue_list = \
                     self.recv_all(recv_forward_queue_list,recv_backward_queue_list,after_recv_list)
@@ -859,6 +861,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         if split_backward:
             self._backward_step_num = [0]*num_chunks
             self._num_microbatches = num_microbatches
+        WeightGradStore.set_weight_grad_queue(num_chunks=num_chunks, num_microbatches=num_microbatches)
 
     def _clear_state(self) -> None:
         super()._clear_state()
@@ -938,7 +941,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         return output_obj
     
     #this is for split backward
-    def _schedule_backward(self, engine, chunk_id, stage_id):
+    def _schedule_backward(self, engine, chunk_id, stage_id, microbatch_id):
         """
         Backward step for passed-in model. If it is the last stage, the input tensor
         is obtained from the previous forward step, otherwise the passed-in input_obj is used.
@@ -978,7 +981,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         input_obj_grad = self._backward_step(engine, input_obj, output_obj, output_obj_grad, skip_grad_sync, moe_loss)
 
-        WeightGradStore.flush()
+        WeightGradStore.flush(chunk_id=chunk_id,microbatch_id=microbatch_id)
 
         return input_obj_grad
 
@@ -1237,7 +1240,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time_ = time.perf_counter()
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
-                    input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id)
+                    input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id, microbatch_id)
                     input_obj_grad_map[chunk_id][microbatch_id]=input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
@@ -1322,8 +1325,9 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             elif step_type == Step.WEIGHT.value: #Weight update
                 # start_time = time.time()
                 # start_time_ = time.perf_counter()
-                WeightGradStore.pop()
+                WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
                 self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
+                input_obj_grad_map[chunk_id][microbatch_id] = 0
                 engine.optimizer.skip_grad_reduce = origin_skip
                 # end_time = time.perf_counter()
                 # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
