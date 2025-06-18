@@ -1,14 +1,22 @@
 JOB_NAME = "7b_moe_mixtral"
 model_type = "MIXTRALMOE"
 DO_ALERT = False
+HETER = False
+profile_fwd_bwd = True
 
-SEQ_LEN = 4096
+SEQ_LEN = 2048
 HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 8
 MLP_RATIO = 3.5
 NUM_LAYER = 32
 VOCAB_SIZE = 32000
+NUM_LAYER = 32
+PP_SIZE = 4
+TP_SIZE = 1
+EP_SIZE = 4
+MICRO_NUM = PP_SIZE * 4
+
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -26,13 +34,13 @@ ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
     # load_ckpt_folder= dict(path=MODEL_ONLY_FOLDER, content=["model"], ckpt_type="normal"),
-    load_ckpt_folder="local:llm_ckpts/",
+    # load_ckpt_folder="local:llm_ckpts/",
     # 'load_ckpt_info' setting guide:
     # 1. the 'path' indicate ckpt path,
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
     # load function such as "llama"
-    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="internevo"),
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="internevo"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -52,15 +60,15 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
-    micro_bsz=2,
+    micro_bsz=1,
     # defaults to the value of micro_num
     valid_micro_num=4,
     # defaults to 0, means disable evaluate
-    valid_every=50,
+    valid_every=0,
     pack_sample_into_one=False,
-    total_steps=50000,
+    total_steps=20,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -204,10 +212,10 @@ expert weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1, fsdp=False),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    tensor=dict(size=TP_SIZE, mode="fsp"),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
-    expert=dict(size=-1, no_tp=False),
+    expert=dict(size=EP_SIZE, no_tp=False),
     expert_weight=dict(size=1, overlap=True),
 )
 

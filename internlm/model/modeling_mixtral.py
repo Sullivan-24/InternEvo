@@ -88,6 +88,7 @@ class MixtralMoEDecoder(nn.Module):
         top_k: int = 1,
         num_shared_experts: int = 0,
         moe_layer_kwargs: dict = None,
+        first_k_dense_replace : int = 8,
     ):
         super().__init__()
         self.checkpoint = checkpoint
@@ -127,7 +128,7 @@ class MixtralMoEDecoder(nn.Module):
         self.norm2 = new_layer_norm(norm_type, hidden_size, eps=layer_norm_epsilon)
 
         self.num_experts = num_experts
-        if num_experts <= 1:  # dense, not MoE
+        if num_experts <= 1 or layer_idx < first_k_dense_replace:  # dense, not MoE
             self.mlp = new_feed_forward(
                 hidden_size,
                 int(hidden_size * mlp_ratio),
@@ -328,7 +329,7 @@ class MixtralMoE(BaseModel):
         mlp_layer_fusion: bool = False,
         multiple_of: int = 256,
         moe_type: str = None,  # pylint: disable=W0613
-        num_experts: bool = 1,
+        num_experts: int = 1,
         top_k: int = 1,
         num_shared_experts: int = 0,
         moe_layer_kwargs: dict = None,
@@ -409,7 +410,8 @@ class MixtralMoE(BaseModel):
                 )
 
         moe_losses = []
-        for _, block in enumerate(self.blocks):
+        for idx, block in enumerate(self.blocks):
+            print(f'{idx}, {gpc.get_global_rank()}', flush=True)
             hidden_states, mos_loss = block(hidden_states, **kwargs)
             moe_losses.append(mos_loss)
 

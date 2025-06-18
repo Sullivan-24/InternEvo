@@ -322,6 +322,54 @@ def pipeline_parallel_sharding_wrapper(
         kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
         kwargs["device"] = device
         kwargs["start_layer_idx"] = start
+        if gpc.config["model_type"] == "MIXTRALMOE":
+            print(f"{start}, {end}", flush=True)
+            if start == 0:
+                kwargs["num_experts"] = 1
+            else:
+                kwargs["num_experts"] = 8
+
+                
+        chunk = model_builder(**kwargs).to(device)
+        setattr(chunk, "first_layer", start)
+        setattr(chunk, "last_layer", end)
+
+        models.append(chunk)
+
+    torch.distributed.barrier()
+
+    if len(models) == 1:
+        model = models[0]
+    else:
+        model = nn.ModuleList(models)
+
+    return model
+
+def pipeline_parallel_sharding_wrapper_hydra(
+    num_layers: int, num_chunks: int, model_builder: Callable, device: torch.device, **kwargs
+):
+    pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
+    pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+
+    all_parts = partition_uniform(num_layers, pipeline_size, num_chunks)
+    # multi head layer for each rank
+    for pid in range(pipeline_size):
+        all_parts[pid].append((num_layers, num_layers))
+    parts = all_parts[pipeline_rank]
+
+    if gpc.is_rank_for_log():
+        logger.info("The layer sharding is %r.", all_parts)
+
+    models = []
+
+    for start, end in parts:
+        kwargs["num_layers"] = end - start
+        kwargs["first"] = start == 0
+        # If there is no content in the final layer, assign the last layer.
+        # kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
+        kwargs["last"] = False if start != end else True
+        kwargs["device"] = device
+        kwargs["start_layer_idx"] = start
 
         chunk = model_builder(**kwargs).to(device)
         setattr(chunk, "first_layer", start)
