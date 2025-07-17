@@ -1,6 +1,7 @@
 import copy
 import json
 from enum import Enum, IntEnum
+import os
 class Step(Enum):
     FORWARD = 'f'
     BACKWARD = 'b'
@@ -51,10 +52,10 @@ def SendToSameDevice(stage_alignment):
                 sendBtoSameDevice.append(stage)
     return sendFtoSameDevice,sendBtoSameDevice
 
-def recvnum(communication_graph):
-    print('[')
+def recvnum(comm_graph):
+    #print('[')
     # # 输出通信图
-    for rank_id, comm_stage in enumerate(communication_graph):
+    for rank_id, comm_stage in enumerate(comm_graph):
         recvF = 0
         recvB = 0
         for comm_op in comm_stage:
@@ -68,9 +69,9 @@ def recvnum(communication_graph):
                     recvB += 1
                 elif recvlistA[0] == 'f':
                     recvF += 1
-        print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
-        #print(f'{comm_stage},')
-    print(']')
+        #print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
+        ##print(f'{comm_stage},')
+    #print(']')
 
 def count_steps(steps):
     f_num = 0
@@ -87,7 +88,7 @@ def count_steps(steps):
             w_num += 1
     return f_num, b_num, w_num
 
-def dfs(op, rec_stack,visited,communication_graph):
+def dfs(op, rec_stack,visited,comm_graph):
     key = op['Infor']
     if key in rec_stack:
         return True, -1  # 发现环，返回 True 和无效的 index
@@ -100,7 +101,7 @@ def dfs(op, rec_stack,visited,communication_graph):
     for idx, a_task in enumerate(op['A']):
         _, _, recv_device_id, recv_stage_id, _, recv_microbatch_id, recv_index = a_task
         # 找到对应的通信任务
-        has_cycle, cycle_index = dfs(communication_graph[recv_device_id][recv_index],rec_stack, visited, communication_graph,)
+        has_cycle, cycle_index = dfs(comm_graph[recv_device_id][recv_index],rec_stack, visited, comm_graph)
         if has_cycle:
             # 如果发现环，返回 True 和当前任务的 index
             return True, idx
@@ -145,7 +146,7 @@ def judge_split_backward(unified_scheduler):
 def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:int) -> None:
     device_steps = [[] for _ in range(len(stage_alignment))]
     all_step = input.split('\n')
-    #print(all_step)
+    ##print(all_step)
     for step in all_step:
         if step == '':
             continue
@@ -160,33 +161,35 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         device_id = _get_deviceid_by_alignment(stage_id, stage_alignment)
         chunk_id = _get_chunk_by_stage(stage_id, stage_alignment)
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
-    # print('[')
+    #print('[')
+    recomp_stages = set()
     for d in range(len(stage_alignment)):
         f_num, b_num, w_num = count_steps(device_steps[d])
         each_steps_num = len(stage_alignment[d])*num_microbatches
         assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
         device_steps[d].sort(key=lambda x: x[-2])
-    #     print(f'{device_steps[d]},')
-    # print(']')
-    return device_steps
-def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_data 是之前生成的计算图
-    # 初始化通信图
-    communication_graph = []
+        recomp_stages = recomp_stages.union(r_stages)
+    #     #print(f'{device_steps[d]},')
+    #print(']')
+    recomp_stages = list(recomp_stages)
+    return device_steps, recomp_stages
 
-    # 找到最大值
+def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph 是之前生成的计算图
+    # 初始化通信图
+    comm_graph = []
+    # 构建邻接矩阵，表示两两rank之间的通信list
+
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
-
-    for device_id, stage_ops in enumerate(grouped_data):
-
+    for device_id, stage_ops in enumerate(comp_graph):
         stages = stage_alignment[device_id]
         needrecv = {}
         needrecv['F_stage'] = [s-1 for s in stages if s > min_stage_id and s-1 not in stages]
         needrecv['F_device'] = [_get_deviceid_by_alignment(s,stage_alignment) for s in needrecv['F_stage']]
         needrecv['B_stage'] = [s+1 for s in stages if s < max_stage_id and s+1 not in stages]
         needrecv['B_device'] = [_get_deviceid_by_alignment(s,stage_alignment) for s in needrecv['B_stage']]
-        #print(needrecv)
-        communication_stage = []
+        ##print(needrecv)
+        comm_stage = []
         # 标记已经接收的操作
         received_prev_stage = set()  # 记录每个 stage 中已经接收的 f 操作
         received_next_stage = set()  # 记录每个 stage 中已经接收的 b 操作
@@ -204,7 +207,7 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
             for i in range(len(needrecv['F_stage'])):
                 recvFstage_id = needrecv['F_stage'][i]
                 recvFdevice_id = needrecv['F_device'][i]
-                prev_stage_ops = grouped_data[recvFdevice_id]
+                prev_stage_ops = comp_graph[recvFdevice_id]
                 for n, prev_op in enumerate(prev_stage_ops):
                     prev_op_name, prev_microbatch_id, prev_stage_id, prev_chunk_id, prev_start_time, prev_end_time = prev_op
                     # if prev_start_time > end_time:
@@ -250,7 +253,7 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
             for j in range(len(needrecv['B_stage'])):
                 recvBstage_id = needrecv['B_stage'][j]
                 recvBdevice_id = needrecv['B_device'][j]
-                next_stage_ops = grouped_data[recvBdevice_id]
+                next_stage_ops = comp_graph[recvBdevice_id]
 
                 for n, next_op in enumerate(next_stage_ops):
                     next_op_name, next_microbatch_id, next_stage_id, next_chunk_id, next_start_time, next_end_time = next_op
@@ -294,32 +297,453 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         break
             comm_op['B'].sort(key=lambda x:x[1])
             comm_op['A'].sort(key=lambda x:x[1])
+            comm_stage.append(comm_op)
+        comm_graph.append(comm_stage)
+    # comm_graph = detect_cross_deadlock_mutichunk(comm_graph,stage_alignment)
+    comm_matrix = generate_comm_martix(comm_graph,stage_alignment,comp_graph)
+    #print(f"wrong comm order:{find_mismatch(comm_matrix)}")
+    comm_graph, actions = fix_matrix_keep_sa_sg_order(comm_matrix,comm_graph)
+    # generate_ops_josn(comm_graph,stage_alignment,comp_graph)
+    #print(f"fix actions:{actions}")
+    #print(f"test fixed comm graph:{find_mismatch(generate_comm_martix(comm_graph, stage_alignment, comp_graph))}")
+    return comm_graph
 
-            # 将通信元组添加到当前 stage 的通信图中
-            communication_stage.append(comm_op)
-        # 将当前 stage 的通信图添加到总的通信图中
-        communication_graph.append(communication_stage)
-        #print(communication_stage)
-    #communication_graph = detect_cycle_deadlock_mutichunk(communication_graph,stage_alignment)
-    communication_graph = detect_cross_deadlock_mutichunk(communication_graph,stage_alignment)
-    recvnum(communication_graph)
-    # print('[')
-    # # # 输出通信图
-    # for rank_id, comm_stage in enumerate(communication_graph):
-    #     print(f'{comm_stage},')
-    # print(']')
-    return communication_graph
+def fix_matrix_keep_sa_sg_order(matrix, comm_graph):
+    pair = {"SA": "RA", "RA": "SA", "SG": "RG", "RG": "SG"}
+    n = len(matrix)
+    actions = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            li = matrix[i][j]
+            lj = matrix[j][i]
+            device_comms_li = comm_graph[i]
+            device_comms_lj = comm_graph[j]
+            for k in range(len(li)):
+                li_k_comm_ins = li[k][0]
+                if li_k_comm_ins not in ("SA","SG","RA","RG"):
+                    continue
+                li_expected_inlj = pair.get(li_k_comm_ins)
+                lj_k_comm_ins = lj[k][0]
+                lj_expected_inli = pair.get(lj_k_comm_ins)
+                if lj_k_comm_ins != li_expected_inlj:
+                    # 查找li[k+1:next_sa_sg_i]区间
+                    next_block_i = len(li)
+                    if li_k_comm_ins in ("SA","SG"):
+                        if lj_expected_inli in ("SA","SG"): #S开头的instructions要保持原有的顺序
+                            next_block_i = k #同为S通信，无法交换
+                        else:
+                            next_block_i = next_sa_sg_idx(li, k)-1
+                    else:
+                        if lj_expected_inli in ("SA","SG"):
+                            next_block_i = next_sa_sg_idx(li, k)
+                    
+                    next_block_j = len(lj)
+                    if lj_k_comm_ins in ("SA","SG"):
+                        if li_expected_inlj in ("SA","SG"): #S开头的instructions要保持原有的顺序
+                            next_block_j = k #同为S通信，无法交换
+                        else:
+                            next_block_j = next_sa_sg_idx(lj, k)-1
+                    else:
+                        if li_expected_inlj in ("SA","SG"):
+                            next_block_j = next_sa_sg_idx(lj, k)
 
-def detect_cycle_deadlock_mutichunk(communication_graph, stage_alignment):
+                    end_index = max(next_block_i,next_block_j)
+                    swap_index = k+1
+                    have_swap = False
+                    #print(f"--------------------------------------------")
+                    while(swap_index <= end_index):
+                        if swap_index <= next_block_i and pair.get(li[swap_index][0]) == lj_k_comm_ins:
+                            li_k_comm_ins, li_k_op_step, li_k_comm, li_k_endA = li[k]
+                            li_swap_comm_ins, li_swap_op_step, li_swap_comm, li_swap_endA = li[swap_index]
+                            #print(f"swap matrix[{i}][{j}][{k}]:{li_k_comm} <-> matrix[{i}][{j}][{swap_index}]:{li_swap_comm}")
+                            #print(f"or_comms_li:{device_comms_li[li_k_op_step:li_swap_op_step+1]}")
+                            if li_k_comm_ins in ("SA","SG"):#前面是S的comm instrcution，后面要交换的是R的comm instruction
+                                if i%2 == 0: #偶数rank，算发收
+                                    device_comms_li[li_k_op_step]['B'].append(li_swap_comm)
+                                    if li_swap_endA:
+                                        device_comms_li[li_swap_op_step]['A'].remove(li_swap_comm)
+                                    else:
+                                        device_comms_li[li_swap_op_step]['B'].remove(li_swap_comm)  
+                                    for adapt_index in range(k+1, swap_index):#不包含swap_index
+                                        li_adapt_index_comm_ins, li_adapt_index_op_step, li_adapt_index_comm, li_adapt_index_endA = li[adapt_index]
+                                        device_comms_li[li_k_op_step]['B'].append(li_adapt_index_comm)
+                                        if li_adapt_index_endA:
+                                            device_comms_li[li_adapt_index_op_step]['A'].remove(li_adapt_index_comm)
+                                        else:
+                                            device_comms_li[li_adapt_index_op_step]['B'].remove(li_adapt_index_comm)
+                                        li[adapt_index] = (li_adapt_index_comm_ins, li_k_op_step, li_adapt_index_comm, False)
+                                    li[k] = (li_swap_comm_ins, li_k_op_step, li_swap_comm, False)
+                                    li[swap_index] = (li_k_comm_ins, li_k_op_step, li_k_comm, li_k_endA)
+                                else:
+                                    device_comms_li[li_k_op_step]['A'].append(li_swap_comm)
+                                    if li_swap_endA:
+                                        device_comms_li[li_swap_op_step]['A'].remove(li_swap_comm)
+                                    else:
+                                        device_comms_li[li_swap_op_step]['B'].remove(li_swap_comm)
+                                    for adapt_index in range(k+1, swap_index):
+                                        li_adapt_index_comm_ins, li_adapt_index_op_step, li_adapt_index_comm, li_adapt_index_endA = li[adapt_index]
+                                        device_comms_li[li_k_op_step]['A'].append(li_adapt_index_comm)
+                                        if li_adapt_index_endA:
+                                            device_comms_li[li_adapt_index_op_step]['A'].remove(li_adapt_index_comm)
+                                        else:
+                                            device_comms_li[li_adapt_index_op_step]['B'].remove(li_adapt_index_comm)
+                                        li[adapt_index] = (li_adapt_index_comm_ins, li_k_op_step, li_adapt_index_comm, True)
+                                    li[k] = (li_swap_comm_ins, li_k_op_step, li_swap_comm, True)
+                                    li[swap_index] = (li_k_comm_ins, li_k_op_step, li_k_comm, li_k_endA)
+                            elif li_swap_comm_ins in ("SA","SG"):#前面是R的comm instrcution，后面要交换的是S的comm instruction
+                                
+                                if i%2 == 0:
+                                    device_comms_li[li_swap_op_step]['A'].insert(0,li_k_comm)
+                                    if li_k_endA:
+                                        device_comms_li[li_k_op_step]['A'].remove(li_k_comm)
+                                    else:
+                                        device_comms_li[li_k_op_step]['B'].remove(li_k_comm)
+
+                                    for adapt_index in range(swap_index-1,k,-1):#倒序保持中间顺序
+                                        li_adapt_index_comm_ins, li_adapt_index_op_step, li_adapt_index_comm, li_adapt_index_endA = li[adapt_index]
+                                        device_comms_li[li_swap_op_step]['A'].insert(0,li_adapt_index_comm)
+                                        if li_adapt_index_endA:
+                                            device_comms_li[li_adapt_index_op_step]['A'].remove(li_adapt_index_comm)
+                                        else:
+                                            device_comms_li[li_adapt_index_op_step]['B'].remove(li_adapt_index_comm)                                        
+                                        li[adapt_index] = (li_adapt_index_comm_ins, li_swap_op_step, li_adapt_index_comm,True)
+                                    li[k] = (li_swap_comm_ins, li_swap_op_step, li_swap_comm, True)
+                                    li[swap_index] = (li_k_comm_ins, li_swap_op_step, li_k_comm, li_k_endA)
+                                else:
+                                    device_comms_li[li_swap_op_step+1]['B'].insert(0,li_k_comm)
+                                    if li_k_endA:
+                                        device_comms_li[li_k_op_step]['A'].remove(li_k_comm)
+                                    else:
+                                        device_comms_li[li_k_op_step]['B'].remove(li_k_comm)
+                                    for adapt_index in range(swap_index-1,k,-1):
+                                        li_adapt_index_comm_ins, li_adapt_index_op_step, li_adapt_index_comm, li_adapt_index_endA = li[adapt_index]
+                                        device_comms_li[li_swap_op_step+1]['B'].insert(0,li_adapt_index_comm)
+                                        if li_adapt_index_endA:
+                                            device_comms_li[li_adapt_index_op_step]['A'].remove(li_adapt_index_comm)
+                                        else:
+                                            device_comms_li[li_adapt_index_op_step]['B'].remove(li_adapt_index_comm)   
+                                        li[adapt_index] = (li_adapt_index_comm_ins, li_swap_op_step+1, li_adapt_index_comm, False)
+                                    li[k] = (li_swap_comm_ins, li_swap_op_step, li_swap_comm, li_swap_endA)
+                                    li[swap_index] = (li_k_comm_ins, li_swap_op_step+1, li_k_comm, False)
+                            else:#前后要交换的都是R的comm instruction
+                                if li_k_endA:
+                                    li_k_in_comm_index = device_comms_li[li_k_op_step]['A'].index(li_k_comm)
+                                    device_comms_li[li_k_op_step]['A'][li_k_in_comm_index] = li_swap_comm
+                                else:
+                                    li_k_in_comm_index = device_comms_li[li_k_op_step]['B'].index(li_k_comm)
+                                    device_comms_li[li_k_op_step]['B'][li_k_in_comm_index] = li_swap_comm
+                                if li_swap_endA:
+                                    li_swap_in_comm_index = device_comms_li[li_swap_op_step]['A'].index(li_swap_comm)
+                                    device_comms_li[li_swap_op_step]['A'][li_swap_in_comm_index] = li_k_comm
+                                else:
+                                    li_swap_in_comm_index = device_comms_li[li_swap_op_step]['B'].index(li_swap_comm)
+                                    device_comms_li[li_swap_op_step]['B'][li_swap_in_comm_index] = li_k_comm
+                                li[k] = (li_swap_comm_ins, li_swap_op_step, li_swap_comm, li_swap_endA)
+                                li[swap_index] = (li_k_comm_ins, li_k_op_step, li_k_comm, li_k_endA)
+                            #print(f"af_comms_li:{device_comms_li[li_k_op_step:li_swap_op_step+1]}")
+                            actions.append(f"swap matrix[{i}][{j}][{k}] <-> matrix[{i}][{j}][{swap_index}]")
+                            have_swap = True
+                            break
+                        if next_block_j <= next_block_j and pair.get(lj[swap_index][0]) == li_k_comm_ins:
+                            lj_k_comm_ins, lj_k_op_step, lj_k_comm, lj_k_endA = lj[k]
+                            lj_swap_comm_ins, lj_swap_op_step, lj_swap_comm, lj_swap_endA = lj[swap_index]
+                            #print(f"swap matrix[{j}][{i}][{k}]:{lj_k_comm} <-> matrix[{j}][{i}][{swap_index}]:{lj_swap_comm}")
+                            #print(f"or_comms_lj:{device_comms_lj[lj_k_op_step:lj_swap_op_step+1]}")
+                            if lj_k_comm_ins in ("SA","SG"):#前面是S的comm instrcution，后面要交换的是R的comm instruction
+                                if i%2 == 0: #偶数rank，算发收
+                                    device_comms_lj[lj_k_op_step]['B'].append(lj_swap_comm)
+                                    if lj_swap_endA:
+                                        device_comms_lj[lj_swap_op_step]['A'].remove(lj_swap_comm)
+                                    else:
+                                        device_comms_lj[lj_swap_op_step]['B'].remove(lj_swap_comm)  
+                                    for adapt_index in range(k+1, swap_index):#不包含swap_index
+                                        lj_adapt_index_comm_ins, lj_adapt_index_op_step, lj_adapt_index_comm, lj_adapt_index_endA = lj[adapt_index]
+                                        device_comms_lj[lj_k_op_step]['B'].append(lj_adapt_index_comm)
+                                        if lj_adapt_index_endA:
+                                            device_comms_lj[lj_adapt_index_op_step]['A'].remove(lj_adapt_index_comm)
+                                        else:
+                                            device_comms_lj[lj_adapt_index_op_step]['B'].remove(lj_adapt_index_comm)
+                                        lj[adapt_index] = (lj_adapt_index_comm_ins, lj_k_op_step, lj_adapt_index_comm, False)
+                                    lj[k] = (lj_swap_comm_ins, lj_k_op_step, lj_swap_comm, False)
+                                    lj[swap_index] = (lj_k_comm_ins, lj_k_op_step, lj_k_comm, lj_k_endA)
+                                else:
+                                    device_comms_lj[lj_k_op_step]['A'].append(lj_swap_comm)
+                                    if lj_swap_endA:
+                                        device_comms_lj[lj_swap_op_step]['A'].remove(lj_swap_comm)
+                                    else:
+                                        device_comms_lj[lj_swap_op_step]['B'].remove(lj_swap_comm)
+                                    for adapt_index in range(k+1, swap_index):
+                                        lj_adapt_index_comm_ins, lj_adapt_index_op_step, lj_adapt_index_comm, lj_adapt_index_endA = lj[adapt_index]
+                                        device_comms_lj[lj_k_op_step]['A'].append(lj_adapt_index_comm)
+                                        if lj_adapt_index_endA:
+                                            device_comms_lj[lj_adapt_index_op_step]['A'].remove(lj_adapt_index_comm)
+                                        else:
+                                            device_comms_lj[lj_adapt_index_op_step]['B'].remove(lj_adapt_index_comm)
+                                        lj[adapt_index] = (lj_adapt_index_comm_ins, lj_k_op_step, lj_adapt_index_comm, True)
+                                    lj[k] = (lj_swap_comm_ins, lj_k_op_step, lj_swap_comm, True)
+                                    lj[swap_index] = (lj_k_comm_ins, lj_k_op_step, lj_k_comm, lj_k_endA)
+                            elif lj_swap_comm_ins in ("SA","SG"):#前面是R的comm instrcution，后面要交换的是S的comm instruction
+                                if i%2 == 0:
+                                    device_comms_lj[lj_swap_op_step]['A'].insert(0,lj_k_comm)
+                                    if lj_k_endA:
+                                        device_comms_lj[lj_k_op_step]['A'].remove(lj_k_comm)
+                                    else:
+                                        device_comms_lj[lj_k_op_step]['B'].remove(lj_k_comm)
+
+                                    for adapt_index in range(swap_index-1,k,-1):#倒序保持中间顺序
+                                        lj_adapt_index_comm_ins, lj_adapt_index_op_step, lj_adapt_index_comm, lj_adapt_index_endA = lj[adapt_index]
+                                        device_comms_lj[lj_swap_op_step]['A'].insert(0,lj_adapt_index_comm)
+                                        if lj_adapt_index_endA:
+                                            device_comms_lj[lj_adapt_index_op_step]['A'].remove(lj_adapt_index_comm)
+                                        else:
+                                            device_comms_lj[lj_adapt_index_op_step]['B'].remove(lj_adapt_index_comm)                                        
+                                        lj[adapt_index] = (lj_adapt_index_comm_ins, lj_swap_op_step, lj_adapt_index_comm,True)
+                                    lj[k] = (lj_swap_comm_ins, lj_swap_op_step, lj_swap_comm, True)
+                                    lj[swap_index] = (lj_k_comm_ins, lj_swap_op_step, lj_k_comm, lj_k_endA)
+                                else:
+                                    device_comms_lj[lj_swap_op_step+1]['B'].insert(0,lj_k_comm)
+                                    if lj_k_endA:
+                                        device_comms_lj[lj_k_op_step]['A'].remove(lj_k_comm)
+                                    else:
+                                        device_comms_lj[lj_k_op_step]['B'].remove(lj_k_comm)
+                                    for adapt_index in range(swap_index-1,k,-1):
+                                        lj_adapt_index_comm_ins, lj_adapt_index_op_step, lj_adapt_index_comm, lj_adapt_index_endA = lj[adapt_index]
+                                        device_comms_lj[lj_swap_op_step+1]['B'].insert(0,lj_adapt_index_comm)
+                                        if lj_adapt_index_endA:
+                                            device_comms_lj[lj_adapt_index_op_step]['A'].remove(lj_adapt_index_comm)
+                                        else:
+                                            device_comms_lj[lj_adapt_index_op_step]['B'].remove(lj_adapt_index_comm)   
+                                        lj[adapt_index] = (lj_adapt_index_comm_ins, lj_swap_op_step+1, lj_adapt_index_comm, False)
+                                    lj[k] = (lj_swap_comm_ins, lj_swap_op_step, lj_swap_comm, lj_swap_endA)
+                                    lj[swap_index] = (lj_k_comm_ins, lj_swap_op_step+1, lj_k_comm, False)
+                            else:#前后要交换的都是R的comm instruction
+                                if lj_k_endA:
+                                    lj_k_in_comm_index = device_comms_lj[lj_k_op_step]['A'].index(lj_k_comm)
+                                    device_comms_lj[lj_k_op_step]['A'][lj_k_in_comm_index] = lj_swap_comm
+                                else:
+                                    lj_k_in_comm_index = device_comms_lj[lj_k_op_step]['B'].index(lj_k_comm)
+                                    device_comms_lj[lj_k_op_step]['B'][lj_k_in_comm_index] = lj_swap_comm
+                                if lj_swap_endA:
+                                    lj_swap_in_comm_index = device_comms_lj[lj_swap_op_step]['A'].index(lj_swap_comm)
+                                    device_comms_lj[lj_swap_op_step]['A'][lj_swap_in_comm_index] = lj_k_comm
+                                else:
+                                    lj_swap_in_comm_index = device_comms_lj[lj_swap_op_step]['B'].index(lj_swap_comm)
+                                    device_comms_lj[lj_swap_op_step]['B'][lj_swap_in_comm_index] = lj_k_comm
+                                lj[k] = (lj_swap_comm_ins, lj_swap_op_step, lj_swap_comm, lj_swap_endA)
+                                lj[swap_index] = (lj_k_comm_ins, lj_k_op_step, lj_k_comm, lj_k_endA)                       
+                            #print(f"af_comms_lj:{device_comms_lj[lj_k_op_step:lj_swap_op_step+1]}")
+                            actions.append(f"swap matrix[{j}][{i}][{k}] <-> matrix[{j}][{i}][{swap_index}]")
+                            have_swap = True
+                            break
+                        swap_index += 1
+                    #print(f"af_comms_li:{device_comms_li[k:end_index+1]}")
+                    #print(f"af_comms_lj:{device_comms_lj[k:end_index+1]}")        
+                    if not have_swap:
+                        print(f"no match found for matrix[{i}][{j}][{k}] and matrix[{j}][{i}][{k}]")
+                        actions.append(f"no match found for matrix[{i}][{j}][{k}] and matrix[{j}][{i}][{k}]")
+    # #根据调整好顺序的邻接矩阵 ，按照step重新生成通信队列
+    # fix_comm_graph = []
+    # for device_id, stage_ops in enumerate(comp_graph):
+    #     device_comms_li = []
+    #     for m, current_op in enumerate(stage_ops):
+    #         op, microbatch_id, stage_id, chunk_id, start_time, end_time = current_op
+    #         comm_op = {}
+    #         comm_op['Infor'] = (op, stage_id, microbatch_id)
+    #         comm_op['B'] = []#comp前的通信instructions list
+    #         comm_op['A'] = []
+    #         device_comms_li.append(comm_op)
+    #     fix_comm_graph.append(device_comms_li)
+
+    # for device_id in range(n):
+    #     recv_list = fix_comm_graph[device_id]
+    #     num_step = len(recv_list)
+    #     for match_device in range(n):
+    #         if device_id == match_device :
+    #             continue
+    #         comms = matrix[device_id][match_device]
+    #         for recv_comm_ in comms:
+    #             recv_comm_ins, recv_comm_op_step, recv_comm, recv_comm_endA = recv_comm_
+    #             if recv_comm_ins in ('RG','RA'):
+    #                 if recv_comm_endA:
+    #                     recv_list[recv_comm_op_step]['A'].append(recv_comm)
+    #                 else:
+    #                     recv_list[recv_comm_op_step]['B'].append(recv_comm)
+    # for device_id, device_comms_li in enumerate(fix_comm_graph):
+    #     for comm_per_step in device_comms_li:
+    #         comm_per_step['A'].sort(key=lambda x:x[1])
+    #         comm_per_step['B'].sort(key=lambda x:x[1])
+    return comm_graph, actions
+
+def write_json(jsonpath, content):
+    with open(jsonpath, 'a',encoding='utf-8') as f:
+        json.dump(content, f)
+        f.write('\n')
+
+def generate_ops_josn(comm_graph, stage_alignment, comp_graph):
+    dir = '/cpfs01/user/matenghui/InternEvo/devices_operations/'
+    os.makedirs(dir, exist_ok=True)
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
+    comm_graph_martix  = [[[] for __ in range(len(stage_alignment))] for _ in range(len(stage_alignment))]
+    for device_id in range(len(comp_graph)):
+        jsonpath = dir+"pp"+str(device_id)+"_ops.json"
+        stages = stage_alignment[device_id]
+        stage_ops = comp_graph[device_id]
+        device_comms = comm_graph[device_id]
+        assert len(stage_ops) == len(device_comms)
+        for step_index in range(len(stage_ops)):
+            op, microbatch_id, stage_id, chunk_id, start_time, end_time = stage_ops[step_index]
+            comm_per_step = device_comms[step_index]
+            current_op_sendcomm = ''
+            dst_device = None
+            if op == 'f' and stage_id < max_stage_id and stage_id+1 not in stages:
+                current_op_sendcomm = 'SA'
+                dst_device = _get_deviceid_by_alignment(stage_id+1, stage_alignment)
+            elif op == 'b' and stage_id > min_stage_id and stage_id-1 not in stages:
+                current_op_sendcomm = 'SG'
+                dst_device = _get_deviceid_by_alignment(stage_id-1, stage_alignment)
+
+            if len(comm_per_step['B'])>0:
+                for comm in comm_per_step['B']:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                    if recv_op_type == 'f':
+                        json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                        write_json(jsonpath,json_content)
+                    elif recv_op_type == 'b':
+                        json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                        write_json(jsonpath,json_content)
+            json_content = {"step_type": op, "local_rank": device_id, "step_id": step_index, "chunk_id": chunk_id, "stage_id": stage_id, "microbatch_id": microbatch_id, "operation": "compute"}
+            write_json(jsonpath,json_content)
+            if device_id%2 == 0:
+                if current_op_sendcomm != '':
+                    json_content={"operation": current_op_sendcomm, "local_rank":device_id ,"step_id": step_index, "match_rank": dst_device}
+                    write_json(jsonpath,json_content)
+                if len(comm_per_step['A'])>0:
+                    for comm in comm_per_step['A']:
+                        recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                        if recv_op_type == 'f':
+                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            write_json(jsonpath,json_content)
+                        elif recv_op_type == 'b':
+                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            write_json(jsonpath,json_content)                       
+            else:
+                if len(comm_per_step['A'])>0:
+                    for comm in comm_per_step['A']:
+                        recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                        if recv_op_type == 'f':
+                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            write_json(jsonpath,json_content)
+                        elif recv_op_type == 'b':
+                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            write_json(jsonpath,json_content)    
+                if current_op_sendcomm != '':
+                    json_content={"operation": current_op_sendcomm, "local_rank":device_id ,"step_id": step_index, "match_rank": dst_device}
+                    write_json(jsonpath,json_content)                    
+ 
+def generate_comm_martix(comm_graph, stage_alignment, comp_graph):
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
+    comm_graph_martix  = [[[] for __ in range(len(stage_alignment))] for _ in range(len(stage_alignment))]
+    for device_id in range(len(comp_graph)):
+        stages = stage_alignment[device_id]
+        stage_ops = comp_graph[device_id]
+        device_comms = comm_graph[device_id]
+        assert len(stage_ops) == len(device_comms)
+        for step_index in range(len(stage_ops)):
+            op, microbatch_id, stage_id, chunk_id, start_time, end_time = stage_ops[step_index]
+            comm_per_step = device_comms[step_index]
+            current_op_sendcomm = ''
+            dst_device = None
+            if op == 'f' and stage_id < max_stage_id and stage_id+1 not in stages:
+                current_op_sendcomm = 'SA'
+                dst_device = _get_deviceid_by_alignment(stage_id+1, stage_alignment)
+            elif op == 'b' and stage_id > min_stage_id and stage_id-1 not in stages:
+                current_op_sendcomm = 'SG'
+                dst_device = _get_deviceid_by_alignment(stage_id-1, stage_alignment)
+
+            if len(comm_per_step['B'])>0:
+                for comm in comm_per_step['B']:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                    if recv_op_type == 'f':
+                        comm_graph_martix[device_id][recv_device_id].append(('RA',step_index,comm,False))
+                    elif recv_op_type == 'b':
+                        comm_graph_martix[device_id][recv_device_id].append(('RG',step_index,comm,False))
+            if device_id%2 == 0:
+                if current_op_sendcomm != '':
+                    comm_graph_martix[device_id][dst_device].append((current_op_sendcomm,step_index, "_","_"))
+                if len(comm_per_step['A'])>0:
+                    for comm in comm_per_step['A']:
+                        recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                        if recv_op_type == 'f':
+                            comm_graph_martix[device_id][recv_device_id].append(('RA',step_index,comm,True))
+                        elif recv_op_type == 'b':
+                            comm_graph_martix[device_id][recv_device_id].append(('RG',step_index,comm,True))                        
+            else:
+                if len(comm_per_step['A'])>0:
+                    for comm in comm_per_step['A']:
+                        recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
+                        if recv_op_type == 'f':
+                            comm_graph_martix[device_id][recv_device_id].append(('RA',step_index,comm,True))
+                        elif recv_op_type == 'b':
+                            comm_graph_martix[device_id][recv_device_id].append(('RG',step_index,comm,True))
+                if current_op_sendcomm != '':
+                    comm_graph_martix[device_id][dst_device].append((current_op_sendcomm,step_index, "_","_"))
+    return comm_graph_martix
+ 
+def find_mismatch(matrix):
+    # 定义指令对应关系
+    pair = {
+        "SA": "RA",
+        "RA": "SA",
+        "SG": "RG",
+        "RG": "SG"
+    }
+    n = len(matrix)
+    mismatches = []
+
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            list_ij = matrix[i][j]
+            list_ji = matrix[j][i]
+            if len(list_ij) != len(list_ji):
+                print(f" num_comm are differrent between device{i}:{len(list_ij)}, and device{j}:{len(list_ji)}")
+            for k in range(min(len(list_ij), len(list_ji))):
+                cmd = list_ij[k][0]
+                expected = pair.get(cmd)
+                # if expected is None:
+                #     continue  # 不是要检查的指令
+                if list_ji[k][0] != expected:
+                    mismatches.append({
+                        "i": i,
+                        "j": j,
+                        "k": k,
+                        "cmd": cmd,
+                        "expected": expected,
+                        "actual": list_ji[k][0]
+                    })
+    return mismatches
+def next_sa_sg_idx(lst, start):
+    """返回lst中从start起第一个SA/SG的位置不含start找不到则返回len(lst)"""
+    for idx in range(start+1, len(lst)):
+        if lst[idx][0] in ("SA", "SG"):
+            return idx
+    return len(lst)
+
+def detect_cycle_deadlock_mutichunk(comm_graph, stage_alignment):
     sendFtoSameDevice,sendBtoSameDevice = SendToSameDevice(stage_alignment)
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
-    communication_graph_copy = copy.deepcopy(communication_graph)
-    for rank_id, rank_ops in enumerate(communication_graph_copy):
+    # comm_graph_copy = copy.deepcopy(comm_graph)
+    for rank_id, rank_ops in enumerate(comm_graph):
         if rank_id%2 == 1 : #因为修改了通信，只判断偶数rank（收-算-收-发）
             continue
-        len_rank_ops = len(rank_ops)#rank_ops = communication_graph[rank_id]
-        rank_ops_copy = copy.deepcopy(rank_ops)
-        for current_index, op in enumerate(rank_ops_copy):
+        len_rank_ops = len(rank_ops)#rank_ops = comm_graph[rank_id]
+        # rank_ops_copy = copy.deepcopy(rank_ops)
+        for current_index, op in enumerate(rank_ops):
             #op = rank_ops[current_index]
             op_type, stage_id, microbatch_id = op['Infor']
             #没有发送需求就不会有死锁
@@ -337,22 +761,22 @@ def detect_cycle_deadlock_mutichunk(communication_graph, stage_alignment):
             #判断环
             visited = set()  # 用于记录已经访问过的任务
             rec_stack = set()  # 用于记录当前递归栈中的任务
-            has_cycle, cycle_index = dfs(op,rec_stack, visited,communication_graph_copy,)
+            has_cycle, cycle_index = dfs(op,rec_stack, visited, comm_graph)
             if has_cycle and cycle_index != -1 and current_index < len_rank_ops - 1:
-                communication_graph[rank_id][current_index + 1]['B'].append(communication_graph[rank_id][current_index]['A'].pop(cycle_index))
-                #print(f"cycle dead lock:{op['Infor']}")
-    return communication_graph
+                comm_graph[rank_id][current_index + 1]['B'].append(comm_graph[rank_id][current_index]['A'].pop(cycle_index))
+                # print(f"cycle dead lock:{op['Infor']}")
+    return comm_graph
 
-def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
+def detect_cross_deadlock_mutichunk(comm_graph, stage_alignment):
     sendFtoSameDevice,sendBtoSameDevice = SendToSameDevice(stage_alignment)
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
-    communication_graph_copy = copy.deepcopy(communication_graph)
-    for rank_id, rank_ops in enumerate(communication_graph_copy):
-        # if rank_id%2 == 1 : #因为修改了通信，只判断偶数rank（收-算-发-收）
-        #     continue
+    comm_graph_copy = copy.deepcopy(comm_graph)
+    for rank_id, rank_ops in enumerate(comm_graph_copy):
+        #判断偶数rank（收-算-发-收）
         len_rank_ops = len(rank_ops)
         rank_ops_copy = copy.deepcopy(rank_ops)
         for current_index, op in enumerate(rank_ops_copy):
+            assert len(rank_ops) == len_rank_ops
             op_type, stage_id, microbatch_id = op['Infor']
             #没有发送需求就不会有死锁
             if op_type == 'f':
@@ -378,7 +802,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = judgeop
                     if rank_id == recv_device_id or recv_device_id != dst_rank_id:
                         continue
-                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    recvDevice_op = copy.deepcopy(comm_graph[recv_device_id][index])
                     goonjudge = True
                     for rc in (recvDevice_op['A']+recvDevice_op['B']):
                         next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index = rc
@@ -390,14 +814,14 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                         break
                     while(goonjudge is True):
                         judgedistance += 1
-                        if index+judgedistance < len(communication_graph_copy[recv_device_id]):
-                            recvDevice_nextop_n = copy.deepcopy(communication_graph[recv_device_id][index+judgedistance])
+                        if index+judgedistance < len(comm_graph_copy[recv_device_id]):
+                            recvDevice_nextop_n = copy.deepcopy(comm_graph[recv_device_id][index+judgedistance])
                             recvDevice_nextop_nb = recvDevice_nextop_n['B']
                             for rnb, recvDevice_nextop_n_b in enumerate(recvDevice_nextop_nb):
                                 next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B = recvDevice_nextop_n_b
                                 if (next_recv_op_type_B,next_recv_stage_id_B,next_recv_microbatch_id_B) == op['Infor']:
-                                    rnbresult = communication_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
-                                    communication_graph[recv_device_id][index]['A'].append(rnbresult)
+                                    rnbresult = comm_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
+                                    comm_graph[recv_device_id][index]['A'].append(rnbresult)
                                     goonjudge = False
                                     break
                             if not goonjudge:
@@ -406,14 +830,14 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                             for rna, recvDevice_nextop_n_a in enumerate(recvDevice_nextop_na):
                                 next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A = recvDevice_nextop_n_a
                                 if (next_recv_op_type_A,next_recv_stage_id_A,next_recv_microbatch_id_A) == op['Infor']:
-                                    rnaresult = communication_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
-                                    communication_graph[recv_device_id][index]['A'].append(rnaresult)
+                                    rnaresult = comm_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
+                                    comm_graph[recv_device_id][index]['A'].append(rnaresult)
                                     goonjudge = False
                                     break
                         if not goonjudge:
                             break
                         if index-judgedistance >= 0 :
-                            recvDevice_nextop_bab = communication_graph[recv_device_id][index-judgedistance]
+                            recvDevice_nextop_bab = comm_graph[recv_device_id][index-judgedistance]
                             for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
                                 next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab= rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
@@ -428,14 +852,14 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     if rank_id == recv_device_id or recv_device_id != dst_rank_id:
                         continue
                     if recv_op_type == op_type and microbatch_id == recv_microbatch_id and ((op_type == "f" and recv_stage_id>stage_id) or (op_type == "b" and recv_stage_id<stage_id)):
-                        communication_graph[rank_id][current_index+1]['B'].insert(0,judgeop)
+                        comm_graph[rank_id][current_index+1]['B'].insert(0,judgeop)
                         if judgeop in op['A']:
-                            communication_graph[rank_id][current_index]['A'].remove(judgeop)
+                            comm_graph[rank_id][current_index]['A'].remove(judgeop)
                         else:
-                            communication_graph[rank_id][current_index]['B'].remove(judgeop)
+                            comm_graph[rank_id][current_index]['B'].remove(judgeop)
                         continue
 
-                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    recvDevice_op = copy.deepcopy(comm_graph[recv_device_id][index])
                     goonjudge = True
                     for rc in (recvDevice_op['A']):
                         next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rc
@@ -446,7 +870,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     for rv_,rv in enumerate(recvDevice_op['B']):
                         next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rv
                         if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
-                            communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index]['B'].pop(rv_))
+                            comm_graph[recv_device_id][index]['A'].append(comm_graph[recv_device_id][index]['B'].pop(rv_))
                             goonjudge = False
                             break
                     if not goonjudge:
@@ -458,11 +882,11 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     while(goonjudge is True):
                         judgedistance += 1
                         if index-judgedistance >= 0 :
-                            recvDevice_nextop_bab = copy.deepcopy(communication_graph[recv_device_id][index-judgedistance])
+                            recvDevice_nextop_bab = copy.deepcopy(comm_graph[recv_device_id][index-judgedistance])
                             for rnbab_id,rnbab in enumerate(recvDevice_nextop_bab['A']):
                                 next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
-                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['A'].pop(rnbab_id))
+                                    comm_graph[recv_device_id][index]['A'].append(comm_graph[recv_device_id][index-judgedistance]['A'].pop(rnbab_id))
                                     goonjudge = False
                                     break
                             if not goonjudge:
@@ -470,13 +894,13 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                             for rnbab__id,rnbab_ in enumerate(recvDevice_nextop_bab['B']):
                                 next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab_
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
-                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['B'].pop(rnbab__id))
+                                    comm_graph[recv_device_id][index]['A'].append(comm_graph[recv_device_id][index-judgedistance]['B'].pop(rnbab__id))
                                     goonjudge = False
                                     break
                         if not goonjudge:
                             break
-                        if index+judgedistance < len(communication_graph_copy[recv_device_id]) :
-                            recvDevice_nextop_bab = communication_graph[recv_device_id][index+judgedistance]
+                        if index+judgedistance < len(comm_graph_copy[recv_device_id]) :
+                            recvDevice_nextop_bab = comm_graph[recv_device_id][index+judgedistance]
                             for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
                                 next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
@@ -486,7 +910,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                     # recvnum(communication_graph)
                     if not goonjudge:
                         break
-    return communication_graph
+    return comm_graph
 
 def generate_():
     stage_placement = ""
