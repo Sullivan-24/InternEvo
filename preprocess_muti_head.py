@@ -1,0 +1,630 @@
+import copy
+import json
+from enum import Enum, IntEnum
+class Step(Enum):
+    FORWARD = 'f'
+    BACKWARD = 'b'
+    WEIGHT = 'w'
+class ModuleType(Enum):
+    CHIMERA = 'Chimera'
+    INTERLEAVED = 'Interleaved'
+    VSHAPE = 'Vshape'
+    ONEFONEB = '1f1b'
+    ZBH1 = 'Zbh1'
+    HET = 'Het'
+
+def distence(point,begin,end):
+    if point < begin:
+        return begin - point
+    elif point > end:
+        return point - end
+    else:
+        return 0
+
+def _get_chunkid_by_stageid(stage_id: int,device_id: int,stage_alignment:list) -> int:
+    device_stages = stage_alignment[device_id]
+    for chunk_id in range(len(device_stages)):
+        if device_stages[chunk_id] == stage_id:
+            return chunk_id
+def _get_deviceid_by_stageid(stage_id: int, stage_alignment:list) -> int:
+    for device_id in range(len(stage_alignment)):
+        for stage_in_device in stage_alignment[device_id]:
+            if stage_in_device == stage_id:
+                return device_id
+def get_stageMapdevices(stage_alignment):
+    stageMapdevices = {}
+    for deviceid,stages in enumerate(stage_alignment):
+        for stage in stages:
+            if stage in stageMapdevices:
+                stageMapdevices[stage].append(deviceid)
+            else:
+                stageMapdevices[stage] = []
+                stageMapdevices[stage].append(deviceid)
+    return stageMapdevices
+    
+def recvFromSameDevice(stage_alignment):
+    recvFfromSameDevice = []
+    recvBfromSameDevice = []
+    for stages in stage_alignment:
+        for stage in stages:
+            if stage-1 in stages:
+                recvFfromSameDevice.append(stage)
+            if stage+1 in stages:
+                recvBfromSameDevice.append(stage)
+    return recvFfromSameDevice,recvBfromSameDevice
+def SendToSameDevice(stage_alignment):
+    sendFtoSameDevice = []
+    sendBtoSameDevice = []
+    for stages in stage_alignment:
+        for stage in stages:
+            if stage+1 in stages:
+                sendFtoSameDevice.append(stage)
+            if stage-1 in stages:
+                sendBtoSameDevice.append(stage)
+    return sendFtoSameDevice,sendBtoSameDevice
+
+def recvnum(communication_graph):
+    print('[')
+    # # 输出通信图
+    for rank_id, comm_stage in enumerate(communication_graph):
+        recvF = 0
+        recvB = 0
+        for comm_op in comm_stage:
+            for recvlistB in comm_op['B']:
+                if recvlistB[0] == 'b':
+                    recvB += 1
+                elif recvlistB[0] == 'f':
+                    recvF += 1
+            for recvlistA in comm_op['A']:
+                if recvlistA[0] == 'b':
+                    recvB += 1
+                elif recvlistA[0] == 'f':
+                    recvF += 1
+        print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
+        #print(f'{comm_stage},')
+    print(']')
+
+def count_steps(steps):
+    f_num = 0
+    b_num = 0
+    w_num = 0
+    for s in steps:
+        step_type = s[0]
+        if step_type == 'f':
+            f_num += 1
+            continue
+        elif step_type == 'b':
+            b_num += 1
+        elif step_type == 'w':
+            w_num += 1
+    return f_num, b_num, w_num
+
+def judge_scheduler_type(stage_placement):
+    ranks = len(stage_placement)
+    if ranks <= 1:
+        return None
+    num_chunks_per_device = set()
+    sum_stageId_per_device = set()
+
+    for i in range(ranks):
+        num_chunks_per_device.add(len(stage_placement[i]))
+        sum_stageId = sum(stage_placement[i])
+        sum_stageId_per_device.add(sum_stageId)
+    sum_stageId_per_device = sorted(list(sum_stageId_per_device))
+    num_chunks_per_device = sorted(list(num_chunks_per_device))
+    if len(num_chunks_per_device) > 1:
+        return ModuleType.HET.value
+    else:
+        if len(sum_stageId_per_device) == 1:
+            if sum_stageId_per_device[0] == ranks-1:
+                return ModuleType.CHIMERA.value
+            else:
+                return ModuleType.VSHAPE.value
+        elif 1< len(sum_stageId_per_device) < ranks :
+            return ModuleType.HET.value
+        else:# len(sum_stageId_per_device) == ranks
+            num_chunks = num_chunks_per_device[0]
+            for i in range(1,ranks):
+                if sum_stageId_per_device[i] - sum_stageId_per_device[i-1] != num_chunks:
+                    return ModuleType.HET.value
+            return ModuleType.INTERLEAVED.value
+
+def judge_split_backward(unified_scheduler):
+    if unified_scheduler[0][-1][0] == Step.WEIGHT.value:
+        return True
+    else:
+        return False
+def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:int) -> None:
+    device_steps = [[] for _ in range(len(stage_alignment))]
+    DeviceMapLastStageMbID = [[] for _ in range(len(stage_alignment))]
+    LastStageMbIDMapDevice = [[] for _ in range(num_microbatches)]
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    all_step = input.split('\n')
+    #print(all_step)
+    for step in all_step:
+        if step == '':
+            continue
+        start_time = float(step.split(',')[-2])
+        end_time = float(step.split(',')[-1])
+        infor = step.split(',')[0]
+        if infor is None or infor == '' or infor[0] not in ['b','w','f']:
+            continue
+        step_type, microbatch_id, stage_id, device_id = infor.split('_')
+        microbatch_id = int(microbatch_id)
+        stage_id = int(stage_id)
+        device_id = int(device_id)
+        chunk_id = _get_chunkid_by_stageid(stage_id, device_id, stage_alignment)
+        device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
+        if stage_id  == max_stage_id and step_type == 'f':
+            DeviceMapLastStageMbID[device_id].append(microbatch_id)
+            LastStageMbIDMapDevice[microbatch_id].append(device_id)
+    print(f"DeviceMapLastStageMbID:{DeviceMapLastStageMbID}")
+    # print('[')
+    for d in range(len(stage_alignment)):
+        f_num, b_num, w_num = count_steps(device_steps[d])
+        each_steps_num = len(stage_alignment[d])*num_microbatches
+        print(f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}')
+        #assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
+        device_steps[d].sort(key=lambda x: x[-2])
+    #     print(f'{device_steps[d]},')
+    # print(']')
+    return device_steps, DeviceMapLastStageMbID, LastStageMbIDMapDevice
+def comm_graph_muti_chunk(grouped_data, stage_alignment, stageMapdevices, DeviceMapLastStageMbID, LastStageMbIDMapDevice):   # 假设 grouped_data 是之前生成的计算图
+    # 初始化通信图
+    communication_graph = []
+    # 找到最大值
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
+    for device_id, stage_ops in enumerate(grouped_data):
+        #head分布在各个device的最后一个chunk上，head为laststag，
+        #所有device都需要recv laststage-1的F，而laststage-1所在的device都需要recv laststage的B
+        #我们根据microbatch_id来区分接收和发送到哪个device的Head
+        stages = stage_alignment[device_id]
+        needrecv = {}
+        needrecv['F_stage'] = [s-1 for s in stages if s > min_stage_id and s-1 not in stages]
+        needrecv['F_device'] = [stageMapdevices[s] for s in needrecv['F_stage']]
+        needrecv['B_stage'] = [s+1 for s in stages if s < max_stage_id and s+1 not in stages]
+        needrecv['B_device'] = [stageMapdevices[s] for s in needrecv['B_stage']]
+        # print(needrecv)
+        communication_stage = []
+        # 标记已经接收的操作
+        received_prev_stage = set()  # 记录每个 stage 中已经接收的 f 操作
+        received_next_stage = set()  # 记录每个 stage 中已经接收的 b 操作
+        mbs_in_last_stage = DeviceMapLastStageMbID[device_id]
+        for m, current_op in enumerate(stage_ops):
+            op, microbatch_id, stage_id, chunk_id, start_time, end_time = current_op
+            comm_op = {}
+            comm_op['Infor'] = (op, stage_id, microbatch_id)
+            comm_op['B'] = []
+            comm_op['A'] = []
+            for i in range(len(needrecv['F_stage'])):
+                recvFstage_id = needrecv['F_stage'][i]
+                recvFdevices_id = needrecv['F_device'][i]
+                for recvFdevice_id in recvFdevices_id:
+                    prev_stage_ops = grouped_data[recvFdevice_id]
+                    for n, prev_op in enumerate(prev_stage_ops):
+                        prev_op_name, prev_microbatch_id, prev_stage_id, prev_chunk_id, prev_start_time, prev_end_time = prev_op
+                        # if prev_start_time > end_time:
+                        #     break
+                        # 跳过已经接收的 f 操作
+                        if prev_op in received_prev_stage:
+                            continue
+                        if prev_op_name != 'f' or prev_stage_id != recvFstage_id:
+                            continue
+                        if prev_stage_id == max_stage_id-1 and prev_microbatch_id not in mbs_in_last_stage:
+                            continue
+                        # 如果本次操作为f 且microbatch_id 相同
+                        if op == 'f' and prev_microbatch_id == microbatch_id and prev_stage_id == stage_id-1:           
+                            comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue           
+                        # 计算时间区间
+                        interval_start = prev_end_time
+                        interval_end = prev_stage_ops[n + 1][-2] if n + 1 < len(prev_stage_ops) else prev_end_time
+                        # 计算四个个时间点与区间的距离
+                        current_start_dist = distence(start_time, interval_start, interval_end)
+                        current_end_dist = distence(end_time, interval_start, interval_end)
+                        next_start_dist = distence((stage_ops[m + 1][-2] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        next_end_dist = distence((stage_ops[m + 1][-1] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        # 找到最小距离
+                        min_dist = min(current_start_dist, current_end_dist, next_start_dist,next_end_dist)
+                        #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
+                        if min_dist == current_start_dist:
+                            comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue
+                        elif min_dist == current_end_dist:
+                            comm_op['A'].append(('f',prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue
+                        elif min_dist == next_start_dist:
+                            break
+                        elif min_dist == next_end_dist:
+                            break
+            # 处理下一个 stage (stage+1)
+            for j in range(len(needrecv['B_stage'])):
+                recvBstage_id = needrecv['B_stage'][j]
+                recvBdevices_id = needrecv['B_device'][j]
+                for recvBdevice_id in recvBdevices_id:
+                    next_stage_ops = grouped_data[recvBdevice_id]
+                    for n, next_op in enumerate(next_stage_ops):
+                        next_op_name, next_microbatch_id, next_stage_id, next_chunk_id, next_start_time, next_end_time = next_op
+                        # if next_start_time > end_time:
+                        #     break
+                        if next_op_name != 'b' or recvBstage_id != next_stage_id:
+                            continue
+                        # 跳过已经接收的 f 操作
+                        if next_op in received_next_stage :
+                            continue
+                        # 如果本次操作为b 且 microbatch_id 相同
+                        if op == 'b' and next_microbatch_id == microbatch_id and next_stage_id == stage_id+1:
+                            comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)  # 标记为已接收
+                            continue
+
+                        # 计算时间区间
+                        interval_start = next_end_time
+                        interval_end = next_stage_ops[n + 1][-2] if n + 1 < len(next_stage_ops) else next_end_time
+
+                        # 计算四个时间点与区间的距离
+                        current_start_dist = distence(start_time, interval_start, interval_end)
+                        current_end_dist = distence(end_time, interval_start, interval_end)
+                        next_start_dist = distence((stage_ops[m + 1][-2] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        next_end_dist = distence((stage_ops[m + 1][-1] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        # 找到最小距离
+                        min_dist = min(current_start_dist, current_end_dist, next_start_dist, next_end_dist)
+                        #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
+                        
+                        if min_dist == current_start_dist:
+                            comm_op['B'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)
+                            continue
+                        elif min_dist == current_end_dist:
+                            comm_op['A'].append(('b', next_end_time, recvBdevice_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)
+                            continue
+                        elif min_dist == next_start_dist:
+                            break
+                        elif min_dist == next_end_dist:
+                            break
+            comm_op['B'].sort(key=lambda x:x[1])
+            comm_op['A'].sort(key=lambda x:x[1])
+            communication_stage.append(comm_op)
+        communication_graph.append(communication_stage)
+    communication_graph = detect_cross_deadlock_mutichunk(communication_graph,stage_alignment,stageMapdevices,LastStageMbIDMapDevice)
+    recvnum(communication_graph)
+    return communication_graph
+
+def comm_graph_muti_chunk_(grouped_data, stage_alignment, DeviceMapLastStageMbID):   # 假设 grouped_data 是之前生成的计算图
+    # 初始化通信图
+    communication_graph = []
+    # 找到最大值
+    devices = len(stage_alignment)
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
+    stageMapdevices = stageMapdevices(stage_alignment)
+    for device_id, stage_ops in enumerate(grouped_data):
+        stages = stage_alignment[device_id]
+        needrecvFdevice_stages = {}
+        needrecvBdevice_stages = {}
+        needrecvFstages= [s-1 for s in stages if s > min_stage_id and s-1 not in stages]
+        needrecvBstages = [s+1 for s in stages if s < max_stage_id and s+1 not in stages]
+        for deviceId,stages in enumerate(stage_alignment):
+            needrecvFdevice_stages[deviceId] = []
+            needrecvBdevice_stages[deviceId] = []
+            for stage in stages:
+                if stage in needrecvFstages:
+                    needrecvFdevice_stages[deviceId].append(stage)
+                if stage in needrecvBstages:
+                    needrecvBdevice_stages[deviceId].append(stage)
+
+        #print(needrecv)
+        communication_stage = []
+        # 标记已经接收的操作
+        received_prev_stage = set()  # 记录每个 stage 中已经接收的 f 操作
+        received_next_stage = set()  # 记录每个 stage 中已经接收的 b 操作 
+        mbs_in_last_stage =  DeviceMapLastStageMbID[device_id]
+        for m, current_op in enumerate(stage_ops):
+            op, microbatch_id, stage_id, chunk_id, start_time, end_time = current_op
+            comm_op = {}
+            comm_op['Infor'] = (op, stage_id, microbatch_id)
+            comm_op['B'] = []
+            comm_op['A'] = []
+            for recv_device_id in range(devices):
+                recvFstages_id = needrecvFdevice_stages[recv_device_id]
+                if len(recvFstages_id)>0:
+                    prev_stage_ops = grouped_data[recv_device_id]
+                    for n, prev_op in enumerate(prev_stage_ops):
+                        prev_op_name, prev_microbatch_id, prev_stage_id, prev_chunk_id, prev_start_time, prev_end_time = prev_op
+                        # if prev_start_time > end_time:
+                        #     break
+                        # 跳过已经接收的 f 操作
+                        if prev_op in received_prev_stage:
+                            continue
+                        if prev_op_name != 'f' or prev_stage_id not in recvFstages_id:
+                            continue
+                        if prev_stage_id == max_stage_id -1 and prev_microbatch_id not in mbs_in_last_stage:
+                            continue
+                        # 如果本次操作为f 且microbatch_id 相同
+                        if op == 'f' and prev_microbatch_id == microbatch_id and prev_stage_id == stage_id-1:           
+                            comm_op['B'].append(('f', prev_end_time, recv_device_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue           
+                        # 计算时间区间
+                        interval_start = prev_end_time
+                        interval_end = prev_stage_ops[n + 1][-2] if n + 1 < len(prev_stage_ops) else prev_end_time
+                        # 计算四个个时间点与区间的距离
+                        current_start_dist = distence(start_time, interval_start, interval_end)
+                        current_end_dist = distence(end_time, interval_start, interval_end)
+                        next_start_dist = distence((stage_ops[m + 1][-2] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        next_end_dist = distence((stage_ops[m + 1][-1] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        # 找到最小距离
+                        min_dist = min(current_start_dist, current_end_dist, next_start_dist,next_end_dist)
+                        #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
+                        if min_dist == current_start_dist:
+                            comm_op['B'].append(('f', prev_end_time, recv_device_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue
+                        elif min_dist == current_end_dist:
+                            comm_op['A'].append(('f',prev_end_time, recv_device_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
+                            received_prev_stage.add(prev_op)  # 标记为已接收
+                            continue
+                        elif min_dist == next_start_dist:
+                            break
+                        elif min_dist == next_end_dist:
+                            break
+                recvBstages_id = needrecvBdevice_stages[recv_device_id]
+                if len(recvBstages_id)>0:
+                    next_stage_ops = grouped_data[recv_device_id]
+                    for n, next_op in enumerate(next_stage_ops):
+                        next_op_name, next_microbatch_id, next_stage_id, next_chunk_id, next_start_time, next_end_time = next_op
+                        # if next_start_time > end_time:
+                        #     break
+                        if next_op_name != 'b' or next_stage_id not in recvBstages_id:
+                            continue
+                        # 跳过已经接收的 f 操作
+                        if next_op in received_next_stage :
+                            continue
+                        if next_stage_id == max_stage_id and next_microbatch_id not in mbs_in_last_stage:
+                            continue
+                        # 如果本次操作为b 且 microbatch_id 相同
+                        if op == 'b' and next_microbatch_id == microbatch_id and next_stage_id == stage_id+1:
+                            comm_op['B'].append(('b', next_end_time, recv_device_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)  # 标记为已接收
+                            continue
+
+                        # 计算时间区间
+                        interval_start = next_end_time
+                        interval_end = next_stage_ops[n + 1][-2] if n + 1 < len(next_stage_ops) else next_end_time
+
+                        # 计算四个时间点与区间的距离
+                        current_start_dist = distence(start_time, interval_start, interval_end)
+                        current_end_dist = distence(end_time, interval_start, interval_end)
+                        next_start_dist = distence((stage_ops[m + 1][-2] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        next_end_dist = distence((stage_ops[m + 1][-1] if m + 1 < len(stage_ops) else end_time), interval_start, interval_end)
+                        # 找到最小距离
+                        min_dist = min(current_start_dist, current_end_dist, next_start_dist, next_end_dist)
+                        #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
+                        
+                        if min_dist == current_start_dist:
+                            comm_op['B'].append(('b', next_end_time, recv_device_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)
+                            continue
+                        elif min_dist == current_end_dist:
+                            comm_op['A'].append(('b', next_end_time, recv_device_id, next_stage_id, next_chunk_id, next_microbatch_id,n))
+                            received_next_stage.add(next_op)
+                            continue
+                        elif min_dist == next_start_dist:
+                            break
+                        elif min_dist == next_end_dist:
+                            break
+            comm_op['B'].sort(key=lambda x:x[1])
+            comm_op['A'].sort(key=lambda x:x[1])
+            communication_stage.append(comm_op)
+        communication_graph.append(communication_stage)
+    communication_graph = detect_cross_deadlock_mutichunk(communication_graph,stage_alignment)
+    recvnum(communication_graph)
+    return communication_graph
+
+def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment, stageMapdevices, LastStageMbIDMapDevice):
+    sendFtoSameDevice,sendBtoSameDevice = SendToSameDevice(stage_alignment)
+    max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
+    communication_graph_copy = copy.deepcopy(communication_graph)
+    for rank_id, rank_ops in enumerate(communication_graph_copy):
+        #判断偶数rank（收-算-发-收）
+        len_rank_ops = len(rank_ops)
+        rank_ops_copy = copy.deepcopy(rank_ops)
+        #那些micro
+        for current_index, op in enumerate(rank_ops_copy):
+            op_type, stage_id, microbatch_id = op['Infor']
+            #没有发送需求就不会有死锁
+            if op_type == 'f':
+                if stage_id in sendFtoSameDevice or stage_id == max_stage_id:
+                    continue
+                if stage_id == max_stage_id-1:
+                    dst_rank_id = LastStageMbIDMapDevice[microbatch_id]
+                else:
+                    dst_rank_id = stageMapdevices[stage_id+1]
+            elif op_type == 'b':
+                if stage_id in sendBtoSameDevice or stage_id == 0:
+                    continue
+                #dst_rank_id = _get_deviceid_by_stageid(stage_id-1,stage_alignment)
+                dst_rank_id = stageMapdevices[stage_id-1]
+            else:
+                continue
+
+            if rank_id % 2 == 0:
+                #死锁场景
+                #判断本次操作op计算后需要接收op['A']，如果本次op要接收的 和本次op要发往的 在同一个设备上，则需要下一步判断
+                needjude = op['A']
+                if current_index + 1 < len_rank_ops:
+                    next_op = rank_ops_copy[current_index + 1]
+                    if len(next_op['B'])>0:
+                        needjude += next_op['B']
+                for judgeop in needjude:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = judgeop
+                    if rank_id == recv_device_id or recv_device_id not in dst_rank_id:
+                        continue
+                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    goonjudge = True
+                    for rc in (recvDevice_op['A']+recvDevice_op['B']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_chunk_id, next_recv_microbatch_id, next_index = rc
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            goonjudge = False
+                            break
+                    judgedistance = 0
+                    if not goonjudge:
+                        break
+                    while(goonjudge is True):
+                        judgedistance += 1
+                        if index+judgedistance < len(communication_graph_copy[recv_device_id]):
+                            recvDevice_nextop_n = copy.deepcopy(communication_graph[recv_device_id][index+judgedistance])
+                            recvDevice_nextop_nb = recvDevice_nextop_n['B']
+                            for rnb, recvDevice_nextop_n_b in enumerate(recvDevice_nextop_nb):
+                                next_recv_op_type_B, next_recv_end_time_B, next_recv_device_id_B, next_recv_stage_id_B, next_recv_chunk_id_B, next_recv_microbatch_id_B, next_index_B = recvDevice_nextop_n_b
+                                if (next_recv_op_type_B,next_recv_stage_id_B,next_recv_microbatch_id_B) == op['Infor']:
+                                    rnbresult = communication_graph[recv_device_id][index+judgedistance]['B'].pop(rnb)
+                                    communication_graph[recv_device_id][index]['A'].append(rnbresult)
+                                    goonjudge = False
+                                    break
+                            if not goonjudge:
+                                break
+                            recvDevice_nextop_na = recvDevice_nextop_n['A']
+                            for rna, recvDevice_nextop_n_a in enumerate(recvDevice_nextop_na):
+                                next_recv_op_type_A, next_recv_end_time_A, next_recv_device_id_A, next_recv_stage_id_A, next_recv_chunk_id_A, next_recv_microbatch_id_A, next_index_A = recvDevice_nextop_n_a
+                                if (next_recv_op_type_A,next_recv_stage_id_A,next_recv_microbatch_id_A) == op['Infor']:
+                                    rnaresult = communication_graph[recv_device_id][index+judgedistance]['A'].pop(rna)
+                                    communication_graph[recv_device_id][index]['A'].append(rnaresult)
+                                    goonjudge = False
+                                    break
+                        if not goonjudge:
+                            break
+                        if index-judgedistance >= 0 :
+                            recvDevice_nextop_bab = communication_graph[recv_device_id][index-judgedistance]
+                            for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_chunk_id_bab, next_recv_microbatch_id_bab, next_index_bab= rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    goonjudge = False
+                                    break
+                    if not goonjudge:
+                        break
+            else:
+                needjude = list(reversed(op['A']))+op['B']#TODO
+                for judgeop in needjude:
+                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_stream_id, recv_microbatch_id, index= judgeop
+                    if rank_id == recv_device_id or recv_device_id not in dst_rank_id:
+                        continue
+                    if recv_op_type == op_type and microbatch_id == recv_microbatch_id and ((op_type == "f" and recv_stage_id>stage_id) or (op_type == "b" and recv_stage_id<stage_id)):
+                        communication_graph[rank_id][current_index+1]['B'].insert(0,judgeop)
+                        if judgeop in op['A']:
+                            communication_graph[rank_id][current_index]['A'].remove(judgeop)
+                        else:
+                            communication_graph[rank_id][current_index]['B'].remove(judgeop)
+                        continue
+
+                    recvDevice_op = copy.deepcopy(communication_graph[recv_device_id][index])
+                    goonjudge = True
+                    for rc in (recvDevice_op['A']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rc
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            goonjudge = False
+                            break
+                    judgedistance = 0
+                    for rv_,rv in enumerate(recvDevice_op['B']):
+                        next_recv_op_type, next_recv_end_time, next_recv_device_id, next_recv_stage_id, next_recv_stream_id, next_recv_microbatch_id, next_index = rv
+                        if (next_recv_op_type,next_recv_stage_id,next_recv_microbatch_id) == op['Infor']:
+                            communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index]['B'].pop(rv_))
+                            goonjudge = False
+                            break
+                    if not goonjudge:
+                        break
+                    while(goonjudge is True):
+                        judgedistance += 1
+                        if index-judgedistance >= 0 :
+                            recvDevice_nextop_bab = copy.deepcopy(communication_graph[recv_device_id][index-judgedistance])
+                            for rnbab_id,rnbab in enumerate(recvDevice_nextop_bab['A']):
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['A'].pop(rnbab_id))
+                                    goonjudge = False
+                                    break
+                            if not goonjudge:
+                                break
+                            for rnbab__id,rnbab_ in enumerate(recvDevice_nextop_bab['B']):
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab_
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    communication_graph[recv_device_id][index]['A'].append(communication_graph[recv_device_id][index-judgedistance]['B'].pop(rnbab__id))
+                                    goonjudge = False
+                                    break
+                        if not goonjudge:
+                            break
+                        if index+judgedistance < len(communication_graph_copy[recv_device_id]) :
+                            recvDevice_nextop_bab = communication_graph[recv_device_id][index+judgedistance]
+                            for rnbab in recvDevice_nextop_bab['A']+recvDevice_nextop_bab['B']:
+                                next_recv_op_type_bab, next_recv_end_time_bab, next_recv_device_id_bab, next_recv_stage_id_bab, next_recv_stream_id_bab, next_recv_microbatch_id_bab, next_index_bab = rnbab
+                                if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
+                                    goonjudge = False
+                                    break
+                    if not goonjudge:
+                        break
+    return communication_graph
+
+def generate_():
+    stage_placement = ""
+    input_str=""
+    file_path = '/cpfs01/user/matenghui/InternEvo'
+    with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
+        stage_placement = file.read()
+    with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
+        input_str = file.read()
+    stage_placement = json.loads(stage_placement)
+    num_microbatches = 16
+    pp_size = len(stage_placement)
+    stageMapdevices = get_stageMapdevices(stage_placement)
+    unified_scheduler,DeviceMapLastStageMbID, LastStageMbIDMapDevice = order_result_mutichunk(input_str,stage_placement,num_microbatches)
+    
+    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement,stageMapdevices,DeviceMapLastStageMbID, LastStageMbIDMapDevice)
+    scheduler_type = judge_scheduler_type(stage_placement)
+    split_backward = judge_split_backward(unified_scheduler)
+    last_stage = max(max(row) for row in stage_placement)
+    first_stage = min(min(row) for row in stage_placement)
+    Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
+    #self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
+    # result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
+    #           'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+    #           'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
+    #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
+    # with open(file_path+'/runtime.json','w') as file:
+    #     json.dump(result,file)
+    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}')
+    return num_microbatches, pp_size, stage_placement, scheduler_type ,\
+            split_backward, unified_scheduler, comm_graph, first_stage ,\
+            last_stage, Devices_containing_last_stage
+
+def generate():
+    stage_alignment = read_placement_from_file()
+    pp_size = len(stage_alignment)
+    schedule = read_input_str_in_result_file()
+    num_microbatches = 32#get_num_microbatches(schedule=schedule)
+    unified_scheduler = order_result_mutichunk(schedule,stage_alignment, num_microbatches)
+    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
+    return stage_alignment, unified_scheduler, comm_graph
+
+def get_num_microbatches(schedule:str):
+    max_mid = -1
+    for line in schedule.split('\n'):
+        #if line.startswith("w_"):
+        mid = eval(line.split('_')[1])
+        max_mid = max(mid, max_mid)
+    return max_mid + 1
+
+def read_input_str_in_result_file(filepath="/cpfs01/user/matenghui/InternEvo/result.txt"):
+    input_str = open(file=filepath, mode='r').read()
+    return input_str
+
+def read_placement_from_file(filepath="/cpfs01/user/matenghui/InternEvo/placement.txt"):
+    stage_alignment = eval(open(file=filepath, mode='r').read())
+    return stage_alignment
+
+if __name__ == '__main__':
+    generate_()
