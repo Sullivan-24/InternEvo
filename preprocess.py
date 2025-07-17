@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from enum import Enum, IntEnum
+import os
 class Step(Enum):
     FORWARD = 'f'
     BACKWARD = 'b'
@@ -52,10 +53,10 @@ def SendToSameDevice(stage_alignment):
                 sendBtoSameDevice.append(stage)
     return sendFtoSameDevice,sendBtoSameDevice
 
-def recvnum(communication_graph):
-    print('[')
+def recvnum(comm_graph):
+    #print('[')
     # # 输出通信图
-    for rank_id, comm_stage in enumerate(communication_graph):
+    for rank_id, comm_stage in enumerate(comm_graph):
         recvF = 0
         recvB = 0
         for comm_op in comm_stage:
@@ -69,9 +70,9 @@ def recvnum(communication_graph):
                     recvB += 1
                 elif recvlistA[0] == 'f':
                     recvF += 1
-        print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
-        #print(f'{comm_stage},')
-    print(']')
+        #print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
+        ##print(f'{comm_stage},')
+    #print(']')
 
 def count_steps(steps):
     f_num = 0
@@ -93,7 +94,7 @@ def count_steps(steps):
             r_stages.add(s[2])
     return f_num, b_num, w_num, r_num , r_stages
 
-def dfs(op, rec_stack,visited,communication_graph):
+def dfs(op, rec_stack,visited,comm_graph):
     key = op['Infor']
     if key in rec_stack:
         return True, -1  # 发现环，返回 True 和无效的 index
@@ -106,7 +107,7 @@ def dfs(op, rec_stack,visited,communication_graph):
     for idx, a_task in enumerate(op['A']):
         _, _, recv_device_id, recv_stage_id, _, recv_microbatch_id, recv_index = a_task
         # 找到对应的通信任务
-        has_cycle, cycle_index = dfs(communication_graph[recv_device_id][recv_index],rec_stack, visited, communication_graph,)
+        has_cycle, cycle_index = dfs(comm_graph[recv_device_id][recv_index],rec_stack, visited, comm_graph)
         if has_cycle:
             # 如果发现环，返回 True 和当前任务的 index
             return True, idx
@@ -151,7 +152,7 @@ def judge_split_backward(unified_scheduler):
 def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:int) -> None:
     device_steps = [[] for _ in range(len(stage_alignment))]
     all_step = input.split('\n')
-    #print(all_step)
+    ##print(all_step)
     for step in all_step:
         if step == '':
             continue
@@ -166,7 +167,7 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         device_id = _get_deviceid_by_alignment(stage_id, stage_alignment)
         chunk_id = _get_chunk_by_stage(stage_id, stage_alignment)
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
-    # print('[')
+    #print('[')
     recomp_stages = set()
     for d in range(len(stage_alignment)):
         f_num, b_num, w_num, r_num, r_stages = count_steps(device_steps[d])
@@ -175,9 +176,10 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
         device_steps[d].sort(key=lambda x: x[-2])
         recomp_stages = recomp_stages.union(r_stages)
-    #     print(f'{device_steps[d]},')
-    # print(']')
-    return device_steps,recomp_stages
+    #     #print(f'{device_steps[d]},')
+    #print(']')
+    recomp_stages = list(recomp_stages)
+    return device_steps, recomp_stages
 
 def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph 是之前生成的计算图
     # 初始化通信图
