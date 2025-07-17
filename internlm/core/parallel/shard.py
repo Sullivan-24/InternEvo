@@ -176,12 +176,10 @@ def get_parallel_strategies_split_mode(linear_name: str) -> str:
     else:
         return "unknown"
 
-
 def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: int):
     assert (
         num_items % num_chunks == 0
     ), "Layer length should be divided by the number of chunks, otherwise parameter method is recomended"
-
     parts = [[] for _ in range(pipeline_parallel_size)]
     partition_items = num_items // num_chunks
     for idx in range(num_chunks):
@@ -210,6 +208,21 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
     assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
     return parts
 #TODO
+
+def partition_uniform_alpa(num_items: int, pipeline_parallel_size: int, num_chunks: int, layer_placement):
+    assert pipeline_parallel_size == len(layer_placement)
+    parts = [[] for _ in range(pipeline_parallel_size)]
+    for d in range(pipeline_parallel_size):
+        layers_id = layer_placement[d]
+        parts[d].append((min(layers_id)-1, max(layers_id)))
+    indexes = []
+    for _parts in parts:
+        for s, e in _parts:
+            indexes.extend(list(range(s, e)))
+    assert len(indexes) == len(set(indexes)), indexes  # should have no duplicates
+    assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
+    return parts
+
 def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
     assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
     parts = []
@@ -222,8 +235,10 @@ def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num
                 st = stage * chunk_size
                 part.append((st, st+chunk_size))
             parts.append(part)
-        parts[0].append((num_items,num_items))
-        assert len(parts[0]) == len(stage_placement[0])
+        for device_id,stages in enumerate(stage_placement):
+            if num_items in stages:
+                parts[device_id].append((num_items,num_items))
+
     else:
         last_stage = max(max(row) for row in stage_placement)
         first_stage = min(min(row) for row in stage_placement)
@@ -306,8 +321,11 @@ def pipeline_parallel_sharding_wrapper(
     """
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+    if gpc.config.alpa:
+        all_parts = partition_uniform_alpa(num_layers, pipeline_size, num_chunks, gpc.config.layer_placement)
+    else:
+        all_parts = partition_uniform(num_layers, pipeline_size, num_chunks)
 
-    all_parts = partition_uniform(num_layers, pipeline_size, num_chunks)
     parts = all_parts[pipeline_rank]
 
     if gpc.is_rank_for_log():

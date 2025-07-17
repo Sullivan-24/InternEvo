@@ -16,13 +16,12 @@ from internlm.utils.common import SchedulerHook, get_current_device
 from internlm.utils.logger import get_logger
 from internlm.utils.parallel import is_using_isp
 from .pipeline_scheduler_1f1b import (
-    InterleavedPipelineScheduler,
+    InterleavedPipelineScheduler,do_compute,
     PipelineScheduler,
     pack_return_tensors,
 )
 
 logger = get_logger(__file__)
-import time
 class WeightGradStore:
     """
     When using zero bubble pp, WeightGradStore is used to store the args and func for computating weight grad.
@@ -38,8 +37,8 @@ class WeightGradStore:
     @classmethod
     def set_weight_grad_queue(cls, num_chunks, num_microbatches):
         cls._weight_grad_queue = [
-        [[] for _ in range(gpc.config.num_microbatches)] 
-        for _ in range(gpc.config.num_chunks)
+        [[] for _ in range(num_microbatches)] 
+        for _ in range(num_chunks)
         ]
 
     @classmethod
@@ -372,7 +371,6 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
 
         return output, label, accum_loss, accum_moe_loss
 
-
 class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
     """
     ZB-V Scheduler.
@@ -655,7 +653,12 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
         # 1W
         WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
-        #time.sleep(0.048)
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                for _ in range(gpc.config.sleep_backward_time):
+                    do_compute()
         tensor_recv_prev, tensor_recv_next = async_communicator.wait_and_receive()
 
         # for the special case, input_obj has already been received and appended at the end of warmup.
@@ -718,7 +721,12 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
 
         WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
-        #time.sleep(0.048)
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                for _ in range(gpc.config.sleep_backward_time):
+                    do_compute()
         _, output_obj_grad = async_communicator.wait_and_receive()
         self._output_obj_grads[1 - chunk_id].append(output_obj_grad)
 
@@ -954,7 +962,12 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
 
         WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
-        #time.sleep(0.048)
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                for _ in range(gpc.config.sleep_backward_time):
+                    do_compute()
         engine.optimizer.skip_grad_reduce = origin_skip
 
         _, output_obj_grad = async_communicator.wait_and_receive()
@@ -1034,7 +1047,12 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
             # 1W
             WeightGradStore.pop()
             self._call_hooks("after_backward", input_obj_grad)
-            #time.sleep(0.048)
+            if gpc.config.heter:
+                pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+                local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+                if local_rank >= pp_size/2:
+                    for _ in range(gpc.config.sleep_backward_time):
+                        do_compute()
             engine.optimizer.skip_grad_reduce = origin_skip
 
             tensor_recv_prev, tensor_recv_next = async_communicator.wait_and_receive()

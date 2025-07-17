@@ -24,9 +24,16 @@ from internlm.utils.logger import get_logger
 from internlm.utils.timeout import llm_timeout
 
 from .base_scheduler import BaseScheduler
-
 logger = get_logger(__file__)
 
+#模拟H800计算耗时1ms
+def do_compute():
+    N = 1024
+    a = torch.rand(N, N, device='cuda')
+    b = torch.rand(N, N, device='cuda')
+    # GPU矩阵乘法
+    for __ in range(50):
+        torch.matmul(a, b)
 
 def get_tensor_shape():
     if hasattr(gpc.config, "TENSOR_SHAPE"):
@@ -299,7 +306,24 @@ class PipelineScheduler(BaseScheduler):
         else:
             output_obj = self._call_engine(engine.model, data)
         self._call_hooks("after_forward", output_obj)
-
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                if gpc.config.alpa:
+                    layers_id = gpc.config.layer_placement[local_rank]
+                    num_layers = max(layers_id) - min(layers_id) + 1
+                    sleep_times_ = num_layers*gpc.config.sleep_forward_time_perlayer
+                    if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):#head计算需要增加3个layer F 时间 
+                        sleep_times_ += 3*gpc.config.sleep_forward_time_perlayer                   
+                    for _ in range(sleep_times_):
+                        do_compute()
+                else:
+                    sleep_times_ = gpc.config.sleep_forward_time
+                    if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):
+                        sleep_times_ += 3*gpc.config.sleep_forward_time_perlayer
+                    for _ in range(sleep_times_):
+                        do_compute()
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             self._call_hooks("post_helper_func", output_obj, label)
             if return_output_label:
@@ -388,7 +412,27 @@ class PipelineScheduler(BaseScheduler):
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
         self._call_hooks("after_backward", input_obj_grad)
-
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                if gpc.config.pp_mode == 'unified':
+                    for _ in range(gpc.config.sleep_backward_time_perlayer):
+                        do_compute()
+                elif gpc.config.alpa:
+                    layers_id = gpc.config.layer_placement[local_rank]
+                    num_layers = max(layers_id) - min(layers_id) + 1
+                    sleep_times = num_layers*gpc.config.sleep_backward_time_perlayer
+                    if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):#head计算需要增加3个layer F 时间 
+                        sleep_times += 3*gpc.config.sleep_forward_time_perlayer
+                    for _ in range(sleep_times):
+                        do_compute()
+                else:
+                    sleep_times = gpc.config.sleep_backward_time
+                    if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):
+                        sleep_times += 3*gpc.config.sleep_forward_time_perlayer
+                    for _ in range(sleep_times):
+                        do_compute()
         return input_obj_grad
 
     def _forward_only_step(self, engine, return_loss=True, return_output_label=True):
@@ -882,6 +926,15 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
             output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
         self._call_hooks("after_forward", output_obj)
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                sleep_times_ = gpc.config.sleep_forward_time
+                if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):
+                    sleep_times_ += 3*gpc.config.sleep_forward_time_perlayer
+                for _ in range(sleep_times_):
+                    do_compute()
 
         if gpc.is_pipeline_last_stage():
             self._call_hooks("post_helper_func", output_obj, label)
@@ -969,7 +1022,11 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         output_obj = self._output_objs[chunk_id].pop(0)
         output_obj_grad = self._output_obj_grads[chunk_id].pop(0)
         moe_loss = self._moe_losses[chunk_id].pop(0)
-
+        # if stage_id == self.first_stage:
+        #     print(f"input_obj:{input_obj.shape if input_obj is not None else 0}, \
+        #             output_obj:{output_obj.shape if output_obj is not None else 0}, \
+        #             output_obj_grad:{output_obj_grad.shape if output_obj_grad is not None else 0}, \
+        #             moe_loss:{moe_loss.shape if moe_loss is not None else 0}")
         input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
 
         return input_obj_grad

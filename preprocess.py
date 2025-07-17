@@ -76,6 +76,8 @@ def count_steps(steps):
     f_num = 0
     b_num = 0
     w_num = 0
+    r_num = 0
+    r_stages = set()
     for s in steps:
         step_type = s[0]
         if step_type == 'f':
@@ -85,7 +87,10 @@ def count_steps(steps):
             b_num += 1
         elif step_type == 'w':
             w_num += 1
-    return f_num, b_num, w_num
+        elif step_type == 'r':
+            r_num += 1
+            r_stages.add(s[2])
+    return f_num, b_num, w_num, r_num , r_stages
 
 def dfs(op, rec_stack,visited,communication_graph):
     key = op['Infor']
@@ -152,7 +157,7 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         start_time = float(step.split(',')[-2])
         end_time = float(step.split(',')[-1])
         infor = step.split(',')[0]
-        if infor is None or infor == '' or infor[0] not in ['b','w','f']:
+        if infor is None or infor == '' or infor[0] not in ['b','w','f','r']:
             continue
         step_type, microbatch_id, stage_id = infor.split('_')
         microbatch_id = int(microbatch_id)
@@ -161,24 +166,24 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         chunk_id = _get_chunk_by_stage(stage_id, stage_alignment)
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
     # print('[')
+    recomp_stages = set()
     for d in range(len(stage_alignment)):
-        f_num, b_num, w_num = count_steps(device_steps[d])
+        f_num, b_num, w_num, r_num, r_stages = count_steps(device_steps[d])
         each_steps_num = len(stage_alignment[d])*num_microbatches
+        assert r_num == len(r_stages)*num_microbatches, f'r_num:{r_num} must be equal to r_stages:{r_stages}*num_microbatces:{num_microbatches}'
         assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
         device_steps[d].sort(key=lambda x: x[-2])
+        recomp_stages = recomp_stages.union(r_stages)
     #     print(f'{device_steps[d]},')
     # print(']')
-    return device_steps
+    return device_steps,recomp_stages
 def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_data 是之前生成的计算图
     # 初始化通信图
     communication_graph = []
-
     # 找到最大值
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
-
     for device_id, stage_ops in enumerate(grouped_data):
-
         stages = stage_alignment[device_id]
         needrecv = {}
         needrecv['F_stage'] = [s-1 for s in stages if s > min_stage_id and s-1 not in stages]
@@ -189,18 +194,13 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
         communication_stage = []
         # 标记已经接收的操作
         received_prev_stage = set()  # 记录每个 stage 中已经接收的 f 操作
-        received_next_stage = set()  # 记录每个 stage 中已经接收的 b 操作
-        
+        received_next_stage = set()  # 记录每个 stage 中已经接收的 b 操作    
         for m, current_op in enumerate(stage_ops):
             op, microbatch_id, stage_id, chunk_id, start_time, end_time = current_op
             comm_op = {}
             comm_op['Infor'] = (op, stage_id, microbatch_id)
             comm_op['B'] = []
             comm_op['A'] = []
-            # if op != 'f' and op !='b':
-            #     communication_stage.append(comm_op)
-            #     continue
-            # 处理上一个 stage (stage-1)
             for i in range(len(needrecv['F_stage'])):
                 recvFstage_id = needrecv['F_stage'][i]
                 recvFdevice_id = needrecv['F_device'][i]
@@ -219,11 +219,9 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
                         continue
-                    
                     # 计算时间区间
                     interval_start = prev_end_time
                     interval_end = prev_stage_ops[n + 1][-2] if n + 1 < len(prev_stage_ops) else prev_end_time
-
                     # 计算四个个时间点与区间的距离
                     current_start_dist = distence(start_time, interval_start, interval_end)
                     current_end_dist = distence(end_time, interval_start, interval_end)
@@ -232,7 +230,6 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                     # 找到最小距离
                     min_dist = min(current_start_dist, current_end_dist, next_start_dist,next_end_dist)
                     #这里将这个判断提前，为了防止出现两个操作各自的结束和开始在同一个时间点的情况，尽量让交给下一个操作前接收
-
                     if min_dist == current_start_dist:
                         comm_op['B'].append(('f', prev_end_time, recvFdevice_id, prev_stage_id,prev_chunk_id, prev_microbatch_id, n))
                         received_prev_stage.add(prev_op)  # 标记为已接收
@@ -245,7 +242,6 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         break
                     elif min_dist == next_end_dist:
                         break
-
             # 处理下一个 stage (stage+1)
             for j in range(len(needrecv['B_stage'])):
                 recvBstage_id = needrecv['B_stage'][j]
@@ -294,20 +290,10 @@ def comm_graph_muti_chunk(grouped_data, stage_alignment):   # 假设 grouped_dat
                         break
             comm_op['B'].sort(key=lambda x:x[1])
             comm_op['A'].sort(key=lambda x:x[1])
-
-            # 将通信元组添加到当前 stage 的通信图中
             communication_stage.append(comm_op)
-        # 将当前 stage 的通信图添加到总的通信图中
         communication_graph.append(communication_stage)
-        #print(communication_stage)
-    #communication_graph = detect_cycle_deadlock_mutichunk(communication_graph,stage_alignment)
     communication_graph = detect_cross_deadlock_mutichunk(communication_graph,stage_alignment)
     recvnum(communication_graph)
-    # print('[')
-    # # # 输出通信图
-    # for rank_id, comm_stage in enumerate(communication_graph):
-    #     print(f'{comm_stage},')
-    # print(']')
     return communication_graph
 
 def detect_cycle_deadlock_mutichunk(communication_graph, stage_alignment):
@@ -348,8 +334,7 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     communication_graph_copy = copy.deepcopy(communication_graph)
     for rank_id, rank_ops in enumerate(communication_graph_copy):
-        # if rank_id%2 == 1 : #因为修改了通信，只判断偶数rank（收-算-发-收）
-        #     continue
+        #判断偶数rank（收-算-发-收）
         len_rank_ops = len(rank_ops)
         rank_ops_copy = copy.deepcopy(rank_ops)
         for current_index, op in enumerate(rank_ops_copy):
@@ -451,10 +436,6 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                             break
                     if not goonjudge:
                         break
-                    # opInfor = op['Infor']
-                    # print(f'opInfor:{opInfor}')
-                    # print(f'needjude:{judgeop}')
-                    # print(f'recvDevice_op:{recvDevice_op}')
                     while(goonjudge is True):
                         judgedistance += 1
                         if index-judgedistance >= 0 :
@@ -482,8 +463,6 @@ def detect_cross_deadlock_mutichunk(communication_graph, stage_alignment):
                                 if (next_recv_op_type_bab,next_recv_stage_id_bab,next_recv_microbatch_id_bab) == op['Infor']:
                                     goonjudge = False
                                     break
-                    #print(judgedistance)
-                    # recvnum(communication_graph)
                     if not goonjudge:
                         break
     return communication_graph
@@ -497,52 +476,28 @@ def generate_():
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    num_microbatches = 32
+
     pp_size = len(stage_placement)
-    unified_scheduler = order_result_mutichunk(input_str,stage_placement,num_microbatches)
+    num_microbatches = 16
+    unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
-    scheduler_type = str(judge_scheduler_type(stage_placement))
+    scheduler_type = judge_scheduler_type(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
     first_stage = min(min(row) for row in stage_placement)
     Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
-    #self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
-    # result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
-    #           'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
-    #           'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
-    #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
-    # with open(file_path+'/runtime.json','w') as file:
-    #     json.dump(result,file)
-    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}')
+    # self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
+    result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
+              'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+              'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
+               'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
+    with open(file_path+'/runtime.json','w') as file:
+        json.dump(result,file)
+    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+          recomp_stages:{recomp_stages}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
-            last_stage, Devices_containing_last_stage
-
-def generate():
-    stage_alignment = read_placement_from_file()
-    pp_size = len(stage_alignment)
-    schedule = read_input_str_in_result_file()
-    num_microbatches = 32#get_num_microbatches(schedule=schedule)
-    unified_scheduler = order_result_mutichunk(schedule,stage_alignment, num_microbatches)
-    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
-    return stage_alignment, unified_scheduler, comm_graph
-
-def get_num_microbatches(schedule:str):
-    max_mid = -1
-    for line in schedule.split('\n'):
-        #if line.startswith("w_"):
-        mid = eval(line.split('_')[1])
-        max_mid = max(mid, max_mid)
-    return max_mid + 1
-
-def read_input_str_in_result_file(filepath="/cpfs01/user/matenghui/InternEvo/result.txt"):
-    input_str = open(file=filepath, mode='r').read()
-    return input_str
-
-def read_placement_from_file(filepath="/cpfs01/user/matenghui/InternEvo/placement.txt"):
-    stage_alignment = eval(open(file=filepath, mode='r').read())
-    return stage_alignment
+            last_stage, Devices_containing_last_stage, recomp_stages
 
 if __name__ == '__main__':
-    #generate_()
-    generate()
+    generate_()
