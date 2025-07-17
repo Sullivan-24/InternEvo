@@ -45,6 +45,7 @@ class CheckpointFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, run_function, activation_offload=False, *args):  # pylint: disable=W1113
+        # print(f"CheckpointFunction-forward-start,run_function:{run_function},ctx:{ctx}")
         check_backward_validity(args)
         ctx.run_function = run_function
         ctx.activation_offload = activation_offload
@@ -89,10 +90,15 @@ class CheckpointFunction(torch.autograd.Function):
             ctx.tensor_inputs = tensor_inputs
         else:
             ctx.save_for_backward(*tensor_inputs)
-        return outputs
+        # print("CheckpointFunction-forward-end")
+        if gpc.config.open_recomp:
+            return outputs, ctx
+        else:
+            return outputs
 
     @staticmethod
-    def backward(ctx, *args):
+    def re_forward(ctx):
+        # print(f"CheckpointFunction-re_forward-start, ctx:{ctx}")
         if not torch.autograd._is_checkpoint_valid():
             raise RuntimeError(
                 "Checkpointing is not compatible with .grad() or when an `inputs` parameter is "
@@ -140,18 +146,87 @@ class CheckpointFunction(torch.autograd.Function):
         for parallel_mode, state in bwd_seed_states.items():
             set_seed_states(parallel_mode, state)
         set_mode(bwd_current_mode, update_rng_current_mode=False)
+        ctx.detached_inputs = detached_inputs
+        ctx.outputs = outputs
 
-        # run backward() with only tensor that requires grad
-        outputs_with_grad = []
-        args_with_grad = []
-        for i in range(len(outputs)):
-            if torch.is_tensor(outputs[i]) and outputs[i].requires_grad:
-                outputs_with_grad.append(outputs[i])
-                args_with_grad.append(args[i])
-        if len(outputs_with_grad) == 0:
-            raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
-        torch.autograd.backward(outputs_with_grad, args_with_grad)
-        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
+    @staticmethod
+    def backward(ctx, *args):
+        # print(f"CheckpointFunction-backward-start,ctx:{ctx},ctx.run_function:{ctx.run_function}")
+        if gpc.config.open_recomp:
+            detached_inputs, outputs = ctx.detached_inputs, ctx.outputs
+            # run backward() with only tensor that requires grad
+            outputs_with_grad = []
+            args_with_grad = []
+            for i in range(len(outputs)):
+                if torch.is_tensor(outputs[i]) and outputs[i].requires_grad:
+                    outputs_with_grad.append(outputs[i])
+                    args_with_grad.append(args[i])
+            if len(outputs_with_grad) == 0:
+                raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
+            torch.autograd.backward(outputs_with_grad, args_with_grad)
+            grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
+        else:            
+            if not torch.autograd._is_checkpoint_valid():
+                raise RuntimeError(
+                    "Checkpointing is not compatible with .grad() or when an `inputs` parameter is "
+                    "passed to .backward(). Please use .backward() and do not pass its `inputs` argument."
+                )
+            # Copy the list to avoid modifying original list.
+            inputs = list(ctx.inputs)
+            tensor_indices = ctx.tensor_indices
+            gpc.is_forward = False
+
+            if ctx.activation_offload:
+                tensors = ctx.tensor_inputs
+            else:
+                tensors = ctx.saved_tensors
+
+            # store the current states
+            bwd_cpu_rng_state = torch.get_rng_state()
+            sync_states()
+            bwd_seed_states = get_states(copy=True)
+            bwd_current_mode = get_current_mode()
+
+            # set the states to what it used to be
+            torch.set_rng_state(ctx.fwd_cpu_rng_state)
+            for parallel_mode, state in ctx.fwd_seed_states.items():
+                set_seed_states(parallel_mode, state)
+            set_mode(ctx.fwd_current_mode, update_rng_current_mode=False)
+            if ctx.activation_offload:
+                tensors = copy_to_device(tensors, ctx.device)
+
+            # Fill in inputs with appropriate saved tensors.
+            for i, idx in enumerate(tensor_indices):
+                inputs[idx] = tensors[i]
+            detached_inputs = detach_variable(tuple(inputs))
+            #TODO
+            if ctx.had_autocast_in_fwd:
+                with torch.enable_grad(), internlm_accelerator.amp.autocast():
+                    outputs = ctx.run_function(*detached_inputs)
+            else:
+                with torch.enable_grad():
+                    outputs = ctx.run_function(*detached_inputs)
+
+            if isinstance(outputs, torch.Tensor):
+                outputs = (outputs,)
+            # recover the rng states
+            torch.set_rng_state(bwd_cpu_rng_state)
+            for parallel_mode, state in bwd_seed_states.items():
+                set_seed_states(parallel_mode, state)
+            set_mode(bwd_current_mode, update_rng_current_mode=False)
+
+            # run backward() with only tensor that requires grad
+            outputs_with_grad = []
+            args_with_grad = []
+            for i in range(len(outputs)):
+                if torch.is_tensor(outputs[i]) and outputs[i].requires_grad:
+                    outputs_with_grad.append(outputs[i])
+                    args_with_grad.append(args[i])
+            if len(outputs_with_grad) == 0:
+                raise RuntimeError("none of output has requires_grad=True," " this checkpoint() is not necessary")
+            torch.autograd.backward(outputs_with_grad, args_with_grad)
+            grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
+        # print(f"CheckpointFunction-backward-end")
         return (None, None) + grads
 
 
@@ -166,6 +241,7 @@ def activation_checkpoint(function, activation_offload, *args, use_reentrant: bo
     Returns:
         Output of running function with provided args.
     """
+    # print(f"activation_checkpoint-begin")
     if use_reentrant:
         return CheckpointFunction.apply(function, activation_offload, *args)
     else:
@@ -174,6 +250,10 @@ def activation_checkpoint(function, activation_offload, *args, use_reentrant: bo
             activation_offload,
             *args,
         )
+    
+def re_activation_checkpoint(ctxsInOneChunk):
+    for ctx in ctxsInOneChunk:
+        CheckpointFunction.re_forward(ctx)
 
 
 def _checkpoint_without_reentrant(function, activation_offload=False, *args):  # pylint: disable=W1113

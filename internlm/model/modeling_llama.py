@@ -204,6 +204,7 @@ class Llama2Decoder(nn.Module):
                         )
 
     def forward(self, hidden_states, residual=None, **kwargs):
+        # print(f"Llama2Decoder_layer_idx:{self.layer_idx},forward-begin")
         if self.checkpoint and self.training:
             # NOTICE: activation_checkpiont do not support kwargs when use_reentrant = True.
             args = convert_attn_kwargs_to_args(kwargs)
@@ -220,6 +221,7 @@ class Llama2Decoder(nn.Module):
             cu_seqlens: 1d LongTensor, len(cu_seqlens) = hidden_states + 1
             indexes: the length of index is same as hidden states, which stand for the current position
         """
+        # print(f"Llama2Decoder_layer_idx:{self.layer_idx},_forward-begin")
         if self.prenorm:
 
             def _dropout_and_norm_attn(_residual, _hidden_states):
@@ -371,7 +373,7 @@ class Llama2(BaseModel):
         checkpoint_layer_num = int(num_layers * checkpoint)
         self.embed_grad_scale = embed_grad_scale
         self.parallel_output = parallel_output
-
+        self.recomp_layers = gpc.config.recomp_layers
         if first:
             self.tok_embeddings = Embedding1D(num_embeddings=vocab_size, embedding_dim=hidden_size)
 
@@ -380,7 +382,7 @@ class Llama2(BaseModel):
                     normal_(std=embedding_init_std)(param)
                 else:
                     uniform_(std=embedding_init_std)(param)
-
+        
         self.layers = nn.ModuleList(
             [
                 Llama2Decoder(
@@ -392,7 +394,7 @@ class Llama2(BaseModel):
                     drop_rate=drop_rate,
                     dtype=dtype,
                     layer_norm_epsilon=layer_norm_epsilon,
-                    checkpoint=lid < checkpoint_layer_num,
+                    checkpoint=lid < checkpoint_layer_num,#TODO lid in recomp_stages
                     layer_idx=lid + start_layer_idx,  # This parameter is used for caching during generation
                     residual_in_fp32=residual_in_fp32,
                     device=device,
@@ -440,6 +442,7 @@ class Llama2(BaseModel):
                     uniform_(std=out_head_init_std)(param)
 
     def forward(self, hidden_states=None, input_ids=None, **kwargs):
+        # print("Llama2-forward-begin")
         # attention_mask: compute attention on the places where the value is 1
         if hasattr(self, "tok_embeddings") and input_ids is not None:
             hidden_states = self.tok_embeddings(input_ids)
@@ -447,18 +450,23 @@ class Llama2(BaseModel):
                 hidden_states = (
                     self.embed_grad_scale * hidden_states + (1 - self.embed_grad_scale) * hidden_states.detach()
                 )
-
+        ctxsInOneChunk = []
         for _, block in enumerate(self.layers):
-            hidden_states = block(hidden_states, residual=None, **kwargs)
-
+            # print(f"layer_id:{_}")
+            if _ in self.recomp_layers:#TODO maybe add the recomp_microbatches
+                hidden_states, ctx = block(hidden_states, residual=None, **kwargs) # ctx is output from layer, but the forward output in one chunk, one chunk may contain some layers
+                ctxsInOneChunk.append(ctx)
+            else:
+                hidden_states = block(hidden_states, residual=None, **kwargs)
         if hasattr(self, "norm"):
             hidden_states = self.norm(hidden_states.float())
-
         if hasattr(self, "output"):
             hidden_states = self.output(hidden_states)
-
-        return hidden_states
-
+        # print("Llama2-forward-end")
+        if len(ctxsInOneChunk) == 0:
+            return hidden_states
+        else:
+            return hidden_states, ctxsInOneChunk
     @staticmethod
     def load_hf_weights(folder: str, model: nn.Module):
         """NOTE: when loading huggingface's llama pretrained weights, you should set `adapt_hf=True` in your config."""

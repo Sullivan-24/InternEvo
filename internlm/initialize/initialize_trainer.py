@@ -103,6 +103,7 @@ def initialize_trainer(
 
     if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
         gpc.config.NUM_MICRO_BATCHES = gpc.config.data.micro_num
+        # gpc.config.NUM_MICRO_BATCHES = gpc.config.dp_micro_num[gpc.get_local_rank(ParallelMode.DATA)]#TODO Falcon, we can dispatch different num of micro_num for different dp rank
         tensor_shape = get_tensor_shape()
         use_interleaved = (
             hasattr(gpc.config, "model")

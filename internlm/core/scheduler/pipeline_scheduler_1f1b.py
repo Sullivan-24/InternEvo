@@ -8,7 +8,7 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
-
+from internlm.solver.activation_checkpoint import re_activation_checkpoint
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.core.engine import Engine
@@ -300,11 +300,13 @@ class PipelineScheduler(BaseScheduler):
         data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
 
         self._call_hooks("before_forward", data)
+        # print(f"microbatch_offset:{self.microbatch_offset},_forward_step-START")
         if hasattr(gpc.config.model, "num_experts"):
             # moe is used
             output_obj, moe_losses = self._call_engine(engine.model, data)
         else:
             output_obj = self._call_engine(engine.model, data)
+        # print(f"microbatch_offset:{self.microbatch_offset},_forward_step-END")
         self._call_hooks("after_forward", output_obj)
         if gpc.config.heter:
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
@@ -385,6 +387,7 @@ class PipelineScheduler(BaseScheduler):
         skip_grad_sync = self._get_current_microbatch_id(step_id) != self.num_microbatches - 1
 
         self._call_hooks("before_backward", output_obj, output_obj_grad)
+        # print(f"microbatch_offset:{self.microbatch_offset},_backward_step-START")
         with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
             if moe_loss is None or moe_loss.item() == 0.0:
                 if output_obj_grad is None:
@@ -411,6 +414,7 @@ class PipelineScheduler(BaseScheduler):
                 input_obj_grad = []
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
+        # print(f"microbatch_offset:{self.microbatch_offset},_backward_step-END")
         self._call_hooks("after_backward", input_obj_grad)
         if gpc.config.heter:
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
@@ -970,6 +974,85 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
 
         return output_obj
+
+    def re_forward_step(self, engine, chunk_id, input_obj=None):
+        """Forward step for passed-in model. If it is the first stage, the input tensor
+        is obtained from data_iterator, otherwise the passed-in input_obj is used.
+        Returns output tensor. This is a helper function and can be ignored by users.
+
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            chunk_id (int): The id of model chunks.
+        Returns:
+            Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: output or the loss value of the current
+                pipeline stage.
+        """
+        gpc.set_virtual_pipeline_parallel_rank(chunk_id)
+
+        if gpc.is_pipeline_first_stage() and len(self._input_objs[chunk_id]) == len(self._output_objs[chunk_id]):
+            self._input_objs[chunk_id].append(None)
+
+        if input_obj is None:
+            input_obj = self._input_objs[chunk_id][-1]
+
+        if not gpc.is_pipeline_first_stage():
+            assert input_obj is not None, f"{gpc.get_global_rank()} input is None"
+        micro_batch_data = self.load_micro_batch(chunk_id)
+        data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
+
+        self._call_hooks("before_forward", data)
+        if hasattr(gpc.config.model, "num_experts"):
+            output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
+        else:
+            output_obj, ctxsInOneChunk = self._call_engine(engine.model[chunk_id], data)
+        # Convert output_obj to fp32 when last model chunk of last stage
+        if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
+            output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
+        self._call_hooks("after_forward", output_obj)
+        if gpc.config.heter:
+            pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            if local_rank >= pp_size/2:
+                sleep_times_ = gpc.config.sleep_forward_time
+                if gpc.is_last_rank(parallel_mode=ParallelMode.PIPELINE):
+                    sleep_times_ += 3*gpc.config.sleep_forward_time_perlayer
+                for _ in range(sleep_times_):
+                    do_compute()
+
+        if gpc.is_pipeline_last_stage():
+            self._call_hooks("post_helper_func", output_obj, label)
+
+            if self._return_tensors is not None:
+                self._return_tensors.append((output_obj, label))
+            if self._accum_loss is not None:
+                self._call_hooks("before_criterion", output_obj, label)
+                loss = self._call_engine_criterion(engine, output_obj, label)
+                self._call_hooks("after_criterion", loss)
+
+                loss_reduced = loss / self.num_microbatches
+                self._accum_loss.add_(loss_reduced.detach())
+                output_obj = loss_reduced
+
+        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
+            moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
+
+            # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
+            # so we need to do allreduce
+            if gpc.config.parallel.sequence_parallel or gpc.config.parallel.expert.no_tp:
+                dist.all_reduce(moe_loss, op=dist.ReduceOp.AVG, group=gpc.get_group(ParallelMode.TENSOR))
+            moe_loss /= self.num_microbatches
+
+            if self._accum_moe_loss is not None:
+                self._accum_moe_loss.add_(moe_loss.detach())
+        else:
+            moe_loss = None
+
+        self._output_objs[chunk_id].append(output_obj)
+        self._moe_losses[chunk_id].append(moe_loss)
+
+        assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
+
+        return output_obj, ctxsInOneChunk
 
     def _backward_step(self, engine, chunk_id, step_id):
         """

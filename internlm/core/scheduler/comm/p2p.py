@@ -675,9 +675,11 @@ class AsynCommunicator:
 
 import json
 def write_json(jsonpath, content):
-    with open(jsonpath, 'a',encoding='utf-8') as f:
-        json.dump(content, f)
-        f.write('\n')
+    if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        with open(jsonpath, 'a',encoding='utf-8') as f:
+            json.dump(content, f)
+            f.write('\n')
+
 class AsynCommunicator_unified:
     """AsynCommunicator for managing async communication."""
     def __init__(
@@ -690,32 +692,35 @@ class AsynCommunicator_unified:
         next_rank: int = None,
         dtype: torch.dtype = None,
         scatter_gather_tensors: bool = False,
-        stage_id: int = None,
-        microbatch_id: int = None,
-        step_type: str = None,
+        # stage_id: int = None,
+        # microbatch_id: int = None,
+        # step_type: str = None,
         local_rank = None,
-        chunk_id = None,
-        
+        # chunk_id = None,
+        match_rank = None,
+        step_id = None,
     ) -> None:
         # self.stage_id = stage_id
         # self.step_type = step_type
         # self.microbatch_id = microbatch_id
         # self.chunk_id = chunk_id
-        # self.local_rank = local_rank
+        self.local_rank = local_rank
+        self.match_rank = match_rank
+        self.step_id = step_id
         #tag = 0
-        # self.operation = "communicate:"
-        # if object_send_next is not None:
-        #     self.operation += "send_forward;"
-        #     #tag = stage_id*10000+microbatch_id
-        # if object_send_prev is not None:
-        #     self.operation += "send_backward;"
-        #     #tag = stage_id*10000+microbatch_id
-        # if recv_prev_shape is not None:
-        #     self.operation += "recv_forward;"
-        #     #tag = prev_stage_id*10000+microbatch_id
-        # if recv_next_shape is not None:
-        #     self.operation += "recv_backward;"
-        #     #tag = next_stage_id*10000+microbatch_id
+        # self.operation = ""
+        if object_send_next is not None:
+            self.operation = "SA"
+            #tag = stage_id*10000+microbatch_id
+        elif object_send_prev is not None:
+            self.operation = "SG"
+            #tag = stage_id*10000+microbatch_id
+        elif recv_prev_shape is not None:
+            self.operation = "RA"
+            #tag = prev_stage_id*10000+microbatch_id
+        elif recv_next_shape is not None:
+            self.operation = "RG"
+            #tag = next_stage_id*10000+microbatch_id
         
         self._need_receive = recv_prev_shape is not None or recv_next_shape is not None
         self._coroutine = _communicate_async(
@@ -737,6 +742,8 @@ class AsynCommunicator_unified:
         return self._need_receive
 
     def start(self) -> None:
+        commOperation_info = {"operation":self.operation, "local_rank":self.local_rank, "step_id":self.step_id, "match_rank":self.match_rank, }
+        write_json(gpc._config['jsonpath'], commOperation_info)
         # start_time = time.perf_counter()
         next(self._coroutine)
         # end_time = time.perf_counter()
