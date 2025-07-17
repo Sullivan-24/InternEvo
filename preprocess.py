@@ -1,7 +1,7 @@
 import copy
 import json
-from enum import Enum, IntEnum
 import os
+from enum import Enum, IntEnum
 class Step(Enum):
     FORWARD = 'f'
     BACKWARD = 'b'
@@ -52,10 +52,10 @@ def SendToSameDevice(stage_alignment):
                 sendBtoSameDevice.append(stage)
     return sendFtoSameDevice,sendBtoSameDevice
 
-def recvnum(comm_graph):
-    #print('[')
+def recvnum(communication_graph):
+    print('[')
     # # 输出通信图
-    for rank_id, comm_stage in enumerate(comm_graph):
+    for rank_id, comm_stage in enumerate(communication_graph):
         recvF = 0
         recvB = 0
         for comm_op in comm_stage:
@@ -69,14 +69,16 @@ def recvnum(comm_graph):
                     recvB += 1
                 elif recvlistA[0] == 'f':
                     recvF += 1
-        #print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
-        ##print(f'{comm_stage},')
-    #print(']')
+        print(f"rank_id {rank_id}: recvF {recvF}, recvB {recvB}")
+        #print(f'{comm_stage},')
+    print(']')
 
 def count_steps(steps):
     f_num = 0
     b_num = 0
     w_num = 0
+    r_num = 0
+    r_stages = set()
     for s in steps:
         step_type = s[0]
         if step_type == 'f':
@@ -86,9 +88,12 @@ def count_steps(steps):
             b_num += 1
         elif step_type == 'w':
             w_num += 1
-    return f_num, b_num, w_num
+        elif step_type == 'r':
+            r_num += 1
+            r_stages.add(s[2])
+    return f_num, b_num, w_num, r_num , r_stages
 
-def dfs(op, rec_stack,visited,comm_graph):
+def dfs(op, rec_stack,visited,communication_graph):
     key = op['Infor']
     if key in rec_stack:
         return True, -1  # 发现环，返回 True 和无效的 index
@@ -101,7 +106,7 @@ def dfs(op, rec_stack,visited,comm_graph):
     for idx, a_task in enumerate(op['A']):
         _, _, recv_device_id, recv_stage_id, _, recv_microbatch_id, recv_index = a_task
         # 找到对应的通信任务
-        has_cycle, cycle_index = dfs(comm_graph[recv_device_id][recv_index],rec_stack, visited, comm_graph)
+        has_cycle, cycle_index = dfs(communication_graph[recv_device_id][recv_index],rec_stack, visited, communication_graph,)
         if has_cycle:
             # 如果发现环，返回 True 和当前任务的 index
             return True, idx
@@ -146,14 +151,14 @@ def judge_split_backward(unified_scheduler):
 def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:int) -> None:
     device_steps = [[] for _ in range(len(stage_alignment))]
     all_step = input.split('\n')
-    ##print(all_step)
+    #print(all_step)
     for step in all_step:
         if step == '':
             continue
         start_time = float(step.split(',')[-2])
         end_time = float(step.split(',')[-1])
         infor = step.split(',')[0]
-        if infor is None or infor == '' or infor[0] not in ['b','w','f']:
+        if infor is None or infor == '' or infor[0] not in ['b','w','f','r']:
             continue
         step_type, microbatch_id, stage_id = infor.split('_')
         microbatch_id = int(microbatch_id)
@@ -161,18 +166,18 @@ def order_result_mutichunk(input: str, stage_alignment: list, num_microbatches:i
         device_id = _get_deviceid_by_alignment(stage_id, stage_alignment)
         chunk_id = _get_chunk_by_stage(stage_id, stage_alignment)
         device_steps[device_id].append((step_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
-    #print('[')
+    # print('[')
     recomp_stages = set()
     for d in range(len(stage_alignment)):
-        f_num, b_num, w_num = count_steps(device_steps[d])
+        f_num, b_num, w_num, r_num, r_stages = count_steps(device_steps[d])
         each_steps_num = len(stage_alignment[d])*num_microbatches
+        assert r_num == len(r_stages)*num_microbatches, f'r_num:{r_num} must be equal to r_stages:{r_stages}*num_microbatces:{num_microbatches}'
         assert f_num == each_steps_num and b_num == each_steps_num and (w_num ==0 or w_num == each_steps_num), f'rank: {d}, right_num: {each_steps_num}, f_num: {f_num}, b_num: {b_num}, w_num: {w_num}'
         device_steps[d].sort(key=lambda x: x[-2])
         recomp_stages = recomp_stages.union(r_stages)
-    #     #print(f'{device_steps[d]},')
-    #print(']')
-    recomp_stages = list(recomp_stages)
-    return device_steps, recomp_stages
+    #     print(f'{device_steps[d]},')
+    # print(']')
+    return device_steps,recomp_stages
 
 def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph 是之前生成的计算图
     # 初始化通信图
@@ -921,52 +926,28 @@ def generate_():
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    num_microbatches = 32
+
     pp_size = len(stage_placement)
-    unified_scheduler = order_result_mutichunk(input_str,stage_placement,num_microbatches)
+    num_microbatches = 16
+    unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
-    scheduler_type = str(judge_scheduler_type(stage_placement))
+    scheduler_type = judge_scheduler_type(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
     first_stage = min(min(row) for row in stage_placement)
     Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
-    #self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
-    # result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
-    #           'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
-    #           'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
-    #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
-    # with open(file_path+'/runtime.json','w') as file:
-    #     json.dump(result,file)
-    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}')
+    # self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
+    result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
+              'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+              'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
+               'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
+    with open(file_path+'/runtime.json','w') as file:
+        json.dump(result,file)
+    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+          recomp_stages:{recomp_stages}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
-            last_stage, Devices_containing_last_stage
-
-def generate():
-    stage_alignment = read_placement_from_file()
-    pp_size = len(stage_alignment)
-    schedule = read_input_str_in_result_file()
-    num_microbatches = 32#get_num_microbatches(schedule=schedule)
-    unified_scheduler = order_result_mutichunk(schedule,stage_alignment, num_microbatches)
-    comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_alignment)
-    return stage_alignment, unified_scheduler, comm_graph
-
-def get_num_microbatches(schedule:str):
-    max_mid = -1
-    for line in schedule.split('\n'):
-        #if line.startswith("w_"):
-        mid = eval(line.split('_')[1])
-        max_mid = max(mid, max_mid)
-    return max_mid + 1
-
-def read_input_str_in_result_file(filepath="/cpfs01/user/matenghui/InternEvo/result.txt"):
-    input_str = open(file=filepath, mode='r').read()
-    return input_str
-
-def read_placement_from_file(filepath="/cpfs01/user/matenghui/InternEvo/placement.txt"):
-    stage_alignment = eval(open(file=filepath, mode='r').read())
-    return stage_alignment
+            last_stage, Devices_containing_last_stage, recomp_stages
 
 if __name__ == '__main__':
-    #generate_()
-    generate()
+    generate_()
