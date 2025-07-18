@@ -1,3 +1,22 @@
+from preprocess import generate_
+import json
+dp_size = 2
+tp_size = 1
+pp_size = 4
+num_microbatches = pp_size*4
+recomp_stages = []
+recomp_microbatches = []
+recomp_layers = []
+open_recomp = False
+num_microbatches, pp_size, stage_placement, scheduler_type, \
+split_backward, unified_scheduler, comm_graph, first_stage, \
+last_stage, Devices_containing_last_stage, recomp_stages = generate_() #recomp_layers,recomp_microbatches
+
+if len(recomp_stages) > 0:
+    open_recomp = True
+layerwise = False
+num_chunks = 2
+pp_mode = "unified"
 JOB_NAME = "7b_gemma_train"
 model_type = "GEMMA"
 DO_ALERT = False
@@ -9,9 +28,36 @@ NUM_ATTENTION_HEAD = 16
 NUM_KV_ATTENTION_HEAD = 16
 HEAD_DIM = 256
 MLP_RATIO = 8
-NUM_LAYER = 28
+NUM_LAYER = 32
+heter = True
+alpa = False
+layer_placement = [[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14], [15, 16]]
+#metis[[1,6],[7,11],[12,13],[14,16]] [[1, 3], [4, 5], [6, 8], [9, 11], [12, 12], [13, 13], [14, 14], [15, 16]]
+sleep_forward_time = 0
+sleep_backward_time = 0
+sleep_forward_time_perlayer = 12
+sleep_backward_time_perlayer = 24
+if tp_size == 2:
+    sleep_forward_time_perlayer = 8
+    sleep_backward_time_perlayer = 16
+elif tp_size == 4:
+    sleep_forward_time_perlayer = 6
+    sleep_backward_time_perlayer = 12
+elif tp_size == 8:
+    sleep_forward_time_perlayer = 4
+    sleep_backward_time_perlayer = 8
+if not alpa:
+    if pp_mode == "zbv":
+        num_chunks = 2
+    elif pp_mode == "zbh1":
+        num_chunks = 1
+    layers_one_chunk = NUM_LAYER//pp_size//num_chunks
+    sleep_forward_time = layers_one_chunk*sleep_forward_time_perlayer
+    sleep_backward_time = layers_one_chunk*sleep_backward_time_perlayer
+    print(f"sleep_forward_time:{sleep_forward_time}, sleep_backward_time:{sleep_backward_time}")
 
-
+if pp_mode == "unified" and layerwise:
+    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
 MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -31,7 +77,7 @@ ckpt = dict(
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
     # load function such as "llama"
-    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -51,7 +97,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=num_microbatches,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -59,7 +105,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=10,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -96,7 +142,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=False,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -134,7 +180,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=num_chunks,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     max_position_embeddings=8192,
@@ -189,9 +235,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    zero1=dict(size=dp_size),
+    tensor=dict(size=tp_size, mode="fsp"),
+    pipeline=dict(size=pp_size, interleaved_overlap=True, mode = pp_mode),
     weight=dict(size=1, overlap=True),
 )
 

@@ -6,7 +6,7 @@ IMAGE="pjlab-shanghai-acr-registry-vpc.cn-shanghai.cr.aliyuncs.com/paieflops/jia
 DLC_CONFIG="/cpfs01/user/matenghui/InternEvo/demo_dlc.config"
 
 # gpu numbers
-GPU_NUMS=16
+GPU_NUMS=8
 
 # job name
 JOB_NAME="demo"
@@ -30,7 +30,7 @@ WORKSPACE_ID="wsbuzbigeh1hjmst"
 # WORKSPACE_ID="ws1ujefpjyfgqjwp"
 DLC_PATH="/cpfs01/user/matenghui/dlc"
 #log_path="InternEvo/test_het/14B_llama2/unified_block"
-log_path="InternEvo/test/8b_mixtral"
+log_path="InternEvo/test/7B_gemma"
 # 判断路径是否为目录，若不存在则递归创建
 if [ ! -d "$log_path" ]; then
     mkdir -p "$log_path"
@@ -41,8 +41,8 @@ fi
 
 function do_dsw() {
     echo "do_dsw (only support job whose worldsize % 8 == 0 or worldsize < 8)"
-    worker_cpu_total=90
-    worker_mem_total=900
+    worker_cpu_total=40
+    worker_mem_total=500
 
     if [[ $GPU_NUMS -lt 8 ]]; then
         num_nodes=1

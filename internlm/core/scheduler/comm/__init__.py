@@ -1,5 +1,6 @@
 from .p2p import (
     AsynCommunicator,
+    AsynCommunicator_unified,
     fused_send_recv_tensor,
     recv_backward,
     recv_forward,
@@ -26,5 +27,6 @@ __all__ = [
     "send_obj_meta",
     "recv_obj_meta",
     "AsynCommunicator",
+    "AsynCommunicator_unified",
     "fused_send_recv_tensor",
 ]
