@@ -117,30 +117,40 @@ class NonPipelineScheduler(BaseScheduler):
             self._call_hooks("before_forward", data)
             if hasattr(gpc.config.model, "num_experts"):
                 # moe is used
-                output, moe_losses = self._call_engine(engine, data)
+                output, moe_losses, moe_z_losses = self._call_engine(engine, data)
             else:
                 output = self._call_engine(engine, data)
             self._call_hooks("after_forward", output)
-
-            self._call_hooks("post_helper_func", output, label)
 
             if return_loss:
                 self._call_hooks("before_criterion", output, label)
                 loss = self._call_engine_criterion(engine, output, label)
                 self._call_hooks("after_criterion", loss)
-                moe_loss = (
-                    sum(moe_losses) * gpc.config.loss.moe_loss_coeff  # pylint: disable=E0606
-                    if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1
-                    else torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
-                )
-                # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
-                # so we need to do allreduce
-                if gpc.config.parallel.sequence_parallel or gpc.config.parallel.expert.no_tp:
-                    dist.all_reduce(moe_loss, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
-                    moe_loss.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
+                    moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
+                    if len(moe_z_losses) > 0:
+                        moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+                    else:
+                        moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+                    # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
+                    # so we need to do allreduce
+                    if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+                        all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
+                        dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                        all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                        moe_loss = all_moe_losses[0]
+                        moe_z_loss = all_moe_losses[1]
+                else:
+                    moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+                    moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+
                 moe_loss /= scale_loss
+                moe_z_loss /= scale_loss
                 loss /= scale_loss
                 loss += moe_loss
+                loss += moe_z_loss
+
+            self._call_hooks("post_helper_func", output, label)
 
         # clear output before backward for releasing memory resource
         if not return_output:
@@ -153,9 +163,9 @@ class NonPipelineScheduler(BaseScheduler):
             self._call_hooks("after_backward", None)
 
         if not return_loss:
-            loss, moe_loss = None, None
+            loss, moe_loss, moe_z_loss = None, None, None
 
-        return output, loss, moe_loss
+        return output, loss, moe_loss, moe_z_loss
 
     @llm_timeout(func_name="nopp_forward_backward_step")
     def forward_backward_step(
@@ -199,6 +209,7 @@ class NonPipelineScheduler(BaseScheduler):
 
         loss = 0 if return_loss else None
         moe_loss = 0 if return_loss else None
+        moe_z_loss = 0 if return_loss else None
         outputs = []
         labels = []
 
@@ -214,13 +225,14 @@ class NonPipelineScheduler(BaseScheduler):
 
             _data, _label = self._load_accum_batch(data, label)
 
-            _output, _loss, _moe_loss = self._train_one_batch(
+            _output, _loss, _moe_loss, _moe_z_loss = self._train_one_batch(
                 _data, _label, engine, forward_only, return_loss, return_output_label, self._grad_accum_size
             )
 
             if return_loss:
                 loss += _loss
                 moe_loss += _moe_loss
+                moe_z_loss += _moe_z_loss
 
             if return_output_label:
                 outputs.append(_output)
@@ -231,6 +243,6 @@ class NonPipelineScheduler(BaseScheduler):
 
         # Compatible for non-moe
         if hasattr(gpc.config.model, "num_experts"):
-            return outputs, labels, loss, moe_loss
+            return outputs, labels, loss, moe_loss, moe_z_loss
         else:
             return outputs, labels, loss

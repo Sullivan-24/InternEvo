@@ -314,6 +314,7 @@ def pipeline_parallel_sharding_wrapper(
         logger.info("The layer sharding is %r.", all_parts)
 
     models = []
+    origin_mlp_ratio = gpc.config["MLP_RATIO"]
 
     for start, end in parts:
         kwargs["num_layers"] = end - start
@@ -322,13 +323,8 @@ def pipeline_parallel_sharding_wrapper(
         kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
         kwargs["device"] = device
         kwargs["start_layer_idx"] = start
-        if gpc.config["model_type"] == "MIXTRALMOE":
-            print(f"{start}, {end}", flush=True)
-            if start == 0:
-                kwargs["num_experts"] = 1
-            else:
-                kwargs["num_experts"] = 8
-
+        if gpc.config["model_type"] == "LLAMA2" and gpc.config["LLAMA_VF"]:
+            kwargs["mlp_ratio"] = 2 * origin_mlp_ratio / pipeline_size * (pipeline_rank + 1)
                 
         chunk = model_builder(**kwargs).to(device)
         setattr(chunk, "first_layer", start)

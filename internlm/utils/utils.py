@@ -56,6 +56,7 @@ class ModelType(Enum):
     GEMMA = 8
     QWEN2MOE = 9
     MIXTRALMOE = 10
+    DEEPSEEK2_MoE = 11
 
 
 class DataType(Enum):

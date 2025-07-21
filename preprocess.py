@@ -1,3 +1,4 @@
+      
 import copy
 import json
 import os
@@ -310,7 +311,7 @@ def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph �
     comm_matrix = generate_comm_martix(comm_graph,stage_alignment,comp_graph)
     #print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     comm_graph, actions = fix_matrix_keep_sa_sg_order(comm_matrix,comm_graph)
-    # generate_ops_josn(comm_graph,stage_alignment,comp_graph)
+    generate_ops_josn(comm_graph,stage_alignment,comp_graph)
     #print(f"fix actions:{actions}")
     #print(f"test fixed comm graph:{find_mismatch(generate_comm_martix(comm_graph, stage_alignment, comp_graph))}")
     return comm_graph
@@ -589,7 +590,7 @@ def write_json(jsonpath, content):
         f.write('\n')
 
 def generate_ops_josn(comm_graph, stage_alignment, comp_graph):
-    dir = '/cpfs01/user/matenghui/InternEvo/devices_operations/'
+    dir = 'InternEvo/devices_operations/'
     os.makedirs(dir, exist_ok=True)
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
@@ -616,10 +617,10 @@ def generate_ops_josn(comm_graph, stage_alignment, comp_graph):
                 for comm in comm_per_step['B']:
                     recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
                     if recv_op_type == 'f':
-                        json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                        json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                         write_json(jsonpath,json_content)
                     elif recv_op_type == 'b':
-                        json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                        json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                         write_json(jsonpath,json_content)
             json_content = {"step_type": op, "local_rank": device_id, "step_id": step_index, "chunk_id": chunk_id, "stage_id": stage_id, "microbatch_id": microbatch_id, "operation": "compute"}
             write_json(jsonpath,json_content)
@@ -631,20 +632,20 @@ def generate_ops_josn(comm_graph, stage_alignment, comp_graph):
                     for comm in comm_per_step['A']:
                         recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
                         if recv_op_type == 'f':
-                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                             write_json(jsonpath,json_content)
                         elif recv_op_type == 'b':
-                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                             write_json(jsonpath,json_content)                       
             else:
                 if len(comm_per_step['A'])>0:
                     for comm in comm_per_step['A']:
                         recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, _= comm
                         if recv_op_type == 'f':
-                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            json_content={"operation": "RA", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                             write_json(jsonpath,json_content)
                         elif recv_op_type == 'b':
-                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id}
+                            json_content={"operation": "RG", "local_rank":device_id ,"step_id": step_index, "match_rank": recv_device_id, "comm":comm}
                             write_json(jsonpath,json_content)    
                 if current_op_sendcomm != '':
                     json_content={"operation": current_op_sendcomm, "local_rank":device_id ,"step_id": step_index, "match_rank": dst_device}
@@ -922,7 +923,7 @@ def detect_cross_deadlock_mutichunk(comm_graph, stage_alignment):
 def generate_():
     stage_placement = ""
     input_str=""
-    file_path = '/cpfs01/user/matenghui/InternEvo'
+    file_path = 'InternEvo'
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
@@ -930,7 +931,7 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = 16
+    num_microbatches = pp_size * 4
     unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
     scheduler_type = judge_scheduler_type(stage_placement)
@@ -943,8 +944,8 @@ def generate_():
               'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
               'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
                'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
-    with open(file_path+'/runtime.json','w') as file:
-        json.dump(result,file)
+    # with open(file_path+'/runtime.json','w') as file:
+    #     json.dump(result,file)
     print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
           recomp_stages:{recomp_stages}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
@@ -953,3 +954,5 @@ def generate_():
 
 if __name__ == '__main__':
     generate_()
+
+    

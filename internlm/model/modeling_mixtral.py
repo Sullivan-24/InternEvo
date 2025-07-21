@@ -128,7 +128,7 @@ class MixtralMoEDecoder(nn.Module):
         self.norm2 = new_layer_norm(norm_type, hidden_size, eps=layer_norm_epsilon)
 
         self.num_experts = num_experts
-        if num_experts <= 1 or layer_idx < first_k_dense_replace:  # dense, not MoE
+        if num_experts <= 1:  # dense, not MoE
             self.mlp = new_feed_forward(
                 hidden_size,
                 int(hidden_size * mlp_ratio),
@@ -248,9 +248,9 @@ class MixtralMoEDecoder(nn.Module):
             hidden_states = self.mlp(hidden_states)
             moe_loss = torch.tensor(0.0, device=hidden_states.device, dtype=hidden_states.dtype)
         else:  # MoE output
-            hidden_states, moe_loss, _ = self.mlp(hidden_states)
+            hidden_states, moe_loss, moe_z_loss = self.mlp(hidden_states)
 
-        return hidden_states + residual, moe_loss
+        return hidden_states + residual, moe_loss, moe_z_loss
 
 
 class MixtralMoE(BaseModel):
@@ -410,17 +410,19 @@ class MixtralMoE(BaseModel):
                 )
 
         moe_losses = []
+        moe_z_losses = []
         for idx, block in enumerate(self.blocks):
-            print(f'{idx}, {gpc.get_global_rank()}', flush=True)
-            hidden_states, mos_loss = block(hidden_states, **kwargs)
+            # print(f'{idx}, {gpc.get_global_rank()}', flush=True)
+            hidden_states, mos_loss, moe_z_loss = block(hidden_states, **kwargs)
             moe_losses.append(mos_loss)
+            moe_z_losses.append(moe_z_loss)
 
         if hasattr(self, "norm"):
             hidden_states = self.norm(hidden_states.float())
         if hasattr(self, "head"):
             hidden_states = self.head(hidden_states)
 
-        return hidden_states, moe_losses
+        return hidden_states, moe_losses, moe_z_losses
 
     @staticmethod
     def load_hf_weights(folder: str, model: nn.Module) -> None:

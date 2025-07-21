@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import math
 
 from typing import Optional, Union
 
@@ -11,8 +12,10 @@ from torch import Tensor, nn
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.rotary_emb import apply_rotary_emb
+from internlm.utils.logger import get_logger
 from internlm.utils.parallel import is_using_isp
 
+logger = get_logger(__file__)
 
 class Embedding1D(nn.Module):
     """
@@ -87,6 +90,152 @@ class Embedding1D(nn.Module):
         return output
 
 
+# class RotaryEmbedding(torch.nn.Module):
+#     """
+#     The rotary position embeddings from RoFormer_ (Su et. al).
+#     A crucial insight from the method is that the query and keys are
+#     transformed by rotation matrices which depend on the relative positions.
+
+#     Other implementations are available in the Rotary Transformer repo_ and in
+#     GPT-NeoX_, GPT-NeoX was an inspiration
+
+#     .. _RoFormer: https://arxiv.org/abs/2104.09864
+#     .. _repo: https://github.com/ZhuiyiTechnology/roformer
+#     .. _GPT-NeoX: https://github.com/EleutherAI/gpt-neox
+
+#     If scale_base > 0, this implements XPos (Sun et al., https://arxiv.org/abs/2212.10554).
+#     A recommended value for scale_base is 512: https://github.com/HazyResearch/flash-attention/issues/96
+#     Reference: https://github.com/sunyt32/torchscale/blob/main/torchscale/component/xpos_relative_position.py
+#     """
+
+#     def __init__(self, dim: int, base=10000, scale_base=0, device=None):
+#         """ """
+#         super().__init__()
+#         # Generate and save the inverse frequency buffer (non trainable)
+#         self.dim = dim
+#         self.base = base
+#         self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim))
+#         self.scale_base = scale_base
+#         self.scale = (
+#             (torch.arange(0, dim, 2, device=device, dtype=torch.float32) + 0.4 * dim) / (1.4 * dim)
+#             if scale_base > 0
+#             else None
+#         )
+
+#         self._seq_len_cached = 0
+#         self._cos_cached = None
+#         self._sin_cached = None
+#         self._cos_k_cached = None
+#         self._sin_k_cached = None
+
+#     def _update_cos_sin_cache(
+#         self, x: torch.Tensor, indexes: Union[int, torch.Tensor] = 0, max_seqlen: Optional[int] = None
+#     ):
+#         """x: (batch, seqlen, nheads, headdim)"""
+#         if max_seqlen is not None:
+#             seqlen = max_seqlen
+#         elif isinstance(indexes, int):
+#             seqlen = indexes + x.shape[1]
+#         else:
+#             # Note that this statement may cause synchronization between CPU and GPU,
+#             # so it's best to precompute and pass in max_seqlen ahead of time
+#             seqlen = indexes.max().item()
+
+#         # Reset the tables if the sequence length has changed,
+#         # or if we're on a new device (possibly due to tracing for instance)
+#         if seqlen > self._seq_len_cached or self._cos_cached.device != x.device or self._cos_cached.dtype != x.dtype:
+#             self._seq_len_cached = seqlen
+#             t = torch.arange(seqlen, device=x.device, dtype=self.inv_freq.dtype)
+#             # Don't do einsum, it converts fp32 to fp16
+#             # freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+#             freqs = torch.outer(t, self.inv_freq.to(device=t.device))
+#             if self.scale is None:
+#                 self._cos_cached = torch.cos(freqs).to(x.dtype)
+#                 self._sin_cached = torch.sin(freqs).to(x.dtype)
+#             else:
+#                 power = (
+#                     torch.arange(seqlen, dtype=self.scale.dtype, device=self.scale.device) - seqlen // 2
+#                 ) / self.scale_base
+#                 scale = self.scale.to(device=power.device) ** rearrange(power, "s -> s 1")
+#                 # We want the multiplication by scale to happen in fp32
+#                 self._cos_cached = (torch.cos(freqs) * scale).to(x.dtype)
+#                 self._sin_cached = (torch.sin(freqs) * scale).to(x.dtype)
+#                 self._cos_k_cached = (torch.cos(freqs) / scale).to(x.dtype)
+#                 self._sin_k_cached = (torch.sin(freqs) / scale).to(x.dtype)
+
+#     def _get_slice(self, tensor: torch.Tensor, offsets: Union[int, torch.Tensor] = 0):
+#         if isinstance(offsets, int):
+#             return tensor[offsets:]
+#         else:
+#             return tensor[offsets]
+
+#     def _convert_padding(
+#         self, x: torch.Tensor, empties: torch.Tensor, convert_type: str = "left2right", in_place: bool = False
+#     ):
+#         # TODO: impl in_place = True.
+#         assert not in_place, "in_place = True is NYI."
+#         assert convert_type in ("left2right", "right2left"), f"Unknown convert type {convert_type}"
+
+#         ret = x.clone()
+
+#         for i in range(len(empties)):
+#             if empties[i] == 0:
+#                 continue
+
+#             if convert_type == "left2right":
+#                 ret[i][: -empties[i]] = x[i][empties[i] :]
+#                 ret[i][-empties[i] :] = x[i][: empties[i]]
+#             else:  # right2left
+#                 ret[i][empties[i] :] = x[i][: -empties[i]]
+#                 ret[i][: empties[i]] = x[i][-empties[i] :]
+
+#         return ret
+
+#     def forward(
+#         self,
+#         x: torch.Tensor,
+#         offsets: Union[int, torch.Tensor] = 0,
+#         max_seqlen: Optional[int] = None,
+#         cache_type: str = "query",
+#         interleaved: bool = False,
+#         in_place: bool = False,
+#         left_padding_mask: Optional[torch.Tensor] = None,
+#     ):
+#         """
+#         Applies rotary position embeddings to the input tensor.
+
+#         Args:
+#             x (torch.Tensor): The input tensor.
+#             offsets (Union[int, torch.Tensor], optional): The sequence offsets for the input. Defaults to 0.
+#             max_seqlen (Optional[int], optional): The maximum sequence length for caching. Defaults to None.
+#             cache_type (str, optional): Specifies whether the cache is for 'query' or 'key'. Defaults to "query".
+#             interleaved (bool, optional): Whether the input tensor is interleaved. Defaults to False.
+#             in_place (bool, optional): Whether the operation should be done in-place. Defaults to False.
+#             left_padding_mask (Optional[torch.Tensor], optional): A mask for left padding. Defaults to None.
+
+#         Returns:
+#             torch.Tensor: The tensor with applied rotary position embeddings.
+#         """
+#         assert cache_type in ("query", "key"), f"Unknown cache type {cache_type}"
+#         assert isinstance(offsets, (int, torch.Tensor)), f"Invalid offsets type {type(offsets)}"
+
+#         if left_padding_mask is not None:
+#             empties = left_padding_mask[..., -1].sum(dim=-1)
+#             x = self._convert_padding(x, empties, convert_type="left2right", in_place=in_place)
+
+#         self._update_cos_sin_cache(x, offsets, max_seqlen)
+
+#         cos_cached = self._cos_k_cached if cache_type == "key" and self.scale is not None else self._cos_cached
+#         sin_cached = self._sin_k_cached if cache_type == "key" and self.scale is not None else self._sin_cached
+#         ret = apply_rotary_emb(
+#             x, self._get_slice(cos_cached, offsets), self._get_slice(sin_cached, offsets), interleaved, in_place
+#         )
+
+#         if left_padding_mask is not None:
+#             ret = self._convert_padding(ret, empties, convert_type="right2left", in_place=in_place)
+
+#         return ret
+
 class RotaryEmbedding(torch.nn.Module):
     """
     The rotary position embeddings from RoFormer_ (Su et. al).
@@ -105,20 +254,42 @@ class RotaryEmbedding(torch.nn.Module):
     Reference: https://github.com/sunyt32/torchscale/blob/main/torchscale/component/xpos_relative_position.py
     """
 
-    def __init__(self, dim: int, base=10000, scale_base=0, device=None):
+    def __init__(self, dim: int, base=10000, scale_base=0, device=None, rope_scaling=None):
         """ """
         super().__init__()
         # Generate and save the inverse frequency buffer (non trainable)
         self.dim = dim
         self.base = base
-        self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim))
+        if gpc.is_rank_for_log():
+            logger.info(f"Using rope_base={base}")
+        if not rope_scaling:
+            self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim))
+        else:
+            inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim))
+            factor = rope_scaling["factor"]  # `8` in the original implementation
+            low_freq_factor = rope_scaling["low_freq_factor"]  # `1` in the original implementation
+            high_freq_factor = rope_scaling["high_freq_factor"]  # `4` in the original implementation
+            old_context_len = rope_scaling["original_max_position_embeddings"]  # `8192` in the original implementation
+            low_freq_wavelen = old_context_len / low_freq_factor
+            high_freq_wavelen = old_context_len / high_freq_factor
+            new_freqs = []
+            for freq in inv_freq:
+                wavelen = 2 * math.pi / freq
+                if wavelen < high_freq_wavelen:
+                    new_freqs.append(freq)
+                elif wavelen > low_freq_wavelen:
+                    new_freqs.append(freq / factor)
+                else:
+                    assert low_freq_wavelen != high_freq_wavelen
+                    smooth = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+                    new_freqs.append((1 - smooth) * freq / factor + smooth * freq)
+            self.inv_freq = torch.tensor(new_freqs, dtype=inv_freq.dtype, device=inv_freq.device)
         self.scale_base = scale_base
         self.scale = (
             (torch.arange(0, dim, 2, device=device, dtype=torch.float32) + 0.4 * dim) / (1.4 * dim)
             if scale_base > 0
             else None
         )
-
         self._seq_len_cached = 0
         self._cos_cached = None
         self._sin_cached = None
@@ -136,7 +307,7 @@ class RotaryEmbedding(torch.nn.Module):
         else:
             # Note that this statement may cause synchronization between CPU and GPU,
             # so it's best to precompute and pass in max_seqlen ahead of time
-            seqlen = indexes.max().item()
+            seqlen = indexes.max().item() + 1
 
         # Reset the tables if the sequence length has changed,
         # or if we're on a new device (possibly due to tracing for instance)
@@ -232,7 +403,6 @@ class RotaryEmbedding(torch.nn.Module):
             ret = self._convert_padding(ret, empties, convert_type="right2left", in_place=in_place)
 
         return ret
-
 
 class LinearRotaryEmbedding(RotaryEmbedding):
     """RotaryEmbedding extended with linear scaling. Credits to the Reddit user /u/kaiokendev.
@@ -344,6 +514,7 @@ def new_rotary_embedding(
     max_position_embeddings=2048,
     scaling_factor=1.0,
     rotary_type: str = "native",
+    rope_scaling: Optional[dict] = None,
 ) -> RotaryEmbedding:
     assert rotary_type in ("native", "linear_scale", "dynamic_ntk"), f"Unknown rotary type {rotary_type}"
 
@@ -352,4 +523,4 @@ def new_rotary_embedding(
     elif rotary_type == "dynamic_ntk":
         return DynamicNTKScalingRotaryEmbedding(dim, base, scale_base, device, max_position_embeddings, scaling_factor)
     else:  # native
-        return RotaryEmbedding(dim, base, scale_base, device)
+        return RotaryEmbedding(dim, base, scale_base, device, rope_scaling)

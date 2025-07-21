@@ -9,6 +9,7 @@ import torch.distributed as dist
 from torch.optim.optimizer import Optimizer
 from internlm.core.naive_amp import NaiveAMPModel
 from internlm.core.context import ParallelMode
+from preprocess import busy_wait_kernel
 from internlm.core.context import global_context as gpc
 from internlm.core.engine import Engine
 from internlm.core.scheduler import comm
@@ -937,7 +938,9 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self._moe_losses[chunk_id].append(moe_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-
+        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+            import time
+            busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return output_obj
     
     #this is for split backward
@@ -1573,6 +1576,10 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
         self._moe_losses[chunk_id].append(moe_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
+
+        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+            import time
+            busy_wait_kernel(gpc.config["SLEEP_TIME"])
 
         return output_obj
 

@@ -16,16 +16,17 @@ from internlm.core.context import global_context as gpc
 from internlm.core.engine import Engine
 from internlm.core.gradient_handler import PipelineSharedModuleGradientHandler
 from internlm.core.parallel.shard import split_data_for_sequence_parallel
+from internlm.core.scheduler.pipeline_scheduler_zb import ZeroBubblePipelineVShapeScheduler
 from internlm.core.scheduler import (
     InterleavedPipelineScheduler,
     NonPipelineScheduler,
     PipelineScheduler,
     ZeroBubblePipelineScheduler,
-    ZeroBubblePipelineVShapeScheduler,
     UnifiedSingleChunkPipelineScheduler,
     UnifiedMultipleChunksPipelineScheduler,
     UnifiedMultipleStreamsPipelineScheduler,
-    UnifiedHetPipelineScheduler
+    UnifiedHetPipelineScheduler,
+    HydraPipelineScheduler,
 )
 from internlm.core.scheduler.pipeline_scheduler_1f1b import get_tensor_shape
 from internlm.core.trainer import Trainer
@@ -126,6 +127,15 @@ def initialize_trainer(
                 scatter_gather_tensors=scatter_gather,
                 scheduler_hooks=scheduler_hooks,
                 communication_overlap=communication_overlap,
+            )
+        elif pp_mode == "HYDRA":
+            scheduler = HydraPipelineScheduler(
+                data_process_func=_data_preparation_func,
+                num_microbatches=gpc.config.NUM_MICRO_BATCHES,
+                dtype=gpc.config.model["dtype"],
+                tensor_shape=tensor_shape,
+                scatter_gather_tensors=scatter_gather,
+                scheduler_hooks=scheduler_hooks,
             )
         elif pp_mode == "ZBH1":
             scheduler = ZeroBubblePipelineScheduler(

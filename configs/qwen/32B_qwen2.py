@@ -1,56 +1,71 @@
-
-from preprocess import generate_
-import json
-# input_info = {}
-# with open('/cpfs01/user/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8') as file:
-#     input_info = json.load(file)
-# num_microbatches=input_info['num_microbatches']
-# pp_size=input_info['pp_size']
-# stage_placement=input_info['stage_placement'] 
-# scheduler_type=input_info['scheduler_type']
-# split_backward=input_info['split_backward']
-# unified_scheduler=input_info['unified_scheduler']
-# comm_graph=input_info['comm_graph']
-# first_stage = input_info['first_stage'], 
-# last_stage=input_info['last_stage'] 
-# Devices_containing_last_stage=input_info['Devices_containing_last_stage']
-num_microbatches, pp_size, stage_placement, scheduler_type ,\
-split_backward, unified_scheduler, comm_graph, first_stage ,\
-last_stage, Devices_containing_last_stage = generate_()
-layerwise = False
-num_chunks = 2
-pp_mode = "unified"
-
-JOB_NAME = "70b_llama3_train"
-model_type = "LLAMA2"
+JOB_NAME = "32b_qwen2_train"
+model_type = "QWEN2"
 DO_ALERT = False
-
-VOCAB_SIZE = 128256
-SEQ_LEN = 2048
-HIDDEN_SIZE = 8192
-NUM_ATTENTION_HEAD = 64
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 16
-
-if pp_mode == "unified" and layerwise:
-    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
-
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
+HETER = False
+# {
+#   "architectures": [
+#     "Qwen2ForCausalLM"
+#   ],
+#   "attention_dropout": 0.0,
+#   "bos_token_id": 151643,
+#   "eos_token_id": 151643,
+#   "hidden_act": "silu",
+#   "hidden_size": 5120,
+#   "initializer_range": 0.02,
+#   "intermediate_size": 27648,
+#   "max_position_embeddings": 131072,
+#   "max_window_layers": 64,
+#   "model_type": "qwen2",
+#   "num_attention_heads": 40,
+#   "num_hidden_layers": 64,
+#   "num_key_value_heads": 8,
+#   "rms_norm_eps": 1e-05,
+#   "rope_theta": 1000000.0,
+#   "sliding_window": 131072,
+#   "tie_word_embeddings": false,
+#   "torch_dtype": "bfloat16",
+#   "transformers_version": "4.43.1",
+#   "use_cache": true,
+#   "use_sliding_window": false,
+#   "vocab_size": 152064
+# }
+MAX_WINDOW_LAYERS = 64
+VOCAB_SIZE = 152064
+SEQ_LEN = 4096
+HIDDEN_SIZE = 5120
+NUM_ATTENTION_HEAD = 40
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 27648/HIDDEN_SIZE
+NUM_LAYER = 64
+PP_SIZE = 4
+TP_SIZE = 1
+ZERO_SZIE = -1
+MICRO_NUM = 32
+RECOMP = 1
+PP_MODE = '1f1b'
+NUM_CHUNKS = NUM_LAYER // PP_SIZE
+# NUM_CHUNKS = 1
+print(f"MODEL=32B qwen,RECOMP={RECOMP},PP={PP_SIZE},TP={TP_SIZE},ZERO={ZERO_SZIE},CHUNK={NUM_CHUNKS},MICRO_NUM={MICRO_NUM},PP_MODE={PP_MODE}")
+MODEL_ONLY_FOLDER = "local:llm_ckpts_qwen2/xxxx/"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
-LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
+SAVE_CKPT_FOLDER = "local:llm_ckpts_qwen2"
 
 # boto3 Ckpt folder format:
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-# LOAD_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm/snapshot/1/"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
+    enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
+    # 'load_ckpt_info' setting guide:
+    # 1. the 'path' indicate ckpt path,
+    # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
+    # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
+    # load function such as "llama"
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -70,7 +85,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=num_microbatches,
+    micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -115,7 +130,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=False,
+    overlap_sync_grad=True,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -151,24 +166,24 @@ beta2_scheduler = dict(
 )
 
 use_fp32_norm = False
-
 model = dict(
-    checkpoint=False,
-    num_chunks=num_chunks, #TODO,后续改为bool，2仅代表多chunk,单chunk为1
+    checkpoint=RECOMP,
+    num_chunks=NUM_CHUNKS,
     num_attention_heads=NUM_ATTENTION_HEAD,
+    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
     parallel_output=True,
     hidden_size=HIDDEN_SIZE,
     num_layers=NUM_LAYER,
-    no_bias=True,
+    qkv_bias=True,
+    o_bias=False,
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-5,
-    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    layer_norm_epsilon=1e-6,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -178,8 +193,10 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    mlp_layer_fusion=True,
-    enable_qkv_fusion=True,
+    rope_base=1000000,
+    use_sliding_window=False,
+    sliding_window=32768,
+    max_window_layers=MAX_WINDOW_LAYERS,
 )
 
 """
@@ -207,10 +224,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=1),
-    tensor=dict(size=1, mode="fsp"),
-    #pipeline=dict(size=4, interleaved_overlap=True),
-    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
+    zero1=dict(size=ZERO_SZIE),
+    tensor=dict(size=TP_SIZE, mode="fsp"),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True,mode=PP_MODE),
     weight=dict(size=1, overlap=True),
 )
 
@@ -234,3 +250,17 @@ monitor = dict(
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
 
+generation = dict(
+    ckpt_folder="/path/to/saved/ckpt",
+    output_folder="/path/to/save/generation",
+    batch_size=1,
+    eos_id=[2, 0],
+    bos_id=1,
+    max_length=100,
+    do_sample=True,
+    temperature=1.0,
+    top_k=50,
+    top_p=1.0,
+    repetition_penalty=1,
+    length_penalty=1.0,
+)
