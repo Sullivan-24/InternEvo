@@ -16,6 +16,9 @@ class ModuleType(Enum):
     ZBH1 = 'Zbh1'
     HET = 'Het'
 
+def busy_wait_kernel(time):
+    return
+
 def distence(point,begin,end):
     if point < begin:
         return begin - point
@@ -307,12 +310,12 @@ def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph �
             comm_op['A'].sort(key=lambda x:x[1])
             comm_stage.append(comm_op)
         comm_graph.append(comm_stage)
-    # comm_graph = detect_cross_deadlock_mutichunk(comm_graph,stage_alignment)
+    comm_graph = detect_cross_deadlock_mutichunk(comm_graph,stage_alignment)
     comm_matrix = generate_comm_martix(comm_graph,stage_alignment,comp_graph)
-    #print(f"wrong comm order:{find_mismatch(comm_matrix)}")
+    # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     comm_graph, actions = fix_matrix_keep_sa_sg_order(comm_matrix,comm_graph)
-    generate_ops_josn(comm_graph,stage_alignment,comp_graph)
-    #print(f"fix actions:{actions}")
+    # generate_ops_josn(comm_graph,stage_alignment,comp_graph)
+    # print(f"fix actions:{actions}")
     #print(f"test fixed comm graph:{find_mismatch(generate_comm_martix(comm_graph, stage_alignment, comp_graph))}")
     return comm_graph
 

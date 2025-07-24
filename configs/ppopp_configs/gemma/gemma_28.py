@@ -11,7 +11,7 @@ HEAD_DIM = 256
 MLP_RATIO = 8
 NUM_LAYER = 32
 PP_SIZE = 4
-TP_SIZE = 4
+TP_SIZE = 2
 MICRO_NUM = PP_SIZE * 4
 PP_MODE = "1f1b"
 
@@ -160,7 +160,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=8,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     max_position_embeddings=8192,

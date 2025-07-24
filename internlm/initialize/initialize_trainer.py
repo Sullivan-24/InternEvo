@@ -237,6 +237,7 @@ def initialize_trainer(
                     unified_scheduler=gpc.config.unified_scheduler,
                     comm_graph=gpc.config.comm_graph,
                 )
+            print(f"Scheduler:{scheduler.__class__.__name__}")
         else:
             scheduler = PipelineScheduler(
                 data_process_func=_data_preparation_func,

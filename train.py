@@ -25,7 +25,15 @@ def main(args):
     model = create_model(model_type=gpc.config.model_type)
 
     # print(model)
-
+    if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        debug_path = "InternEvo/debug/"
+        if os.path.exists(debug_path):
+            for filename in os.listdir(debug_path):
+                file_path = os.path.join(debug_path, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+        else:
+            os.makedirs(debug_path)
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
 
