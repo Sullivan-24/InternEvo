@@ -26,11 +26,11 @@ PRIORITY=4
 PARTITION="llm_s"
 WORKSPACE_ID="wsbuzbigeh1hjmst"
 
-# PARTITION="llm_ddd"
-# WORKSPACE_ID="ws1ujefpjyfgqjwp"
+PARTITION="llm_ddd"
+WORKSPACE_ID="ws1ujefpjyfgqjwp"
 DLC_PATH="/cpfs01/user/matenghui/dlc"
 #log_path="InternEvo/test_het/14B_llama2/unified_block"
-log_path="InternEvo/test/7B_gemma"
+log_path="InternEvo/test/14B_llama2"
 # 判断路径是否为目录，若不存在则递归创建
 if [ ! -d "$log_path" ]; then
     mkdir -p "$log_path"

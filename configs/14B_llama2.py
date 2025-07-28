@@ -1,38 +1,38 @@
 
 from preprocess import generate_
 import json
-dp_size = 2
+dp_size = 1
 tp_size = 1
-pp_size = 4
-num_microbatches = pp_size*4
+pp_size = 8
+num_microbatches = 8#pp_size*4
 recomp_stages = []
 recomp_microbatches = []
 recomp_layers = []
 open_recomp = False
 num_microbatches, pp_size, stage_placement, scheduler_type, \
 split_backward, unified_scheduler, comm_graph, first_stage, \
-last_stage, Devices_containing_last_stage, recomp_stages = generate_() #recomp_layers,recomp_microbatches
+last_stage, Devices_containing_last_stage, recomp_stages,all_pre_fetch_w = generate_() #recomp_layers,recomp_microbatches
 
 if len(recomp_stages) > 0:
     open_recomp = True
 layerwise = False
-num_chunks = 2
+num_chunks = 1
 pp_mode = "unified"
 JOB_NAME = "14b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 #dp_micro_num = [5,3] falcon
 VOCAB_SIZE = 32000
-SEQ_LEN = 1048
+SEQ_LEN = 1024
 HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 32
+NUM_LAYER = 16
 
-heter = True
+heter = False
 alpa = False
-layer_placement = [[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14], [15, 16]]
+# layer_placement = [[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14], [15, 16]]
 #metis[[1,6],[7,11],[12,13],[14,16]] [[1, 3], [4, 5], [6, 8], [9, 11], [12, 12], [13, 13], [14, 14], [15, 16]]
 sleep_forward_time = 0
 sleep_backward_time = 0

@@ -14,12 +14,11 @@ from internlm.accelerator import get_accelerator
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.utils.common import get_current_device
-
 from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
+import time
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 internlm_accelerator = get_accelerator()
-
 
 def _get_tensor_shape(tensor_shape: TensorShape, chunk_tensor: bool = False) -> Tuple[TensorShape, bool]:
     """get the exact tensor shape when communicating and return whether the tensor is a chunk
@@ -220,7 +219,7 @@ def _communicate(
 
     return tensor_recv_prev, tensor_recv_next
 
-
+from typing import Callable, Optional
 def _communicate_async(
     object_send_next: Union[torch.Tensor, List[torch.Tensor]] = None,
     object_send_prev: Union[torch.Tensor, List[torch.Tensor]] = None,
@@ -232,6 +231,10 @@ def _communicate_async(
     next_rank: int = None,
     dtype: torch.dtype = None,
     scatter_gather_tensors: bool = False,
+    steps = None,
+    step_id = None,
+    local_pre_fetch_w = None,
+    func = None
 ):
     """
     Adapted from megatron.p2p_communication.
@@ -323,15 +326,42 @@ def _communicate_async(
     # return and do other things
     yield
 
+    # if len(ops) > 0:
+    #     if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+    #         for req in reqs:
+    #             req.wait()
+    #         # To protect against race condition when using batch_isend_irecv().
+    #         internlm_accelerator.synchronize()
+    #     else:
+    #         for req in ops:
+    #             req.wait()
+
+    def wait_with_timeout_and_fallback(req, timeout=0.02, fallback=None, **kwargs):
+        start = time.perf_counter()
+        while not req.is_completed():
+            if time.perf_counter() - start > timeout:
+                if fallback:
+                    fallback(**kwargs)
+                return False  # 超时
+            # time.sleep(0.1)
+        req.wait()  # 确保完成
+        return True
+    TIMEOUT = 0.02
+
     if len(ops) > 0:
         if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
             for req in reqs:
-                req.wait()
-            # To protect against race condition when using batch_isend_irecv().
+                while True:
+                    success = wait_with_timeout_and_fallback(req, timeout=TIMEOUT, fallback=func,steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w)
+                    if success:
+                        break  # 成功才退出
             internlm_accelerator.synchronize()
         else:
             for req in ops:
-                req.wait()
+                while True:
+                    success = wait_with_timeout_and_fallback(req, timeout=TIMEOUT, fallback=func,steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w)
+                    if success:
+                        break  # 成功才退出
 
     if recv_prev and recv_prev_split:
         if isinstance(tensor_recv_prev, torch.Tensor):
@@ -698,7 +728,10 @@ class AsynCommunicator_unified:
         local_rank = None,
         # chunk_id = None,
         match_rank = None,
+        steps = None,
         step_id = None,
+        local_pre_fetch_w = None,
+        func = None
     ) -> None:
         # self.stage_id = stage_id
         # self.step_type = step_type
@@ -707,6 +740,8 @@ class AsynCommunicator_unified:
         self.local_rank = local_rank
         self.match_rank = match_rank
         self.step_id = step_id
+        self.steps = steps
+        self.local_pre_fetch_w = local_pre_fetch_w
         #tag = 0
         # self.operation = ""
         self.tensor_shape = None
@@ -743,7 +778,10 @@ class AsynCommunicator_unified:
             next_rank=next_rank,
             dtype=dtype,
             scatter_gather_tensors=scatter_gather_tensors,
-            #tag=tag,
+            steps = steps,
+            step_id = step_id,
+            local_pre_fetch_w = local_pre_fetch_w,
+            func=func,
         )
 
     @property

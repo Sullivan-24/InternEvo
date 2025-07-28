@@ -7,9 +7,9 @@ unset NCCL_DEBUG_SUBSYS
 export CUDA_LAUNCH_BLOCKING=1
 # 定义参数
 train_file="InternEvo/train.py"
-config_file="InternEvo/configs/7B_gemma.py"
+config_file="InternEvo/configs/14B_llama2.py"
 profiling="--profiling"  # 如果需要，可以取消此行的注释
-profiling=""
+# profiling=""
 # 运行训练
 torchrun --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT \
 --nproc_per_node=8 --nnodes=$WORLD_SIZE --node_rank=$RANK $train_file \

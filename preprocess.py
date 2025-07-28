@@ -130,6 +130,8 @@ def judge_scheduler_type(stage_placement):
     if len(num_chunks_per_device) > 1:
         return ModuleType.HET.value
     else:
+        if num_chunks_per_device[0] == 1:
+            return ModuleType.ONEFONEB.value
         if len(sum_stageId_per_device) == 1:
             if sum_stageId_per_device[0] == ranks-1:
                 return ModuleType.CHIMERA.value
@@ -306,13 +308,13 @@ def comm_graph_muti_chunk(comp_graph, stage_alignment):   # 假设 comp_graph �
             comm_op['A'].sort(key=lambda x:x[1])
             comm_stage.append(comm_op)
         comm_graph.append(comm_stage)
-    # comm_graph = detect_cross_deadlock_mutichunk(comm_graph,stage_alignment)
-    comm_matrix = generate_comm_martix(comm_graph,stage_alignment,comp_graph)
-    #print(f"wrong comm order:{find_mismatch(comm_matrix)}")
-    comm_graph, actions = fix_matrix_keep_sa_sg_order(comm_matrix,comm_graph)
-    generate_ops_josn(comm_graph,stage_alignment,comp_graph)
-    #print(f"fix actions:{actions}")
-    #print(f"test fixed comm graph:{find_mismatch(generate_comm_martix(comm_graph, stage_alignment, comp_graph))}")
+    comm_graph = detect_cross_deadlock_mutichunk(comm_graph,stage_alignment)
+    # comm_matrix = generate_comm_martix(comm_graph,stage_alignment,comp_graph)
+    # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
+    # comm_graph, actions = fix_matrix_keep_sa_sg_order(comm_matrix,comm_graph)
+    # generate_ops_josn(comm_graph,stage_alignment,comp_graph)
+    # print(f"fix actions:{actions}")
+    # print(f"test fixed comm graph:{find_mismatch(generate_comm_martix(comm_graph, stage_alignment, comp_graph))}")
     return comm_graph
 
 def fix_matrix_keep_sa_sg_order(matrix, comm_graph):
@@ -919,6 +921,30 @@ def detect_cross_deadlock_mutichunk(comm_graph, stage_alignment):
                         break
     return comm_graph
 
+
+def search_step(steps,now_index):
+    pre_fetch_w_index = []
+    end_index = len(steps)-1
+    for step_index in range(now_index):
+        step_type, microbatch_id, stage_id, chunk_id, start_time, end_time = steps[step_index]
+        if step_type == 'b':
+            for find_w_index in range(now_index, end_index):# include self
+                step_type_w, microbatch_id_w, stage_id_w, chunk_id_w, start_time_w, end_time_w = steps[find_w_index]
+                if step_type_w == 'w' and microbatch_id_w == microbatch_id and stage_id == stage_id_w:
+                    pre_fetch_w_index.append(find_w_index)
+    return pre_fetch_w_index
+
+def pre_fetch_w(unified_scheduler):
+    all_pre_fetch_w = []
+    for pipe_rank in range(len(unified_scheduler)):
+        pipe_rank_pre = []
+        pipe_rank_steps = unified_scheduler[pipe_rank]
+        for step_index in range(len(pipe_rank_steps)):
+            pre_fetch_w_index = search_step(pipe_rank_steps,step_index)
+            pipe_rank_pre.append(pre_fetch_w_index)
+        all_pre_fetch_w.append(pipe_rank_pre)
+    return all_pre_fetch_w
+
 def generate_():
     stage_placement = ""
     input_str=""
@@ -930,9 +956,10 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = 16
+    num_microbatches = 8
     unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
+    all_pre_fetch_w = pre_fetch_w(unified_scheduler)    
     scheduler_type = judge_scheduler_type(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
@@ -946,10 +973,10 @@ def generate_():
     # with open(file_path+'/runtime.json','w') as file:
     #     json.dump(result,file)
     print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
-          recomp_stages:{recomp_stages}')
+          recomp_stages:{recomp_stages},scheduler_type:{scheduler_type},all_pre_fetch_w:{all_pre_fetch_w}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
-            last_stage, Devices_containing_last_stage, recomp_stages
+            last_stage, Devices_containing_last_stage, recomp_stages, all_pre_fetch_w
 
 if __name__ == '__main__':
     generate_()
