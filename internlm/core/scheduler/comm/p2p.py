@@ -730,7 +730,7 @@ class AsynCommunicator_unified:
             assert recv_next_shape is not None
             self.tensor_shape = recv_next_shape
             #tag = next_stage_id*10000+microbatch_id
-        
+
         self._need_receive = recv_prev_shape is not None or recv_next_shape is not None
         self._coroutine = _communicate_async(
             object_send_prev=object_send_prev,
@@ -743,7 +743,6 @@ class AsynCommunicator_unified:
             next_rank=next_rank,
             dtype=dtype,
             scatter_gather_tensors=scatter_gather_tensors,
-            #tag=tag,
         )
 
     @property
@@ -751,19 +750,11 @@ class AsynCommunicator_unified:
         return self._need_receive
 
     def start(self) -> None:
+        next(self._coroutine)
         commOperation_info = {"operation":self.operation, "local_rank":self.local_rank, "step_id":self.step_id, "match_rank":self.match_rank, "tensor_shape":self.tensor_shape}
         write_json(gpc._config['jsonpath'], commOperation_info)
-        # start_time = time.perf_counter()
-        next(self._coroutine)
-        # end_time = time.perf_counter()
-        # commOperation_info = {"local_rank":self.local_rank, "stage_id":self.stage_id, "chunk_id":self.chunk_id, "microbatch_id":self.microbatch_id, "step_type":self.step_type, "operation":self.operation, "start_time":start_time,  "timespan":(end_time - start_time)}
-        # write_json(gpc._config['jsonpath'], commOperation_info)
 
     def wait_and_receive(self) -> Union[torch.Tensor, List[torch.Tensor]]:
-        # start_time = time.perf_counter()
         received = next(self._coroutine)
         self._coroutine.close()
-        # end_time = time.perf_counter()
-        # commOperation_info = {"local_rank":self.local_rank, "stage_id":self.stage_id, "chunk_id":self.chunk_id, "microbatch_id":self.microbatch_id, "step_type":self.step_type, "operation":self.operation, "start_time":start_time,  "timespan":(end_time - start_time)}
-        # write_json(gpc._config['jsonpath'], commOperation_info)
         return received
