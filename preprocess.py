@@ -589,7 +589,7 @@ def write_json(jsonpath, content):
         f.write('\n')
 
 def generate_ops_josn(comm_graph, stage_alignment, comp_graph):
-    dir = '/cpfs01/user/matenghui/InternEvo/devices_operations/'
+    dir = 'InternEvo/devices_operations/'
     os.makedirs(dir, exist_ok=True)
     max_stage_id = max([stage_id for row in stage_alignment for stage_id in row])
     min_stage_id = min([stage_id for row in stage_alignment for stage_id in row])
@@ -922,7 +922,7 @@ def detect_cross_deadlock_mutichunk(comm_graph, stage_alignment):
 def generate_():
     stage_placement = ""
     input_str=""
-    file_path = '/cpfs01/user/matenghui/InternEvo'
+    file_path = 'InternEvo'
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:

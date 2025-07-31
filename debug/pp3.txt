@@ -1,0 +1,186 @@
+Step 0: ('f', 0, 3, 0, 24.0, 32.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 0: ('f', 0, 3, 0, 24.0, 32.0) ends.
+Step 1: ('f', 1, 3, 0, 32.0, 40.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 1: ('f', 1, 3, 0, 32.0, 40.0) ends.
+Step 2: ('f', 2, 3, 0, 40.0, 48.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 2: ('f', 2, 3, 0, 40.0, 48.0) ends.
+Step 3: ('f', 3, 3, 0, 48.0, 56.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 3: ('f', 3, 3, 0, 48.0, 56.0) ends.
+Step 4: ('f', 0, 7, 1, 56.0, 64.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 4: ('f', 0, 7, 1, 56.0, 64.0) ends.
+Step 5: ('f', 1, 7, 1, 64.0, 72.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 5: ('f', 1, 7, 1, 64.0, 72.0) ends.
+Step 6: ('f', 2, 7, 1, 72.0, 80.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 6: ('f', 2, 7, 1, 72.0, 80.0) ends.
+Step 7: ('f', 3, 7, 1, 80.0, 88.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 7: ('f', 3, 7, 1, 80.0, 88.0) ends.
+Step 8: ('f', 0, 11, 2, 88.0, 96.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 8: ('f', 0, 11, 2, 88.0, 96.0) ends.
+Step 9: ('f', 1, 11, 2, 96.0, 104.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 9: ('f', 1, 11, 2, 96.0, 104.0) ends.
+Step 10: ('f', 2, 11, 2, 104.0, 112.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 10: ('f', 2, 11, 2, 104.0, 112.0) ends.
+Step 11: ('f', 3, 11, 2, 112.0, 120.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 11: ('f', 3, 11, 2, 112.0, 120.0) ends.
+Step 12: ('f', 0, 15, 3, 120.0, 128.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 12: ('f', 0, 15, 3, 120.0, 128.0) ends.
+Step 13: ('f', 1, 15, 3, 128.0, 136.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 13: ('f', 1, 15, 3, 128.0, 136.0) ends.
+Step 14: ('f', 2, 15, 3, 136.0, 144.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 14: ('f', 2, 15, 3, 136.0, 144.0) ends.
+Step 15: ('f', 3, 15, 3, 144.0, 152.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm3 send F begins.
+F-Comm3 send F ends.
+Step 15: ('f', 3, 15, 3, 144.0, 152.0) ends.
+Step 16: ('f', 0, 31, 4, 248.0, 312.0) begins.
+recv_all begins.
+recv_all ends.
+fwd begins.
+fwd ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+F-Comm1 recv F begins.
+F-Comm1 recv F ends.
+Step 16: ('f', 0, 31, 4, 248.0, 312.0) ends.
+Step 17: ('b', 0, 31, 4, 312.0, 344.0) begins.
+recv_all begins.
+recv_all ends.
+async_communicator_recv_backward_queue begins.
+async_communicator_recv_backward_queue ends.
+Bwd begins.
+Bwd ends.
+B-Comm1 recv F starts.
+B-Comm1 recv F ends.
+B-Comm1 recv F starts.
+B-Comm1 recv F ends.
+B-Comm1 recv F starts.
+B-Comm1 recv F ends.
+B-Comm3 send B starts.

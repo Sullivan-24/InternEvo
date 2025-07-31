@@ -618,11 +618,11 @@ def get_num_microbatches(schedule:str):
         max_mid = max(mid, max_mid)
     return max_mid + 1
 
-def read_input_str_in_result_file(filepath="/cpfs01/user/matenghui/InternEvo/result.txt"):
+def read_input_str_in_result_file(filepath="InternEvo/result.txt"):
     input_str = open(file=filepath, mode='r').read()
     return input_str
 
-def read_placement_from_file(filepath="/cpfs01/user/matenghui/InternEvo/placement.txt"):
+def read_placement_from_file(filepath="InternEvo/placement.txt"):
     stage_alignment = eval(open(file=filepath, mode='r').read())
     return stage_alignment
 

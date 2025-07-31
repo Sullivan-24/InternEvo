@@ -1,0 +1,528 @@
+{"operation": "RA", "local_rank": 3, "step_id": 0, "match_rank": 2, "comm": ["f", 12.0, 2, 2, 0, 0, 0]}
+{"step_type": "f", "local_rank": 3, "step_id": 0, "chunk_id": 0, "stage_id": 3, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 0, "match_rank": 2, "comm": ["f", 16.0, 2, 2, 0, 1, 1]}
+{"operation": "SA", "local_rank": 3, "step_id": 0, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 1, "chunk_id": 0, "stage_id": 3, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 1, "match_rank": 2, "comm": ["f", 20.0, 2, 2, 0, 2, 2]}
+{"operation": "RA", "local_rank": 3, "step_id": 1, "match_rank": 0, "comm": ["f", 20.0, 0, 4, 1, 0, 4]}
+{"operation": "SA", "local_rank": 3, "step_id": 1, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 2, "chunk_id": 1, "stage_id": 5, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 2, "match_rank": 2, "comm": ["f", 24.0, 2, 2, 0, 3, 3]}
+{"operation": "RA", "local_rank": 3, "step_id": 2, "match_rank": 0, "comm": ["f", 24.0, 0, 4, 1, 1, 5]}
+{"operation": "SA", "local_rank": 3, "step_id": 2, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 3, "chunk_id": 1, "stage_id": 5, "microbatch_id": 1, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 3, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 4, "chunk_id": 0, "stage_id": 3, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 4, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 5, "chunk_id": 0, "stage_id": 3, "microbatch_id": 3, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 5, "match_rank": 0}
+{"operation": "RA", "local_rank": 3, "step_id": 6, "match_rank": 2, "comm": ["f", 40.0, 2, 2, 0, 4, 6]}
+{"step_type": "f", "local_rank": 3, "step_id": 6, "chunk_id": 0, "stage_id": 3, "microbatch_id": 4, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 6, "match_rank": 0, "comm": ["f", 44.0, 0, 4, 1, 2, 10]}
+{"operation": "RA", "local_rank": 3, "step_id": 6, "match_rank": 2, "comm": ["f", 44.0, 2, 10, 2, 0, 7]}
+{"operation": "SA", "local_rank": 3, "step_id": 6, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 7, "chunk_id": 2, "stage_id": 11, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 7, "match_rank": 0, "comm": ["f", 48.0, 0, 4, 1, 3, 11]}
+{"operation": "RA", "local_rank": 3, "step_id": 7, "match_rank": 2, "comm": ["f", 48.0, 2, 10, 2, 1, 8]}
+{"operation": "SA", "local_rank": 3, "step_id": 7, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 8, "chunk_id": 2, "stage_id": 11, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 8, "match_rank": 2, "comm": ["f", 52.0, 2, 2, 0, 5, 9]}
+{"operation": "SA", "local_rank": 3, "step_id": 8, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 9, "chunk_id": 1, "stage_id": 5, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 9, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 10, "chunk_id": 1, "stage_id": 5, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 10, "match_rank": 0, "comm": ["f", 60.0, 0, 4, 1, 4, 14]}
+{"operation": "RA", "local_rank": 3, "step_id": 10, "match_rank": 2, "comm": ["f", 60.0, 2, 14, 3, 0, 10]}
+{"operation": "SA", "local_rank": 3, "step_id": 10, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 11, "chunk_id": 3, "stage_id": 15, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 11, "match_rank": 2, "comm": ["f", 64.0, 2, 14, 3, 1, 11]}
+{"operation": "SA", "local_rank": 3, "step_id": 11, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 12, "chunk_id": 3, "stage_id": 15, "microbatch_id": 1, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 12, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 13, "chunk_id": 1, "stage_id": 5, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 13, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 14, "chunk_id": 0, "stage_id": 3, "microbatch_id": 5, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 14, "match_rank": 0}
+{"operation": "RA", "local_rank": 3, "step_id": 15, "match_rank": 2, "comm": ["f", 84.0, 2, 10, 2, 2, 16]}
+{"step_type": "f", "local_rank": 3, "step_id": 15, "chunk_id": 2, "stage_id": 11, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 15, "match_rank": 0}
+{"operation": "RA", "local_rank": 3, "step_id": 16, "match_rank": 2, "comm": ["f", 96.0, 2, 10, 2, 3, 19]}
+{"step_type": "f", "local_rank": 3, "step_id": 16, "chunk_id": 2, "stage_id": 11, "microbatch_id": 3, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 16, "match_rank": 0}
+{"operation": "RA", "local_rank": 3, "step_id": 17, "match_rank": 2, "comm": ["f", 108.0, 2, 14, 3, 2, 22]}
+{"step_type": "f", "local_rank": 3, "step_id": 17, "chunk_id": 3, "stage_id": 15, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 17, "match_rank": 0}
+{"operation": "RA", "local_rank": 3, "step_id": 18, "match_rank": 2, "comm": ["f", 120.0, 2, 14, 3, 3, 25]}
+{"step_type": "f", "local_rank": 3, "step_id": 18, "chunk_id": 3, "stage_id": 15, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 18, "match_rank": 2, "comm": ["f", 124.0, 2, 30, 8, 0, 26]}
+{"operation": "RA", "local_rank": 3, "step_id": 18, "match_rank": 2, "comm": ["f", 128.0, 2, 30, 8, 1, 27]}
+{"operation": "RA", "local_rank": 3, "step_id": 18, "match_rank": 0, "comm": ["f", 132.0, 0, 4, 1, 5, 32]}
+{"operation": "SA", "local_rank": 3, "step_id": 18, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 19, "chunk_id": 4, "stage_id": 31, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 19, "match_rank": 2, "comm": ["f", 152.0, 2, 10, 2, 4, 33]}
+{"operation": "RA", "local_rank": 3, "step_id": 19, "match_rank": 2, "comm": ["f", 164.0, 2, 2, 0, 6, 36]}
+{"step_type": "b", "local_rank": 3, "step_id": 20, "chunk_id": 4, "stage_id": 31, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 20, "match_rank": 2, "comm": ["f", 180.0, 2, 30, 8, 2, 40]}
+{"operation": "RA", "local_rank": 3, "step_id": 20, "match_rank": 2, "comm": ["f", 184.0, 2, 2, 0, 7, 41]}
+{"operation": "SG", "local_rank": 3, "step_id": 20, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 21, "chunk_id": 4, "stage_id": 31, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 21, "match_rank": 2, "comm": ["f", 192.0, 2, 30, 8, 3, 43]}
+{"operation": "RA", "local_rank": 3, "step_id": 21, "match_rank": 2, "comm": ["f", 196.0, 2, 2, 0, 8, 44]}
+{"operation": "RA", "local_rank": 3, "step_id": 21, "match_rank": 2, "comm": ["f", 204.0, 2, 2, 0, 9, 46]}
+{"operation": "RA", "local_rank": 3, "step_id": 21, "match_rank": 2, "comm": ["f", 208.0, 2, 2, 0, 10, 47]}
+{"step_type": "b", "local_rank": 3, "step_id": 22, "chunk_id": 4, "stage_id": 31, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 22, "match_rank": 2, "comm": ["f", 216.0, 2, 2, 0, 11, 49]}
+{"operation": "RA", "local_rank": 3, "step_id": 22, "match_rank": 2, "comm": ["f", 220.0, 2, 2, 0, 12, 50]}
+{"operation": "RA", "local_rank": 3, "step_id": 22, "match_rank": 2, "comm": ["f", 232.0, 2, 2, 0, 13, 53]}
+{"operation": "RG", "local_rank": 3, "step_id": 22, "match_rank": 0, "comm": ["b", 232.0, 0, 16, 4, 0, 57]}
+{"operation": "RA", "local_rank": 3, "step_id": 22, "match_rank": 2, "comm": ["f", 236.0, 2, 2, 0, 14, 54]}
+{"operation": "SG", "local_rank": 3, "step_id": 22, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 23, "chunk_id": 4, "stage_id": 31, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 23, "match_rank": 2, "comm": ["f", 244.0, 2, 2, 0, 15, 56]}
+{"step_type": "b", "local_rank": 3, "step_id": 24, "chunk_id": 3, "stage_id": 15, "microbatch_id": 0, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 24, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 25, "chunk_id": 4, "stage_id": 31, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 25, "match_rank": 0, "comm": ["b", 268.0, 0, 12, 3, 0, 66]}
+{"operation": "SG", "local_rank": 3, "step_id": 25, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 26, "chunk_id": 2, "stage_id": 11, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 26, "match_rank": 0, "comm": ["b", 284.0, 0, 16, 4, 1, 70]}
+{"operation": "SG", "local_rank": 3, "step_id": 26, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 27, "chunk_id": 4, "stage_id": 31, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 27, "match_rank": 1, "comm": ["b", 296.0, 1, 6, 1, 0, 70]}
+{"step_type": "b", "local_rank": 3, "step_id": 28, "chunk_id": 1, "stage_id": 5, "microbatch_id": 0, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 28, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 29, "chunk_id": 3, "stage_id": 15, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 29, "match_rank": 0, "comm": ["b", 316.0, 0, 4, 1, 0, 78]}
+{"operation": "SG", "local_rank": 3, "step_id": 29, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 30, "chunk_id": 0, "stage_id": 3, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 30, "match_rank": 0, "comm": ["b", 328.0, 0, 12, 3, 1, 81]}
+{"operation": "SG", "local_rank": 3, "step_id": 30, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 31, "chunk_id": 4, "stage_id": 31, "microbatch_id": 3, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 31, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 32, "chunk_id": 2, "stage_id": 11, "microbatch_id": 1, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 32, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 33, "chunk_id": 2, "stage_id": 11, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 33, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 34, "chunk_id": 1, "stage_id": 5, "microbatch_id": 5, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 34, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 35, "chunk_id": 0, "stage_id": 3, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 35, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 36, "chunk_id": 0, "stage_id": 3, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 36, "match_rank": 0, "comm": ["b", 356.0, 0, 16, 4, 2, 86]}
+{"operation": "SA", "local_rank": 3, "step_id": 36, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 37, "chunk_id": 3, "stage_id": 15, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 37, "match_rank": 1, "comm": ["b", 360.0, 1, 6, 1, 1, 86]}
+{"operation": "SG", "local_rank": 3, "step_id": 37, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 38, "chunk_id": 1, "stage_id": 5, "microbatch_id": 1, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 38, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 39, "chunk_id": 0, "stage_id": 3, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 39, "match_rank": 0, "comm": ["b", 368.0, 0, 4, 1, 1, 89]}
+{"operation": "SA", "local_rank": 3, "step_id": 39, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 40, "chunk_id": 0, "stage_id": 3, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 40, "match_rank": 0, "comm": ["b", 372.0, 0, 12, 3, 2, 90]}
+{"operation": "SG", "local_rank": 3, "step_id": 40, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 41, "chunk_id": 2, "stage_id": 11, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 41, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 42, "chunk_id": 0, "stage_id": 3, "microbatch_id": 9, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 42, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 43, "chunk_id": 0, "stage_id": 3, "microbatch_id": 10, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 43, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 44, "chunk_id": 0, "stage_id": 3, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 44, "match_rank": 2, "comm": ["f", 388.0, 2, 14, 3, 4, 92]}
+{"operation": "SA", "local_rank": 3, "step_id": 44, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 45, "chunk_id": 3, "stage_id": 15, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 45, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 46, "chunk_id": 0, "stage_id": 3, "microbatch_id": 12, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 46, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 47, "chunk_id": 0, "stage_id": 3, "microbatch_id": 13, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 47, "match_rank": 1, "comm": ["b", 400.0, 1, 6, 1, 2, 96]}
+{"operation": "SA", "local_rank": 3, "step_id": 47, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 48, "chunk_id": 1, "stage_id": 5, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 48, "match_rank": 0, "comm": ["f", 404.0, 0, 4, 1, 6, 97]}
+{"operation": "RA", "local_rank": 3, "step_id": 48, "match_rank": 2, "comm": ["f", 404.0, 2, 10, 2, 5, 96]}
+{"operation": "SG", "local_rank": 3, "step_id": 48, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 49, "chunk_id": 2, "stage_id": 11, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 49, "match_rank": 0, "comm": ["b", 408.0, 0, 4, 1, 2, 98]}
+{"operation": "SA", "local_rank": 3, "step_id": 49, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 50, "chunk_id": 0, "stage_id": 3, "microbatch_id": 2, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 50, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 51, "chunk_id": 1, "stage_id": 5, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 51, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 52, "chunk_id": 0, "stage_id": 3, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 52, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 53, "chunk_id": 0, "stage_id": 3, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 53, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 54, "chunk_id": 0, "stage_id": 3, "microbatch_id": 0, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 55, "chunk_id": 1, "stage_id": 5, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 55, "match_rank": 0, "comm": ["b", 432.0, 0, 16, 4, 3, 103]}
+{"step_type": "b", "local_rank": 3, "step_id": 56, "chunk_id": 3, "stage_id": 15, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 56, "match_rank": 2, "comm": ["f", 436.0, 2, 14, 3, 5, 104]}
+{"operation": "SG", "local_rank": 3, "step_id": 56, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 57, "chunk_id": 3, "stage_id": 15, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 57, "match_rank": 0, "comm": ["f", 440.0, 0, 4, 1, 7, 105]}
+{"operation": "SA", "local_rank": 3, "step_id": 57, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 58, "chunk_id": 1, "stage_id": 5, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 58, "match_rank": 1}
+{"step_type": "w", "local_rank": 3, "step_id": 59, "chunk_id": 2, "stage_id": 11, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 59, "match_rank": 0, "comm": ["b", 448.0, 0, 12, 3, 3, 107]}
+{"step_type": "b", "local_rank": 3, "step_id": 60, "chunk_id": 2, "stage_id": 11, "microbatch_id": 3, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 60, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 61, "chunk_id": 3, "stage_id": 15, "microbatch_id": 0, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 62, "chunk_id": 4, "stage_id": 31, "microbatch_id": 0, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 62, "match_rank": 1, "comm": ["b", 472.0, 1, 6, 1, 3, 114]}
+{"step_type": "b", "local_rank": 3, "step_id": 63, "chunk_id": 1, "stage_id": 5, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 63, "match_rank": 2, "comm": ["f", 476.0, 2, 10, 2, 6, 114]}
+{"operation": "SG", "local_rank": 3, "step_id": 63, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 64, "chunk_id": 2, "stage_id": 11, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 64, "match_rank": 2, "comm": ["f", 480.0, 2, 30, 8, 4, 115]}
+{"operation": "RG", "local_rank": 3, "step_id": 64, "match_rank": 0, "comm": ["b", 480.0, 0, 4, 1, 3, 115]}
+{"operation": "SA", "local_rank": 3, "step_id": 64, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 65, "chunk_id": 0, "stage_id": 3, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 65, "match_rank": 0, "comm": ["f", 492.0, 0, 4, 1, 8, 118]}
+{"operation": "RA", "local_rank": 3, "step_id": 65, "match_rank": 2, "comm": ["f", 492.0, 2, 14, 3, 6, 118]}
+{"operation": "RA", "local_rank": 3, "step_id": 65, "match_rank": 2, "comm": ["f", 496.0, 2, 10, 2, 7, 119]}
+{"operation": "SG", "local_rank": 3, "step_id": 65, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 66, "chunk_id": 4, "stage_id": 31, "microbatch_id": 4, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 0, "comm": ["f", 508.0, 0, 4, 1, 9, 121]}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 0, "comm": ["f", 512.0, 0, 4, 1, 10, 122]}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 2, "comm": ["f", 512.0, 2, 30, 8, 5, 123]}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 0, "comm": ["f", 516.0, 0, 4, 1, 11, 123]}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 0, "comm": ["f", 520.0, 0, 4, 1, 12, 124]}
+{"operation": "RA", "local_rank": 3, "step_id": 66, "match_rank": 0, "comm": ["f", 524.0, 0, 4, 1, 13, 125]}
+{"step_type": "b", "local_rank": 3, "step_id": 67, "chunk_id": 4, "stage_id": 31, "microbatch_id": 4, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 67, "match_rank": 0, "comm": ["f", 528.0, 0, 4, 1, 14, 126]}
+{"operation": "RA", "local_rank": 3, "step_id": 67, "match_rank": 0, "comm": ["f", 532.0, 0, 4, 1, 15, 127]}
+{"operation": "SG", "local_rank": 3, "step_id": 67, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 68, "chunk_id": 4, "stage_id": 31, "microbatch_id": 5, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 69, "chunk_id": 4, "stage_id": 31, "microbatch_id": 5, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 69, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 70, "chunk_id": 3, "stage_id": 15, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 70, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 71, "chunk_id": 2, "stage_id": 11, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 71, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 72, "chunk_id": 1, "stage_id": 5, "microbatch_id": 8, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 72, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 73, "chunk_id": 1, "stage_id": 5, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 73, "match_rank": 0, "comm": ["b", 596.0, 0, 16, 4, 4, 141]}
+{"operation": "SA", "local_rank": 3, "step_id": 73, "match_rank": 1}
+{"step_type": "b", "local_rank": 3, "step_id": 74, "chunk_id": 3, "stage_id": 15, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 74, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 75, "chunk_id": 1, "stage_id": 5, "microbatch_id": 10, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 75, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 76, "chunk_id": 1, "stage_id": 5, "microbatch_id": 11, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 76, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 77, "chunk_id": 1, "stage_id": 5, "microbatch_id": 12, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 77, "match_rank": 2, "comm": ["f", 612.0, 2, 14, 3, 7, 148]}
+{"operation": "RG", "local_rank": 3, "step_id": 77, "match_rank": 0, "comm": ["b", 612.0, 0, 12, 3, 4, 145]}
+{"operation": "SA", "local_rank": 3, "step_id": 77, "match_rank": 1}
+{"step_type": "b", "local_rank": 3, "step_id": 78, "chunk_id": 2, "stage_id": 11, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 78, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 79, "chunk_id": 3, "stage_id": 15, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 79, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 80, "chunk_id": 1, "stage_id": 5, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 80, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 81, "chunk_id": 1, "stage_id": 5, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 81, "match_rank": 1}
+{"step_type": "f", "local_rank": 3, "step_id": 82, "chunk_id": 1, "stage_id": 5, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 82, "match_rank": 1}
+{"step_type": "w", "local_rank": 3, "step_id": 83, "chunk_id": 0, "stage_id": 3, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 83, "match_rank": 1, "comm": ["b", 636.0, 1, 6, 1, 4, 155]}
+{"step_type": "b", "local_rank": 3, "step_id": 84, "chunk_id": 1, "stage_id": 5, "microbatch_id": 4, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 84, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 85, "chunk_id": 1, "stage_id": 5, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 85, "match_rank": 0, "comm": ["b", 644.0, 0, 4, 1, 4, 153]}
+{"step_type": "b", "local_rank": 3, "step_id": 86, "chunk_id": 0, "stage_id": 3, "microbatch_id": 4, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 86, "match_rank": 0, "comm": ["b", 648.0, 0, 16, 4, 5, 154]}
+{"operation": "SG", "local_rank": 3, "step_id": 86, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 87, "chunk_id": 3, "stage_id": 15, "microbatch_id": 5, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 87, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 88, "chunk_id": 2, "stage_id": 11, "microbatch_id": 1, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 89, "chunk_id": 3, "stage_id": 15, "microbatch_id": 1, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 89, "match_rank": 0, "comm": ["b", 668.0, 0, 12, 3, 5, 158]}
+{"step_type": "w", "local_rank": 3, "step_id": 90, "chunk_id": 4, "stage_id": 31, "microbatch_id": 1, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 91, "chunk_id": 2, "stage_id": 11, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 91, "match_rank": 2, "comm": ["f", 680.0, 2, 30, 8, 6, 165]}
+{"operation": "RA", "local_rank": 3, "step_id": 91, "match_rank": 2, "comm": ["f", 692.0, 2, 10, 2, 8, 168]}
+{"operation": "SG", "local_rank": 3, "step_id": 91, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 92, "chunk_id": 4, "stage_id": 31, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 92, "match_rank": 2, "comm": ["f", 700.0, 2, 10, 2, 9, 170]}
+{"operation": "RG", "local_rank": 3, "step_id": 92, "match_rank": 1, "comm": ["b", 700.0, 1, 6, 1, 5, 171]}
+{"operation": "RA", "local_rank": 3, "step_id": 92, "match_rank": 2, "comm": ["f", 704.0, 2, 10, 2, 10, 171]}
+{"operation": "RA", "local_rank": 3, "step_id": 92, "match_rank": 2, "comm": ["f", 712.0, 2, 10, 2, 11, 173]}
+{"step_type": "b", "local_rank": 3, "step_id": 93, "chunk_id": 1, "stage_id": 5, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 93, "match_rank": 2, "comm": ["f", 720.0, 2, 30, 8, 7, 175]}
+{"operation": "RG", "local_rank": 3, "step_id": 93, "match_rank": 0, "comm": ["b", 720.0, 0, 4, 1, 5, 171]}
+{"operation": "SG", "local_rank": 3, "step_id": 93, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 94, "chunk_id": 4, "stage_id": 31, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 94, "match_rank": 2, "comm": ["f", 732.0, 2, 10, 2, 12, 178]}
+{"operation": "SG", "local_rank": 3, "step_id": 94, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 95, "chunk_id": 0, "stage_id": 3, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 95, "match_rank": 2, "comm": ["f", 744.0, 2, 10, 2, 13, 181]}
+{"operation": "RA", "local_rank": 3, "step_id": 95, "match_rank": 2, "comm": ["f", 752.0, 2, 10, 2, 14, 183]}
+{"operation": "SG", "local_rank": 3, "step_id": 95, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 96, "chunk_id": 4, "stage_id": 31, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 96, "match_rank": 2, "comm": ["f", 776.0, 2, 10, 2, 15, 189]}
+{"step_type": "b", "local_rank": 3, "step_id": 97, "chunk_id": 4, "stage_id": 31, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 97, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 98, "chunk_id": 2, "stage_id": 11, "microbatch_id": 8, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 98, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 99, "chunk_id": 2, "stage_id": 11, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 99, "match_rank": 0, "comm": ["b", 792.0, 0, 16, 4, 6, 187]}
+{"operation": "SA", "local_rank": 3, "step_id": 99, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 100, "chunk_id": 3, "stage_id": 15, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 100, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 101, "chunk_id": 2, "stage_id": 11, "microbatch_id": 10, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 101, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 102, "chunk_id": 2, "stage_id": 11, "microbatch_id": 11, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 102, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 103, "chunk_id": 2, "stage_id": 11, "microbatch_id": 12, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 103, "match_rank": 0, "comm": ["b", 808.0, 0, 12, 3, 6, 191]}
+{"operation": "SA", "local_rank": 3, "step_id": 103, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 104, "chunk_id": 2, "stage_id": 11, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 104, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 105, "chunk_id": 2, "stage_id": 11, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 105, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 106, "chunk_id": 2, "stage_id": 11, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 106, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 107, "chunk_id": 2, "stage_id": 11, "microbatch_id": 15, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 107, "match_rank": 2, "comm": ["f", 824.0, 2, 14, 3, 8, 201]}
+{"operation": "SA", "local_rank": 3, "step_id": 107, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 108, "chunk_id": 3, "stage_id": 15, "microbatch_id": 8, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 108, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 109, "chunk_id": 0, "stage_id": 3, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 109, "match_rank": 1, "comm": ["b", 832.0, 1, 6, 1, 6, 204]}
+{"step_type": "b", "local_rank": 3, "step_id": 110, "chunk_id": 1, "stage_id": 5, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 110, "match_rank": 2, "comm": ["f", 836.0, 2, 14, 3, 9, 204]}
+{"operation": "SG", "local_rank": 3, "step_id": 110, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 111, "chunk_id": 3, "stage_id": 15, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 111, "match_rank": 2, "comm": ["f", 840.0, 2, 14, 3, 10, 205]}
+{"operation": "RG", "local_rank": 3, "step_id": 111, "match_rank": 0, "comm": ["b", 840.0, 0, 4, 1, 6, 199]}
+{"operation": "SA", "local_rank": 3, "step_id": 111, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 112, "chunk_id": 0, "stage_id": 3, "microbatch_id": 6, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 112, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 113, "chunk_id": 3, "stage_id": 15, "microbatch_id": 10, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 113, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 114, "chunk_id": 1, "stage_id": 5, "microbatch_id": 2, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 115, "chunk_id": 2, "stage_id": 11, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 115, "match_rank": 2, "comm": ["f", 856.0, 2, 14, 3, 11, 209]}
+{"step_type": "f", "local_rank": 3, "step_id": 116, "chunk_id": 3, "stage_id": 15, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 116, "match_rank": 2, "comm": ["f", 860.0, 2, 14, 3, 12, 210]}
+{"operation": "SA", "local_rank": 3, "step_id": 116, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 117, "chunk_id": 3, "stage_id": 15, "microbatch_id": 12, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 117, "match_rank": 0, "comm": ["b", 864.0, 0, 16, 4, 7, 204]}
+{"operation": "SA", "local_rank": 3, "step_id": 117, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 118, "chunk_id": 3, "stage_id": 15, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 118, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 119, "chunk_id": 3, "stage_id": 15, "microbatch_id": 2, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 119, "match_rank": 0, "comm": ["b", 880.0, 0, 12, 3, 7, 208]}
+{"step_type": "w", "local_rank": 3, "step_id": 120, "chunk_id": 4, "stage_id": 31, "microbatch_id": 2, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 121, "chunk_id": 2, "stage_id": 11, "microbatch_id": 7, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 121, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 122, "chunk_id": 0, "stage_id": 3, "microbatch_id": 3, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 123, "chunk_id": 1, "stage_id": 5, "microbatch_id": 3, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 124, "chunk_id": 2, "stage_id": 11, "microbatch_id": 3, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 125, "chunk_id": 3, "stage_id": 15, "microbatch_id": 3, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 125, "match_rank": 2, "comm": ["f", 912.0, 2, 30, 8, 8, 223]}
+{"operation": "RG", "local_rank": 3, "step_id": 125, "match_rank": 1, "comm": ["b", 912.0, 1, 6, 1, 7, 224]}
+{"step_type": "w", "local_rank": 3, "step_id": 126, "chunk_id": 4, "stage_id": 31, "microbatch_id": 3, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 127, "chunk_id": 1, "stage_id": 5, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 127, "match_rank": 2, "comm": ["f", 932.0, 2, 30, 8, 9, 228]}
+{"operation": "RG", "local_rank": 3, "step_id": 127, "match_rank": 0, "comm": ["b", 932.0, 0, 4, 1, 7, 221]}
+{"operation": "SG", "local_rank": 3, "step_id": 127, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 128, "chunk_id": 4, "stage_id": 31, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 128, "match_rank": 2, "comm": ["f", 948.0, 2, 30, 8, 10, 232]}
+{"operation": "RA", "local_rank": 3, "step_id": 128, "match_rank": 2, "comm": ["f", 960.0, 2, 14, 3, 13, 235]}
+{"step_type": "b", "local_rank": 3, "step_id": 129, "chunk_id": 0, "stage_id": 3, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 129, "match_rank": 2, "comm": ["f", 972.0, 2, 30, 8, 11, 238]}
+{"operation": "SG", "local_rank": 3, "step_id": 129, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 130, "chunk_id": 4, "stage_id": 31, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 130, "match_rank": 2, "comm": ["f", 976.0, 2, 14, 3, 14, 239]}
+{"operation": "RA", "local_rank": 3, "step_id": 130, "match_rank": 2, "comm": ["f", 988.0, 2, 14, 3, 15, 242]}
+{"operation": "SG", "local_rank": 3, "step_id": 130, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 131, "chunk_id": 4, "stage_id": 31, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 131, "match_rank": 2, "comm": ["f", 1000.0, 2, 30, 8, 12, 245]}
+{"step_type": "b", "local_rank": 3, "step_id": 132, "chunk_id": 4, "stage_id": 31, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 132, "match_rank": 0, "comm": ["b", 1040.0, 0, 16, 4, 8, 246]}
+{"operation": "SG", "local_rank": 3, "step_id": 132, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 133, "chunk_id": 4, "stage_id": 31, "microbatch_id": 10, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 134, "chunk_id": 3, "stage_id": 15, "microbatch_id": 8, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 134, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 135, "chunk_id": 4, "stage_id": 31, "microbatch_id": 10, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 135, "match_rank": 0, "comm": ["b", 1080.0, 0, 12, 3, 8, 255]}
+{"operation": "SG", "local_rank": 3, "step_id": 135, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 136, "chunk_id": 2, "stage_id": 11, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 136, "match_rank": 0, "comm": ["b", 1100.0, 0, 16, 4, 9, 260]}
+{"operation": "SG", "local_rank": 3, "step_id": 136, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 137, "chunk_id": 4, "stage_id": 31, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 137, "match_rank": 1, "comm": ["b", 1104.0, 1, 6, 1, 8, 272]}
+{"step_type": "b", "local_rank": 3, "step_id": 138, "chunk_id": 1, "stage_id": 5, "microbatch_id": 8, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 138, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 139, "chunk_id": 3, "stage_id": 15, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 139, "match_rank": 0, "comm": ["b", 1124.0, 0, 4, 1, 8, 266]}
+{"operation": "SG", "local_rank": 3, "step_id": 139, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 140, "chunk_id": 0, "stage_id": 3, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 140, "match_rank": 0, "comm": ["b", 1136.0, 0, 12, 3, 9, 269]}
+{"operation": "SG", "local_rank": 3, "step_id": 140, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 141, "chunk_id": 4, "stage_id": 31, "microbatch_id": 11, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 141, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 142, "chunk_id": 2, "stage_id": 11, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 142, "match_rank": 0, "comm": ["b", 1148.0, 0, 16, 4, 10, 271]}
+{"operation": "SG", "local_rank": 3, "step_id": 142, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 143, "chunk_id": 3, "stage_id": 15, "microbatch_id": 10, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 143, "match_rank": 0, "comm": ["b", 1164.0, 0, 12, 3, 10, 275]}
+{"operation": "RG", "local_rank": 3, "step_id": 143, "match_rank": 1, "comm": ["b", 1168.0, 1, 6, 1, 9, 288]}
+{"operation": "SG", "local_rank": 3, "step_id": 143, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 144, "chunk_id": 4, "stage_id": 31, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 145, "chunk_id": 1, "stage_id": 5, "microbatch_id": 9, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 145, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 146, "chunk_id": 2, "stage_id": 11, "microbatch_id": 10, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 146, "match_rank": 0, "comm": ["b", 1192.0, 0, 4, 1, 9, 281]}
+{"operation": "SG", "local_rank": 3, "step_id": 146, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 147, "chunk_id": 0, "stage_id": 3, "microbatch_id": 9, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 147, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 148, "chunk_id": 4, "stage_id": 31, "microbatch_id": 12, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 148, "match_rank": 1, "comm": ["b", 1212.0, 1, 6, 1, 10, 299]}
+{"operation": "SG", "local_rank": 3, "step_id": 148, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 149, "chunk_id": 1, "stage_id": 5, "microbatch_id": 10, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 149, "match_rank": 0, "comm": ["b", 1216.0, 0, 16, 4, 11, 286]}
+{"operation": "SG", "local_rank": 3, "step_id": 149, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 150, "chunk_id": 3, "stage_id": 15, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 150, "match_rank": 0, "comm": ["b", 1220.0, 0, 4, 1, 10, 287]}
+{"operation": "SG", "local_rank": 3, "step_id": 150, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 151, "chunk_id": 0, "stage_id": 3, "microbatch_id": 10, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 151, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 152, "chunk_id": 3, "stage_id": 15, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 152, "match_rank": 0}
+{"step_type": "f", "local_rank": 3, "step_id": 153, "chunk_id": 3, "stage_id": 15, "microbatch_id": 14, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 153, "match_rank": 0, "comm": ["b", 1232.0, 0, 12, 3, 11, 290]}
+{"operation": "SA", "local_rank": 3, "step_id": 153, "match_rank": 0}
+{"step_type": "b", "local_rank": 3, "step_id": 154, "chunk_id": 2, "stage_id": 11, "microbatch_id": 11, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 154, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 155, "chunk_id": 3, "stage_id": 15, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SA", "local_rank": 3, "step_id": 155, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 156, "chunk_id": 0, "stage_id": 3, "microbatch_id": 4, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 157, "chunk_id": 1, "stage_id": 5, "microbatch_id": 4, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 158, "chunk_id": 2, "stage_id": 11, "microbatch_id": 4, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 159, "chunk_id": 3, "stage_id": 15, "microbatch_id": 4, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 159, "match_rank": 1, "comm": ["b", 1256.0, 1, 6, 1, 11, 310]}
+{"step_type": "b", "local_rank": 3, "step_id": 160, "chunk_id": 1, "stage_id": 5, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 160, "match_rank": 0, "comm": ["b", 1264.0, 0, 4, 1, 11, 297]}
+{"operation": "SG", "local_rank": 3, "step_id": 160, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 161, "chunk_id": 4, "stage_id": 31, "microbatch_id": 4, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 162, "chunk_id": 0, "stage_id": 3, "microbatch_id": 11, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 162, "match_rank": 0, "comm": ["b", 1280.0, 0, 16, 4, 12, 301]}
+{"operation": "SG", "local_rank": 3, "step_id": 162, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 163, "chunk_id": 3, "stage_id": 15, "microbatch_id": 12, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 163, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 164, "chunk_id": 0, "stage_id": 3, "microbatch_id": 5, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 165, "chunk_id": 1, "stage_id": 5, "microbatch_id": 5, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 166, "chunk_id": 2, "stage_id": 11, "microbatch_id": 5, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 167, "chunk_id": 3, "stage_id": 15, "microbatch_id": 5, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 167, "match_rank": 0, "comm": ["b", 1300.0, 0, 12, 3, 12, 305]}
+{"step_type": "b", "local_rank": 3, "step_id": 168, "chunk_id": 2, "stage_id": 11, "microbatch_id": 12, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 168, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 169, "chunk_id": 4, "stage_id": 31, "microbatch_id": 5, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 170, "chunk_id": 0, "stage_id": 3, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 170, "match_rank": 1, "comm": ["b", 1324.0, 1, 6, 1, 12, 327]}
+{"step_type": "b", "local_rank": 3, "step_id": 171, "chunk_id": 1, "stage_id": 5, "microbatch_id": 12, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 171, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 172, "chunk_id": 1, "stage_id": 5, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 172, "match_rank": 0, "comm": ["b", 1332.0, 0, 4, 1, 12, 313]}
+{"step_type": "b", "local_rank": 3, "step_id": 173, "chunk_id": 0, "stage_id": 3, "microbatch_id": 12, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 173, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 174, "chunk_id": 2, "stage_id": 11, "microbatch_id": 6, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 175, "chunk_id": 3, "stage_id": 15, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 175, "match_rank": 2, "comm": ["f", 1344.0, 2, 30, 8, 13, 331]}
+{"operation": "RA", "local_rank": 3, "step_id": 175, "match_rank": 2, "comm": ["f", 1352.0, 2, 30, 8, 14, 333]}
+{"step_type": "f", "local_rank": 3, "step_id": 176, "chunk_id": 4, "stage_id": 31, "microbatch_id": 13, "operation": "compute"}
+{"operation": "RA", "local_rank": 3, "step_id": 176, "match_rank": 2, "comm": ["f", 1380.0, 2, 30, 8, 15, 340]}
+{"step_type": "b", "local_rank": 3, "step_id": 177, "chunk_id": 4, "stage_id": 31, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 177, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 178, "chunk_id": 4, "stage_id": 31, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 179, "chunk_id": 4, "stage_id": 31, "microbatch_id": 14, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 179, "match_rank": 0, "comm": ["b", 1452.0, 0, 16, 4, 13, 340]}
+{"operation": "SG", "local_rank": 3, "step_id": 179, "match_rank": 2}
+{"step_type": "f", "local_rank": 3, "step_id": 180, "chunk_id": 4, "stage_id": 31, "microbatch_id": 15, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 181, "chunk_id": 3, "stage_id": 15, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 181, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 182, "chunk_id": 4, "stage_id": 31, "microbatch_id": 15, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 182, "match_rank": 0, "comm": ["b", 1488.0, 0, 12, 3, 13, 349]}
+{"operation": "SG", "local_rank": 3, "step_id": 182, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 183, "chunk_id": 2, "stage_id": 11, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 183, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 184, "chunk_id": 4, "stage_id": 31, "microbatch_id": 6, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 184, "match_rank": 0, "comm": ["b", 1512.0, 0, 16, 4, 14, 354]}
+{"step_type": "b", "local_rank": 3, "step_id": 185, "chunk_id": 3, "stage_id": 15, "microbatch_id": 14, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 185, "match_rank": 1, "comm": ["b", 1516.0, 1, 6, 1, 13, 375]}
+{"operation": "SG", "local_rank": 3, "step_id": 185, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 186, "chunk_id": 1, "stage_id": 5, "microbatch_id": 13, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 186, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 187, "chunk_id": 0, "stage_id": 3, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 187, "match_rank": 0, "comm": ["b", 1524.0, 0, 4, 1, 13, 357]}
+{"step_type": "b", "local_rank": 3, "step_id": 188, "chunk_id": 0, "stage_id": 3, "microbatch_id": 13, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 188, "match_rank": 0, "comm": ["b", 1528.0, 0, 12, 3, 14, 358]}
+{"operation": "SG", "local_rank": 3, "step_id": 188, "match_rank": 2}
+{"step_type": "b", "local_rank": 3, "step_id": 189, "chunk_id": 2, "stage_id": 11, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 189, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 190, "chunk_id": 1, "stage_id": 5, "microbatch_id": 7, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 191, "chunk_id": 2, "stage_id": 11, "microbatch_id": 7, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 192, "chunk_id": 3, "stage_id": 15, "microbatch_id": 7, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 193, "chunk_id": 4, "stage_id": 31, "microbatch_id": 7, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 193, "match_rank": 1, "comm": ["b", 1556.0, 1, 6, 1, 14, 385]}
+{"step_type": "b", "local_rank": 3, "step_id": 194, "chunk_id": 1, "stage_id": 5, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 194, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 195, "chunk_id": 0, "stage_id": 3, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 195, "match_rank": 0, "comm": ["b", 1568.0, 0, 4, 1, 14, 367]}
+{"step_type": "b", "local_rank": 3, "step_id": 196, "chunk_id": 0, "stage_id": 3, "microbatch_id": 14, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 196, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 197, "chunk_id": 1, "stage_id": 5, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 197, "match_rank": 0, "comm": ["b", 1576.0, 0, 16, 4, 15, 369]}
+{"step_type": "b", "local_rank": 3, "step_id": 198, "chunk_id": 3, "stage_id": 15, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 198, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 199, "chunk_id": 2, "stage_id": 11, "microbatch_id": 8, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 200, "chunk_id": 3, "stage_id": 15, "microbatch_id": 8, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 200, "match_rank": 0, "comm": ["b", 1592.0, 0, 12, 3, 15, 372]}
+{"step_type": "w", "local_rank": 3, "step_id": 201, "chunk_id": 4, "stage_id": 31, "microbatch_id": 8, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 202, "chunk_id": 2, "stage_id": 11, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 202, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 203, "chunk_id": 0, "stage_id": 3, "microbatch_id": 9, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 204, "chunk_id": 1, "stage_id": 5, "microbatch_id": 9, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 205, "chunk_id": 2, "stage_id": 11, "microbatch_id": 9, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 206, "chunk_id": 3, "stage_id": 15, "microbatch_id": 9, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 206, "match_rank": 1, "comm": ["b", 1628.0, 1, 6, 1, 15, 403]}
+{"step_type": "w", "local_rank": 3, "step_id": 207, "chunk_id": 4, "stage_id": 31, "microbatch_id": 9, "operation": "compute"}
+{"step_type": "b", "local_rank": 3, "step_id": 208, "chunk_id": 1, "stage_id": 5, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 208, "match_rank": 0}
+{"step_type": "w", "local_rank": 3, "step_id": 209, "chunk_id": 0, "stage_id": 3, "microbatch_id": 10, "operation": "compute"}
+{"operation": "RG", "local_rank": 3, "step_id": 209, "match_rank": 0, "comm": ["b", 1648.0, 0, 4, 1, 15, 385]}
+{"step_type": "b", "local_rank": 3, "step_id": 210, "chunk_id": 0, "stage_id": 3, "microbatch_id": 15, "operation": "compute"}
+{"operation": "SG", "local_rank": 3, "step_id": 210, "match_rank": 2}
+{"step_type": "w", "local_rank": 3, "step_id": 211, "chunk_id": 1, "stage_id": 5, "microbatch_id": 10, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 212, "chunk_id": 2, "stage_id": 11, "microbatch_id": 10, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 213, "chunk_id": 3, "stage_id": 15, "microbatch_id": 10, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 214, "chunk_id": 4, "stage_id": 31, "microbatch_id": 10, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 215, "chunk_id": 0, "stage_id": 3, "microbatch_id": 11, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 216, "chunk_id": 1, "stage_id": 5, "microbatch_id": 11, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 217, "chunk_id": 2, "stage_id": 11, "microbatch_id": 11, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 218, "chunk_id": 3, "stage_id": 15, "microbatch_id": 11, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 219, "chunk_id": 4, "stage_id": 31, "microbatch_id": 11, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 220, "chunk_id": 0, "stage_id": 3, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 221, "chunk_id": 1, "stage_id": 5, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 222, "chunk_id": 2, "stage_id": 11, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 223, "chunk_id": 3, "stage_id": 15, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 224, "chunk_id": 4, "stage_id": 31, "microbatch_id": 12, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 225, "chunk_id": 0, "stage_id": 3, "microbatch_id": 13, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 226, "chunk_id": 1, "stage_id": 5, "microbatch_id": 13, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 227, "chunk_id": 2, "stage_id": 11, "microbatch_id": 13, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 228, "chunk_id": 3, "stage_id": 15, "microbatch_id": 13, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 229, "chunk_id": 4, "stage_id": 31, "microbatch_id": 13, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 230, "chunk_id": 0, "stage_id": 3, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 231, "chunk_id": 1, "stage_id": 5, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 232, "chunk_id": 2, "stage_id": 11, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 233, "chunk_id": 3, "stage_id": 15, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 234, "chunk_id": 4, "stage_id": 31, "microbatch_id": 14, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 235, "chunk_id": 0, "stage_id": 3, "microbatch_id": 15, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 236, "chunk_id": 1, "stage_id": 5, "microbatch_id": 15, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 237, "chunk_id": 2, "stage_id": 11, "microbatch_id": 15, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 238, "chunk_id": 3, "stage_id": 15, "microbatch_id": 15, "operation": "compute"}
+{"step_type": "w", "local_rank": 3, "step_id": 239, "chunk_id": 4, "stage_id": 31, "microbatch_id": 15, "operation": "compute"}
