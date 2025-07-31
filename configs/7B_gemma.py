@@ -1,4 +1,5 @@
 from preprocess import generate_
+from internlm.utils.utils import ModuleType
 import json
 dp_size = 2
 tp_size = 1
@@ -8,9 +9,16 @@ recomp_stages = []
 recomp_microbatches = []
 recomp_layers = []
 open_recomp = False
+# with open('/cpfs01/user/matenghui/InternEvo/runtime.json','r') as f:
+#     json_data = json.load(f)
+#recomp_layers,recomp_microbatches
 num_microbatches, pp_size, stage_placement, scheduler_type, \
 split_backward, unified_scheduler, comm_graph, first_stage, \
-last_stage, Devices_containing_last_stage, recomp_stages = generate_() #recomp_layers,recomp_microbatches
+last_stage, Devices_containing_last_stage,recomp_stages = generate_()
+
+# json_data['num_microbatches'], json_data['pp_size'], json_data['stage_placement'], json_data['scheduler_type'], \
+# json_data['split_backward'], json_data['unified_scheduler'], json_data['comm_graph'], json_data['first_stage'], \
+# json_data['last_stage'], json_data['Devices_containing_last_stage']
 
 if len(recomp_stages) > 0:
     open_recomp = True
@@ -22,16 +30,16 @@ model_type = "GEMMA"
 DO_ALERT = False
 
 VOCAB_SIZE = 256000
-SEQ_LEN = 2048
+SEQ_LEN = 1024
 HIDDEN_SIZE = 3072
 NUM_ATTENTION_HEAD = 16
 NUM_KV_ATTENTION_HEAD = 16
 HEAD_DIM = 256
 MLP_RATIO = 8
 NUM_LAYER = 32
-heter = True
+heter = False
 alpa = False
-layer_placement = [[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14], [15, 16]]
+layer_placement = [[1, 2, 3, 4, 5, 6, 9], [10, 9, 10, 18], [19, 13, 27], [28, 32]]
 #metis[[1,6],[7,11],[12,13],[14,16]] [[1, 3], [4, 5], [6, 8], [9, 11], [12, 12], [13, 13], [14, 14], [15, 16]]
 sleep_forward_time = 0
 sleep_backward_time = 0
@@ -54,7 +62,7 @@ if not alpa:
     layers_one_chunk = NUM_LAYER//pp_size//num_chunks
     sleep_forward_time = layers_one_chunk*sleep_forward_time_perlayer
     sleep_backward_time = layers_one_chunk*sleep_backward_time_perlayer
-    print(f"sleep_forward_time:{sleep_forward_time}, sleep_backward_time:{sleep_backward_time}")
+    # print(f"sleep_forward_time:{sleep_forward_time}, sleep_backward_time:{sleep_backward_time}")
 
 if pp_mode == "unified" and layerwise:
     num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
