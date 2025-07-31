@@ -1141,7 +1141,7 @@ def search_by_time(steps, time):
     return len(steps)
 
 def generate_comm_martix_(comm_graph, comp_graph):
-    dir = '/cpfs01/user/matenghui/InternEvo/devices_operations/'
+    dir = 'InternEvo/devices_operations/'
     os.makedirs(dir, exist_ok=True)
     comm_graph_martix  = [[[] for __ in range(len(comm_graph))] for _ in range(len(comm_graph))]
     for device_id,ops in enumerate(comm_graph):
