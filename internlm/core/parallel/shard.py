@@ -202,6 +202,19 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
                 base_idx += chunk_size + (p >= left)
                 parts[p].append((st, base_idx))
 
+    if gpc.config.ALPA:
+        parts = []
+        partition = []
+        with open("InternEvo/partition.txt", "r") as f:
+            content = f.read().strip()
+            partition = eval(content)
+        assert partition is not None, "Partition not set."
+        start = 0
+        for length in partition:
+            end = start + length
+            parts.append([(start, end)])
+            start = end
+
     indexes = []
     for _parts in parts:
         for s, e in _parts:
@@ -225,7 +238,11 @@ def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num
         parts[0].append((num_items,num_items))
         assert len(parts[0]) == len(stage_placement[0])
     elif num_chunks == 1:
-        partition=[9, 9, 9, 5]
+        partition = []
+        with open("InternEvo/partition.txt", "r") as f:
+            content = f.read().strip()
+            partition = eval(content)
+        assert partition is not None, "Partition not set."
         start = 0
         for length in partition:
             end = start + length

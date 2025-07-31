@@ -1636,12 +1636,18 @@ class InterleavedPipelineScheduler(PipelineScheduler):
                     input_obj_shape = self._input_obj_shapes[next_forward_chunk_id]
 
             assert output_obj is None or output_obj.dtype == self.dtype
+            # forward_async_communicator = comm.AsynCommunicator(
+            #     output_obj,
+            #     input_obj_shape,
+            #     self.dtype,
+            #     self.scatter_gather_tensors,
+            #     forward=True,
+            # )
             forward_async_communicator = comm.AsynCommunicator(
-                output_obj,
-                input_obj_shape,
-                self.dtype,
-                self.scatter_gather_tensors,
-                forward=True,
+                object_send_next=output_obj,
+                recv_prev_shape=input_obj_shape,
+                dtype=self.dtype,
+                scatter_gather_tensors=self.scatter_gather_tensors,
             )
             forward_async_communicator.start()
 
@@ -1665,12 +1671,18 @@ class InterleavedPipelineScheduler(PipelineScheduler):
                 else:
                     output_obj_shape = self._output_obj_shapes[next_backward_chunk_id]
 
+            # backward_async_communicator = comm.AsynCommunicator(
+            #     input_obj_grad,
+            #     output_obj_shape,
+            #     self.dtype,
+            #     self.scatter_gather_tensors,
+            #     forward=False,
+            # )
             backward_async_communicator = comm.AsynCommunicator(
-                input_obj_grad,
-                output_obj_shape,
-                self.dtype,
-                self.scatter_gather_tensors,
-                forward=False,
+                object_send_prev=input_obj_grad,
+                recv_next_shape=output_obj_shape,
+                dtype=self.dtype,
+                scatter_gather_tensors=self.scatter_gather_tensors,
             )
             backward_async_communicator.start()
 

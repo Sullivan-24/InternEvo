@@ -1,52 +1,32 @@
-JOB_NAME = "14b_qwen2_train"
-model_type = "QWEN2"
-DO_ALERT = False
-HETER = False
-# {
-#   "architectures": [
-#     "Qwen2ForCausalLM"
-#   ],
-#   "attention_dropout": 0.0,
-#   "bos_token_id": 151643,
-#   "eos_token_id": 151643,
-#   "hidden_act": "silu",
-#   "hidden_size": 5120,
-#   "initializer_range": 0.02,
-#   "intermediate_size": 13824,
-#   "max_position_embeddings": 131072,
-#   "max_window_layers": 48,
-#   "model_type": "qwen2",
-#   "num_attention_heads": 40,
-#   "num_hidden_layers": 48,
-#   "num_key_value_heads": 8,
-#   "rms_norm_eps": 1e-05,
-#   "rope_theta": 1000000.0,
-#   "sliding_window": 131072,
-#   "tie_word_embeddings": false,
-#   "torch_dtype": "bfloat16",
-#   "transformers_version": "4.43.1",
-#   "use_cache": true,
-#   "use_sliding_window": false,
-#   "vocab_size": 152064
-# }
-print("14B qwen")
-MAX_WINDOW_LAYERS = 48
-VOCAB_SIZE = 152064
-SEQ_LEN = 4096
-HIDDEN_SIZE = 5120
-NUM_ATTENTION_HEAD = 40
-NUM_KV_ATTENTION_HEAD = 8
-MLP_RATIO = 13824/HIDDEN_SIZE
-NUM_LAYER = 48
-PP_SIZE = 1
-TP_SIZE = 4
-ZERO_SZIE = -1
-MICRO_NUM = PP_SIZE * 2
+from configs.ppopp_configs.base import *
 
-MODEL_ONLY_FOLDER = "local:llm_ckpts_qwen2/xxxx/"
+JOB_NAME = "28b_gemma_train"
+model_type = "GEMMA"
+
+VOCAB_SIZE = 256000
+HIDDEN_SIZE = 3072
+NUM_ATTENTION_HEAD = 16
+NUM_KV_ATTENTION_HEAD = 16
+HEAD_DIM = 256
+MLP_RATIO = 8
+NUM_LAYER = 128
+PP_SIZE = 8
+TP_SIZE = 4
+MICRO_NUM = PP_SIZE * 4
+PP_MODE = "1f1b"
+CHUNK_NUM = 1
+
+if SCHEDULE == 0:
+    num_microbatches, pp_size, stage_placement, scheduler_type, \
+    split_backward, unified_scheduler, comm_graph, first_stage, \
+    last_stage, Devices_containing_last_stage, recomp_stages = generate_()
+
+PP_MODE, CHUNK_NUM = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN, adap_partition=ALPA)
+
+MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts_qwen2"
+SAVE_CKPT_FOLDER = "local:llm_ckpts_gemma"
 
 # boto3 Ckpt folder format:
 # import os
@@ -127,7 +107,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=OVERLAP_SYNC_GRAD,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -168,19 +148,21 @@ model = dict(
     num_chunks=1,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    max_position_embeddings=8192,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
     parallel_output=True,
     hidden_size=HIDDEN_SIZE,
     num_layers=NUM_LAYER,
-    qkv_bias=True,
-    o_bias=False,
+    no_bias=True,
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
+    add_unit_offset=True,
     norm_type="rmsnorm",
     layer_norm_epsilon=1e-6,
+    head_dim=HEAD_DIM,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -190,10 +172,7 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    rope_base=1000000,
-    use_sliding_window=False,
-    sliding_window=32768,
-    max_window_layers=MAX_WINDOW_LAYERS,
+    use_swiglu=False,
 )
 
 """
@@ -221,9 +200,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=ZERO_SZIE),
+    zero1=dict(size=-1),
     tensor=dict(size=TP_SIZE, mode="fsp"),
-    pipeline=dict(size=PP_SIZE, interleaved_overlap=True),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True, mode=PP_MODE),
     weight=dict(size=1, overlap=True),
 )
 

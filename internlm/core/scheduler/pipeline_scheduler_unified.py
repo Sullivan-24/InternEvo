@@ -117,13 +117,12 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             tensor_shape=tensor_shape,
             scatter_gather_tensors=scatter_gather_tensors,
             scheduler_hooks=scheduler_hooks,
-            num_chunks=2,
         )
         assert len(unified_scheduler) == gpc.pipeline_parallel_size
         self.split_backward = gpc.config.split_backward
         if self.split_backward:
             gpc.config.scheduler_type = ModuleType.ZBH1.value
-            WeightGradStore.set_pp_mode("ZBH1")
+            WeightGradStore.set_pp_mode("ZBV")
             WeightGradStore.set_optim(optimizer)
         else:
             gpc.config.scheduler_type = ModuleType.ONEFONEB.value

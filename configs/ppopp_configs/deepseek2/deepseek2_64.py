@@ -11,7 +11,7 @@ HIDDEN_SIZE = 2048
 NUM_ATTENTION_HEAD = 16
 NUM_KV_ATTENTION_HEAD = 16
 
-NUM_EXPERTS = 64
+NUM_EXPERTS = 32
 NUM_SELECTED_EXPERTS = 6
 NUM_SHARED_EXPERTS = 2
 MLP_RATIO = 5.34375
@@ -19,38 +19,23 @@ MULTIPLE_OF = 1
 NUM_LAYER = 32
 MoE_TYPE = "Dropless"
 MoE_FFN_DIM = 1408
-EP_SIZE = 4
+EP_SIZE = 2
 EWP_SIZE = 1
 # VOCAB_SIZE = 102400
 VOCAB_SIZE = 128*1024
-PP_SIZE = 4
+PP_SIZE = 8
 TP_SIZE = 1
 MICRO_NUM = PP_SIZE * 4
-FIRST_K_DENSE_REPLACE = 7
+FIRST_K_DENSE_REPLACE = 3
 PP_MODE = "1f1b"
+CHUNK_NUM = 1
 
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
     last_stage, Devices_containing_last_stage, recomp_stages = generate_()
-    # num_microbatches, pp_size, stage_placement, scheduler_type ,\
-    # split_backward, unified_scheduler, comm_graph, first_stage ,\
-    # last_stage, Devices_containing_last_stage, chunk_num = generate_()
 
-CHUNK_NUM = 1
-if SCHEDULE == 0:
-    PP_MODE = "unified"
-    CHUNK_NUM = 2
-    PP_SIZE = pp_size
-    MICRO_NUM = num_microbatches
-elif SCHEDULE == 1:
-    PP_MODE = "1f1b"
-elif SCHEDULE == 2:
-    PP_MODE = "zbh1"
-else:
-    raise ValueError("Wrong Schedule.")
-
-print(JOB_NAME, SEQ_LEN, PP_MODE)
+PP_MODE, CHUNK_NUM = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN, adap_partition=ALPA)
 
 VOCAB_FILE = "/mnt/inspurfs/share_data/llm_data/tokenizers/deepseek/"
 # ali
