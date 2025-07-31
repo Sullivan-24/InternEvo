@@ -117,6 +117,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             tensor_shape=tensor_shape,
             scatter_gather_tensors=scatter_gather_tensors,
             scheduler_hooks=scheduler_hooks,
+            num_chunks=2,
         )
         assert len(unified_scheduler) == gpc.pipeline_parallel_size
         self.split_backward = gpc.config.split_backward
@@ -1387,7 +1388,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 recv_forward_queue_list, recv_backward_queue_list = \
                     self.recv_all(recv_forward_queue_list,recv_backward_queue_list,after_recv_list)
                 
-            write_debug_file(self.debug_path,f"Step {s}: {steps[s]} ends.")
+            write_debug_file(self.debug_path,f"Step {s}: {steps[s]} ends.\n")
 
     def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Run interleaved 1F1B schedule (model split into model chunks), with

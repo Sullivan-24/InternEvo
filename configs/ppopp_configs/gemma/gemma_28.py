@@ -26,7 +26,6 @@ if SCHEDULE == 0:
 CHUNK_NUM = 1
 if SCHEDULE == 0:
     PP_MODE = "unified"
-    CHUNK_NUM = 2
     PP_SIZE = pp_size
     MICRO_NUM = num_microbatches
 elif SCHEDULE == 1:
@@ -160,7 +159,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=8,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     max_position_embeddings=8192,
