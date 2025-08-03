@@ -54,6 +54,7 @@ def _get_chunkid_by_stages(stage_id: int, stages:list) -> int:
         if stage_id == value:
             return index
     raise ValueError(f"stage_id {stage_id} not found in stages list")
+
 def _get_chunkid_by_stage_placement(stage_id: int, stage_placement:list) -> int:
     for i in range(len(stage_placement)):
         stages = stage_placement[i]
@@ -115,7 +116,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.split_backward = gpc.config.split_backward
         if self.split_backward:
             gpc.config.scheduler_type = ModuleType.ZBH1.value
-            WeightGradStore.set_pp_mode("ZBH1")
+            WeightGradStore.set_pp_mode("ZBV")
             WeightGradStore.set_optim(optimizer)
         else:
             gpc.config.scheduler_type = ModuleType.ONEFONEB.value
@@ -129,7 +130,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         WeightGradStore.set_weight_grad_queue(num_chunks=1, num_microbatches=num_microbatches)
         self.local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
         self.local_pre_fetch_w = gpc.config.all_pre_fetch_w[self.local_rank]
-        gpc.config.done_w = [False for _ in range(num_microbatches)]
+        gpc.config.done_w = [False for _ in range(num_microbatches)] #TODO not sure if this is global variable
 
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
@@ -371,7 +372,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         ).start()   
                     send_backward_once = False
 
-                for after_ops  in  after_recv_list:
+                for after_ops in after_recv_list:
                     op = after_ops[0]
                     if op == Step.FORWARD.value:
                         recv_f_buffer = comm.AsynCommunicator_unified(
@@ -407,7 +408,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                             step_id = s,
                             func=_process_prefetch,                      
                         ).start()
-                WeightGradStore.flush(microbatch_id=microbatch_id)
+                WeightGradStore.flush(chunk_id=0,microbatch_id=microbatch_id)
 
             elif step_type == Step.WEIGHT.value: # Weight update
                 #start_time = time.perf_counter()
@@ -428,7 +429,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                                 steps = steps,
                                 local_pre_fetch_w = local_pre_fetch_w,
                                 step_id = s,
-                                func=_process_prefetch,                         
+                                func=_process_prefetch,       
                             )
                         recv_f_buffer.start()
                         recv_forward_start_buffer_queue.put(recv_f_buffer)

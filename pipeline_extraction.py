@@ -170,7 +170,7 @@ def main(path_prefix, rank_start, rank_end, rank_step):
 
 
 if __name__ == "__main__":
-    start, end, step = 0, 6, 1
+    start, end, step = 0, 7, 1
     if len(sys.argv) > 1:
         path_prefix = sys.argv[1]
         # f"/data0/tsinghua/huangkz/logs/trace_ite_4-0801-073644-rank_{rank}/*.pt.trace.json"

@@ -972,8 +972,8 @@ def generate_():
                'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
     # with open(file_path+'/runtime.json','w') as file:
     #     json.dump(result,file)
-    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
-          recomp_stages:{recomp_stages},scheduler_type:{scheduler_type},all_pre_fetch_w:{all_pre_fetch_w}')
+    # print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+    #       recomp_stages:{recomp_stages},scheduler_type:{scheduler_type},all_pre_fetch_w:{all_pre_fetch_w}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
             last_stage, Devices_containing_last_stage, recomp_stages, all_pre_fetch_w

@@ -26,8 +26,8 @@ PRIORITY=4
 PARTITION="llm_s"
 WORKSPACE_ID="wsbuzbigeh1hjmst"
 
-PARTITION="llm_ddd"
-WORKSPACE_ID="ws1ujefpjyfgqjwp"
+# PARTITION="llm_ddd"
+# WORKSPACE_ID="ws1ujefpjyfgqjwp"
 DLC_PATH="/cpfs01/user/matenghui/dlc"
 #log_path="InternEvo/test_het/14B_llama2/unified_block"
 log_path="InternEvo/test/14B_llama2"
@@ -42,7 +42,7 @@ fi
 function do_dsw() {
     echo "do_dsw (only support job whose worldsize % 8 == 0 or worldsize < 8)"
     worker_cpu_total=40
-    worker_mem_total=500
+    worker_mem_total=400
 
     if [[ $GPU_NUMS -lt 8 ]]; then
         num_nodes=1
