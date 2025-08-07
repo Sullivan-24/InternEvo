@@ -28,6 +28,11 @@ from .base_scheduler import BaseScheduler
 
 logger = get_logger(__file__)
 
+def safe_detach(x):
+    return x.detach() if isinstance(x, torch.Tensor) else x
+
+def to_float(x):
+    return x.item() if isinstance(x, torch.Tensor) else x
 
 def get_tensor_shape():
     if hasattr(gpc.config, "TENSOR_SHAPE"):
@@ -273,6 +278,7 @@ class PipelineScheduler(BaseScheduler):
         return_output_label=True,
         accum_loss=None,
         accum_moe_loss=None,
+        accum_moe_z_loss=None,
     ):
         """
         Forward step for passed-in model. If it is the first stage, the input tensor
@@ -286,6 +292,7 @@ class PipelineScheduler(BaseScheduler):
             return_output_label (bool, optional): Whether returns output labels.
             accum_loss (optional): Where accumulated loss stores.
             accum_moe_loss (optional): Where accumulated moe loss stores.
+            accum_moe_z_loss (optional): Where accumulated moe z loss stores.
         Returns:
             Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: output or the loss value of the current
                 pipeline stage.
@@ -296,7 +303,7 @@ class PipelineScheduler(BaseScheduler):
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
             # moe is used
-            output_obj, moe_losses = self._call_engine(engine.model, data)
+            output_obj, moe_losses, moe_z_losses = self._call_engine(engine.model, data)
         else:
             output_obj = self._call_engine(engine.model, data)
         self._call_hooks("after_forward", output_obj)
@@ -305,6 +312,7 @@ class PipelineScheduler(BaseScheduler):
             self._call_hooks("post_helper_func", output_obj, label)
             if return_output_label:
                 return_tensors.append((output_obj, label))
+
             if accum_loss is not None:
                 self._call_hooks("before_criterion", output_obj, label)
                 loss = self._call_engine_criterion(engine, output_obj, label)
@@ -316,23 +324,41 @@ class PipelineScheduler(BaseScheduler):
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
-
+            if len(moe_z_losses) > 0:
+                moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+            else:
+                moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
             # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
             # so we need to do allreduce
-            if gpc.config.parallel.sequence_parallel or gpc.config.parallel.expert.no_tp:
-                dist.all_reduce(moe_loss, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
-                moe_loss.div_(gpc.get_world_size(ParallelMode.TENSOR))
+            if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+                all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
+                dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                moe_loss = all_moe_losses[0]
+                moe_z_loss = all_moe_losses[1]
+
             moe_loss /= self.num_microbatches
-            accum_moe_loss.add_(moe_loss.detach())
+            moe_z_loss /= self.num_microbatches
+            if accum_moe_loss is None:
+                accum_moe_loss = safe_detach(moe_loss)
+            else:
+                accum_moe_loss.add_(safe_detach(moe_loss))
+
+            if accum_moe_z_loss is None:
+                accum_moe_z_loss = safe_detach(moe_z_loss)
+            else:
+                accum_moe_z_loss.add_(safe_detach(moe_z_loss))
+
         else:
-            moe_loss = None
+            moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+            moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
         if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
-        return output_obj, moe_loss
+        return output_obj, moe_loss, moe_z_loss
 
-    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None):
+    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None):
         """
         Backward step through the passed-in output tensor. If it is the last stage, the
         output_obj_grad is None, otherwise it is the gradients with respect to stage's output tensor.
@@ -366,12 +392,12 @@ class PipelineScheduler(BaseScheduler):
 
         self._call_hooks("before_backward", output_obj, output_obj_grad)
         with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
-            if moe_loss is None or moe_loss.item() == 0.0:
+            if moe_loss is None or to_float(moe_loss) == 0.0:
                 if output_obj_grad is None:
                     engine.backward(output_obj)
                 else:
                     engine.backward_by_grad(output_obj, output_obj_grad)
-            else:
+            elif moe_z_loss is None or to_float(moe_z_loss) == 0.0:
                 if output_obj_grad is None:
                     engine.backward(output_obj + moe_loss)
                 else:
@@ -381,6 +407,17 @@ class PipelineScheduler(BaseScheduler):
                     # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
                     # layer, we set it to None (will be ragarded as 1).
                     engine.backward_by_grad([output_obj, moe_loss], [output_obj_grad, None])
+            else:
+                if output_obj_grad is None:
+                    engine.backward(output_obj + moe_loss + moe_z_loss)
+                else:
+                    # scale the latent loss
+                    moe_loss = moe_loss * engine.optimizer.loss_scale
+                    moe_z_loss = moe_z_loss * engine.optimizer.loss_scale
+                    # we perform chain rule here by projecting the grad to the direction of
+                    # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
+                    # layer, we set it to None (will be ragarded as 1).
+                    engine.backward_by_grad([output_obj, moe_loss, moe_z_loss], [output_obj_grad, None, None])
 
         # Collect the grad of the input_obj.
         input_obj_grad = None
@@ -424,11 +461,8 @@ class PipelineScheduler(BaseScheduler):
             if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
             else None
         )
-
-        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            accum_moe_loss = torch.zeros(1, device=get_current_device())
-        else:
-            accum_moe_loss = None
+        accum_moe_loss = torch.zeros(1, device=get_current_device())
+        accum_moe_z_loss = torch.zeros(1, device=get_current_device())
 
         # Used for tensor meta information communication
         forward_recv_shapes = self.tensor_shape
@@ -449,13 +483,14 @@ class PipelineScheduler(BaseScheduler):
                 input_obj = None
 
             # Perform forward computation
-            output_obj, _ = self._forward_step(
+            output_obj, _, _ = self._forward_step(
                 engine,
                 input_obj,
                 return_tensors,
                 return_output_label=return_output_label,
                 accum_loss=accum_loss,
                 accum_moe_loss=accum_moe_loss,
+                accum_moe_z_loss=accum_moe_z_loss,
             )
 
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
@@ -469,12 +504,16 @@ class PipelineScheduler(BaseScheduler):
         output, label = pack_return_tensors(return_tensors) if len(return_tensors) > 0 else (None, None)
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            dist.all_reduce(accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
+            all_moe_losses = torch.cat([accum_moe_loss.unsqueeze(0), accum_moe_z_loss.unsqueeze(0)])
+            dist.all_reduce(all_moe_losses, group=gpc.get_group(ParallelMode.PIPELINE))
+            accum_moe_loss = all_moe_losses[0]
+            accum_moe_z_loss = all_moe_losses[1]
 
-            if accum_loss is not None:
-                accum_loss += accum_moe_loss
+        if accum_loss is not None:
+            accum_loss += accum_moe_loss
+            accum_loss += accum_moe_z_loss
 
-        return output, label, accum_loss, accum_moe_loss
+        return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
 
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
@@ -523,17 +562,15 @@ class PipelineScheduler(BaseScheduler):
         input_objs = []
         output_objs = []
         moe_losses = []
+        moe_z_losses = []
         return_tensors = []
         accum_loss = (
             torch.zeros(1, device=get_current_device())
             if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
             else None
         )
-
-        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            accum_moe_loss = torch.zeros(1, device=get_current_device())
-        else:
-            accum_moe_loss = None
+        accum_moe_loss = torch.zeros(1, device=get_current_device())
+        accum_moe_z_loss = torch.zeros(1, device=get_current_device())
 
         # Used for tensor meta information communication
         forward_recv_shapes = self.tensor_shape
@@ -555,13 +592,14 @@ class PipelineScheduler(BaseScheduler):
                 input_obj = None
 
             # Perform forward computation
-            output_obj, moe_loss = self._forward_step(
+            output_obj, moe_loss, moe_z_loss = self._forward_step(
                 engine,
                 input_obj,
                 return_tensors,
                 return_output_label=return_output_label,
                 accum_loss=accum_loss,
                 accum_moe_loss=accum_moe_loss,
+                accum_moe_z_loss=accum_moe_z_loss,
             )
 
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
@@ -583,6 +621,7 @@ class PipelineScheduler(BaseScheduler):
             input_objs.append(input_obj)
             output_objs.append(output_obj)
             moe_losses.append(moe_loss)
+            moe_z_losses.append(moe_z_loss)
         # Before running 1F1B, need to receive first forward tensor.
         # If all microbatches are run in warmup / cooldown phase, then no need to
         # receive this tensor here.
@@ -604,18 +643,18 @@ class PipelineScheduler(BaseScheduler):
         import time
         import os
         import json
-        from datetime import datetime
 
         for i in range(num_1f1b_micropairs):
             # Perform forward computation
             start_time = time.time()
-            output_obj, moe_loss = self._forward_step(
+            output_obj, moe_loss, moe_z_loss = self._forward_step(
                 engine,
                 input_obj,
                 return_tensors,
                 return_output_label=return_output_label,
                 accum_loss=accum_loss,
                 accum_moe_loss=accum_moe_loss,
+                accum_moe_z_loss=accum_moe_z_loss,
             )
             fwd_times.append(time.time() - start_time)
 
@@ -634,15 +673,17 @@ class PipelineScheduler(BaseScheduler):
             input_objs.append(input_obj)
             output_objs.append(output_obj)
             moe_losses.append(moe_loss)
+            moe_z_losses.append(moe_z_loss)
 
             # Pop output_obj and output_obj from the start of the list for
             # the backward pass.
             input_obj = input_objs.pop(0)
             output_obj = output_objs.pop(0)
             moe_loss = moe_losses.pop(0)
-
+            moe_z_loss = moe_z_losses.pop(0)
+            
             start_time = time.time()
-            input_obj_grad = self._backward_step(engine, i, input_obj, output_obj, output_obj_grad, moe_loss)
+            input_obj_grad = self._backward_step(engine, i, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss)
             bwd_times.append(time.time() - start_time)
 
             if i == (num_1f1b_micropairs - 1):
@@ -663,28 +704,49 @@ class PipelineScheduler(BaseScheduler):
                         scatter_gather_tensors=self.scatter_gather_tensors,
                     )
 
-        if gpc.config["profile_fwd_bwd"] and gpc.get_local_rank(ParallelMode.DATA) == 0:
-            timestamp = datetime.now().strftime("%Y-%m-%d-%H")
-            output_dir = os.path.join("./results/fwd_bwd_time",timestamp, gpc.config["JOB_NAME"], str(gpc.config["SEQ_LEN"]))
+        if gpc.config.profile_fwd_bwd and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            output_dir = os.path.join("./results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
-            # 准备要写入的数据
-            data = {
-                "fwd_times": fwd_times,
-                "avg_fwd": sum(fwd_times)/len(fwd_times),
-                "bwd_times": bwd_times,
-                "avg_bwd": sum(bwd_times)/len(bwd_times),
+
+            history = {
+                "fwd_times": [],
+                "bwd_times": [],
             }
 
-            # 写入文件
+            # 2. 如果文件存在，则读取旧数据
+            if os.path.exists(output_file):
+                with open(output_file, 'r') as f:
+                    try:
+                        history = json.load(f)
+                    except json.JSONDecodeError:
+                        pass  # 文件为空或损坏则跳过
+
+            # 3. 追加新数据
+            history["fwd_times"].extend(fwd_times)
+            history["bwd_times"].extend(bwd_times)
+
+            from collections import OrderedDict
+            data = OrderedDict()
+            # 4. 更新平均值
+            data["avg_fwd"] = sum(history["fwd_times"]) / len(history["fwd_times"])
+            data["avg_bwd"] = sum(history["bwd_times"]) / len(history["bwd_times"])
+            f_f = round(data["avg_fwd"]/data["avg_fwd"],3)
+            b_f = round(data["avg_bwd"]/data["avg_fwd"],3)
+            data["f_b_w"] = (f_f, b_f)
+            data["fwd_times"] = history["fwd_times"]
+            data["bwd_times"] = history["bwd_times"]
+
+            # 5. 写回文件
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=4)
-
+                
         # Run cooldown backward passes.
         for i in range(num_warmup_microsteps):
             input_obj = input_objs.pop(0)
             output_obj = output_objs.pop(0)
             moe_loss = moe_losses.pop(0)
+            moe_z_loss = moe_z_losses.pop(0)
 
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
                 output_obj_grad = comm.recv_backward(
@@ -696,7 +758,7 @@ class PipelineScheduler(BaseScheduler):
                 output_obj_grad = None
 
             input_obj_grad = self._backward_step(
-                engine, num_1f1b_micropairs + i, input_obj, output_obj, output_obj_grad, moe_loss
+                engine, num_1f1b_micropairs + i, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
             )
 
             if not gpc.is_first_rank(ParallelMode.PIPELINE):
@@ -705,12 +767,16 @@ class PipelineScheduler(BaseScheduler):
         output, label = pack_return_tensors(return_tensors) if len(return_tensors) > 0 else (None, None)
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            dist.all_reduce(accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
+            all_moe_losses = torch.cat([accum_moe_loss.unsqueeze(0), accum_moe_z_loss.unsqueeze(0)])
+            dist.all_reduce(all_moe_losses, group=gpc.get_group(ParallelMode.PIPELINE))
+            accum_moe_loss = all_moe_losses[0]
+            accum_moe_z_loss = all_moe_losses[1]
 
-            if accum_loss is not None:
-                accum_loss += accum_moe_loss
+        if accum_loss is not None:
+            accum_loss += accum_moe_loss
+            accum_loss += accum_moe_z_loss
 
-        return output, label, accum_loss, accum_moe_loss
+        return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
 
     @llm_timeout(func_name="nointerleaved_forward_backward_step")
     def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
@@ -737,17 +803,17 @@ class PipelineScheduler(BaseScheduler):
         self.load_batch(engine, data_iter)
 
         if forward_only:
-            output, label, accum_loss, accum_moe_loss = self._forward_only_step(
+            output, label, accum_loss, accum_moe_loss, accum_moe_z_loss = self._forward_only_step(
                 engine, return_loss, return_output_label
             )
         else:
-            output, label, accum_loss, accum_moe_loss = self._forward_backward_step(
+            output, label, accum_loss, accum_moe_loss, accum_moe_z_loss = self._forward_backward_step(
                 engine, return_loss, return_output_label
             )
 
         # Compatible for non-moe
         if hasattr(gpc.config.model, "num_experts"):
-            return output, label, accum_loss, accum_moe_loss
+            return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
         else:
             return output, label, accum_loss
 
@@ -817,11 +883,13 @@ class InterleavedPipelineScheduler(PipelineScheduler):
 
         self._accum_loss = None
         self._accum_moe_loss = None
+        self._accum_z_moe_loss = None
         self._return_tensors = None
         self._input_objs = [[] for _ in range(num_chunks)]
         self._output_objs = [[] for _ in range(num_chunks)]
         self._output_obj_grads = [[] for _ in range(num_chunks)]
         self._moe_losses = [[] for _ in range(num_chunks)]
+        self._moe_z_losses = [[] for _ in range(num_chunks)]
 
         self._preload_micro_data = [None for _ in range(self.num_microbatches)]
         self._input_obj_shapes = [self.tensor_shape for _ in range(num_chunks)]
@@ -841,11 +909,13 @@ class InterleavedPipelineScheduler(PipelineScheduler):
     def _clear_state(self) -> None:
         self._accum_loss = None
         self._accum_moe_loss = None
+        self._accum_z_moe_loss = None
         self._return_tensors = None
         self._input_objs = [[] for _ in range(self._num_chunks)]
         self._output_objs = [[] for _ in range(self._num_chunks)]
         self._output_obj_grads = [[] for _ in range(self._num_chunks)]
         self._moe_losses = [[] for _ in range(self._num_chunks)]
+        self._moe_z_losses = [[] for _ in range(self._num_chunks)]
 
         self._preload_micro_data = [None for _ in range(self.num_microbatches)]
         self._input_obj_shapes = [self.tensor_shape for _ in range(self._num_chunks)]
@@ -909,7 +979,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
 
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
-            output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
+            output_obj, moe_losses, moe_z_losses = self._call_engine(engine.model[chunk_id], data)
         else:
             output_obj = self._call_engine(engine.model[chunk_id], data)
         # Convert output_obj to fp32 when last model chunk of last stage
@@ -933,20 +1003,32 @@ class InterleavedPipelineScheduler(PipelineScheduler):
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
-
+            if len(moe_z_losses) > 0:
+                moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+            else:
+                moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
             # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
             # so we need to do allreduce
-            if gpc.config.parallel.sequence_parallel or gpc.config.parallel.expert.no_tp:
-                dist.all_reduce(moe_loss, op=dist.ReduceOp.AVG, group=gpc.get_group(ParallelMode.TENSOR))
-            moe_loss /= self.num_microbatches
+            if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+                all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
+                dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                moe_loss = all_moe_losses[0]
+                moe_z_loss = all_moe_losses[1]
 
+            moe_loss /= self.num_microbatches
+            moe_z_loss /= self.num_microbatches
             if self._accum_moe_loss is not None:
-                self._accum_moe_loss.add_(moe_loss.detach())
+                self._accum_moe_loss.add_(safe_detach(moe_loss))
+            if self._accum_moe_z_loss is not None:
+                self._accum_moe_z_loss.add_(safe_detach(moe_z_loss))
         else:
-            moe_loss = None
+            moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+            moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
         self._output_objs[chunk_id].append(output_obj)
         self._moe_losses[chunk_id].append(moe_loss)
+        self._moe_z_losses[chunk_id].append(moe_z_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
         if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
@@ -977,8 +1059,11 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         output_obj = self._output_objs[chunk_id].pop(0)
         output_obj_grad = self._output_obj_grads[chunk_id].pop(0)
         moe_loss = self._moe_losses[chunk_id].pop(0)
+        moe_z_loss = self._moe_z_losses[chunk_id].pop(0)
 
-        input_obj_grad = super()._backward_step(engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss)
+        input_obj_grad = super()._backward_step(
+            engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
+        )
         if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
@@ -1083,6 +1168,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
                 self._input_objs[chunk_id].pop()
                 self._output_objs[chunk_id].pop()
                 self._moe_losses[chunk_id].pop()
+                self._moe_z_losses[chunk_id].pop()
 
             if not gpc.is_pipeline_last_stage():
                 if isinstance(output_obj, torch.Tensor):
@@ -1485,9 +1571,8 @@ class InterleavedPipelineScheduler(PipelineScheduler):
 
         if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True):
             self._accum_loss = torch.zeros(1, device=get_current_device())
-
-        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            self._accum_moe_loss = torch.zeros(1, device=get_current_device())
+        self._accum_moe_loss = torch.zeros(1, device=get_current_device())
+        self._accum_moe_z_loss = torch.zeros(1, device=get_current_device())
 
         if return_output_label:
             self._return_tensors = []
@@ -1506,16 +1591,22 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         accum_moe_loss = self._accum_moe_loss
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            dist.all_reduce(self._accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
+            all_moe_losses = torch.cat([self._accum_moe_loss.unsqueeze(0), self._accum_moe_z_loss.unsqueeze(0)])
+            dist.all_reduce(all_moe_losses, group=gpc.get_group(ParallelMode.PIPELINE))
+            self._accum_moe_loss = all_moe_losses[0]
+            self._accum_z_moe_loss = all_moe_losses[1]
             accum_moe_loss = self._accum_moe_loss
 
+            accum_moe_z_loss = self._accum_moe_z_loss
+            accum_loss = self._accum_loss
             if accum_loss is not None:
                 accum_loss += self._accum_moe_loss
+                accum_loss += self._accum_moe_z_loss
 
         self._clear_state()
 
         # Compatible for non-moe
         if hasattr(gpc.config.model, "num_experts"):
-            return output, label, accum_loss, accum_moe_loss
+            return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
         else:
             return output, label, accum_loss

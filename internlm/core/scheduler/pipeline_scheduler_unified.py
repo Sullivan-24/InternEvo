@@ -22,7 +22,11 @@ from .pipeline_scheduler_1f1b import (
     PipelineScheduler,
     pack_return_tensors,
 )
-
+# from .pipeline_scheduler import (
+#     InterleavedPipelineScheduler,
+#     PipelineScheduler,
+#     pack_return_tensors,
+# )
 from .pipeline_scheduler_zb import WeightGradStore,ZeroBubblePipelineVShapeScheduler
 
 import queue
@@ -179,6 +183,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         input_objs = queue.Queue()
         output_objs = queue.Queue()
         moe_losses = queue.Queue()
+        moe_z_losses = queue.Queue()
         return_tensors = queue.Queue()
         accum_loss = (
             torch.zeros(1, device=get_current_device())
@@ -186,6 +191,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             else None
         )
         accum_moe_loss = torch.zeros(1, device=get_current_device())
+        accum_moe_z_loss = torch.zeros(1, device=get_current_device())
 
         # Used for tensor meta information communication
         forward_recv_shapes = self.tensor_shape
@@ -238,13 +244,14 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
                 # Perform forward computation
                 #start_time = time.perf_counter()
-                output_obj, moe_loss = self._forward_step(
+                output_obj, moe_loss, moe_z_loss = self._forward_step(
                     engine,
                     input_obj,
                     return_tensors,
                     return_output_label=return_output_label,
                     accum_loss=accum_loss,
                     accum_moe_loss=accum_moe_loss,
+                    accum_moe_z_loss=accum_moe_z_loss,
                 )
                 #end_time = time.perf_counter()
                 #json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time,  "timespan":(end_time - start_time)}
@@ -307,11 +314,13 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 input_objs.put(input_obj)
                 output_objs.put(output_obj)
                 moe_losses.put(moe_loss)
+                moe_z_losses.put(moe_z_loss)
 
             elif step_type == Step.BACKWARD.value:# Backward pass
                 input_obj = input_objs.get()
                 output_obj = output_objs.get()
                 moe_loss = moe_losses.get()
+                moe_z_loss = moe_z_losses.get()
                 
                 if stage_id<self.last_stage:
                     if async_communicator_recv_backward_queue.qsize()>0:
@@ -323,7 +332,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             
                 #start_time = time.perf_counter()
                 input_obj_grad = self._backward_step(
-                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss
+                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
                 )
                 #end_time = time.perf_counter()
                 #json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time,  "timespan":(end_time - start_time)}
@@ -403,7 +412,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         if accum_loss is not None:
             accum_loss += accum_moe_loss
 
-        return output, label, accum_loss, accum_moe_loss
+        return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
 
 class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
     def __init__(

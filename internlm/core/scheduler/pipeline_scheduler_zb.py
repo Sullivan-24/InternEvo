@@ -16,16 +16,16 @@ from internlm.core.scheduler import comm
 from internlm.utils.common import SchedulerHook, get_current_device
 from internlm.utils.logger import get_logger
 from internlm.utils.parallel import is_using_isp
-# from .pipeline_scheduler_1f1b import (
-#     InterleavedPipelineScheduler,
-#     PipelineScheduler,
-#     pack_return_tensors,
-# )
-from .pipeline_scheduler import (
+from .pipeline_scheduler_1f1b import (
     InterleavedPipelineScheduler,
     PipelineScheduler,
     pack_return_tensors,
 )
+# from .pipeline_scheduler import (
+#     InterleavedPipelineScheduler,
+#     PipelineScheduler,
+#     pack_return_tensors,
+# )
 
 logger = get_logger(__file__)
 import time
@@ -290,8 +290,16 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
                 input_obj = None
 
         # Run 1F1B in steady state.
+        fwd_times = []
+        bwd_times = []
+        wwd_times = []
+        import time
+        import os
+        import json
+
         for i in range(num_1f1b_micropairs):
             # Perform forward computation
+            start_time = time.time()
             output_obj, moe_loss, moe_z_loss = self._forward_step(
                 engine,
                 input_obj,
@@ -300,6 +308,7 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
                 accum_loss=accum_loss,
                 accum_moe_loss=accum_moe_loss,
             )
+            fwd_times.append(time.time() - start_time)
             f_times += 1
 
             if gpc.is_last_rank(ParallelMode.PIPELINE):
@@ -326,9 +335,11 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
             moe_loss = moe_losses.pop(0)
             moe_z_loss = moe_z_losses.pop(0)
 
+            start_time = time.time()
             input_obj_grad = self._backward_step(
                 engine, i, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
             )
+            bwd_times.append(time.time() - start_time)
 
             if i == (num_1f1b_micropairs - 1):
                 input_obj = None
@@ -350,7 +361,9 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
 
             WeightGradStore.flush()
             if i >= gpc.get_local_rank(ParallelMode.PIPELINE):
+                start_time = time.time()
                 WeightGradStore.pop()
+                wwd_times.append(time.time() - start_time)
 
         # Run cooldown backward passes.
         for i in range(num_warmup_microsteps):
@@ -379,7 +392,51 @@ class ZeroBubblePipelineScheduler(PipelineScheduler):
             WeightGradStore.pop()
 
         while WeightGradStore.size() > 0:
+            start_time = time.time()
             WeightGradStore.pop()
+            wwd_times.append(time.time() - start_time)
+        
+        if gpc.config.profile_fwd_bwd and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            output_dir = os.path.join("./results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
+
+            history = {
+                "fwd_times": [],
+                "bwd_times": [],
+                "wwd_times": [],
+            }
+
+            # 2. 如果文件存在，则读取旧数据
+            if os.path.exists(output_file):
+                with open(output_file, 'r') as f:
+                    try:
+                        history = json.load(f)
+                    except json.JSONDecodeError:
+                        pass  # 文件为空或损坏则跳过
+
+            # 3. 追加新数据
+            history["fwd_times"].extend(fwd_times)
+            history["bwd_times"].extend(bwd_times)
+            history["wwd_times"].extend(wwd_times)
+
+            from collections import OrderedDict
+            data = OrderedDict()
+            # 4. 更新平均值
+            data["avg_fwd"] = sum(history["fwd_times"]) / len(history["fwd_times"])
+            data["avg_bwd"] = sum(history["bwd_times"]) / len(history["bwd_times"])
+            data["avg_wwd"] = sum(history["wwd_times"]) / len(history["wwd_times"])
+            f_f = round(data["avg_fwd"]/data["avg_fwd"],3)
+            b_f = round(data["avg_bwd"]/data["avg_fwd"],3)
+            w_f = round(data["avg_wwd"]/data["avg_fwd"],3)
+            data["f_b_w"] = (f_f, b_f, w_f)
+            data["fwd_times"] = history["fwd_times"]
+            data["bwd_times"] = history["bwd_times"]
+            data["wwd_times"] = history["wwd_times"]
+
+            # 5. 写回文件
+            with open(output_file, 'w') as f:
+                json.dump(data, f, indent=4)
 
         output, label = pack_return_tensors(return_tensors) if len(return_tensors) > 0 else (None, None)
 

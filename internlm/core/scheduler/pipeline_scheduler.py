@@ -26,6 +26,8 @@ from .base_scheduler import BaseScheduler
 
 logger = get_logger(__file__)
 
+def safe_detach(x):
+    return x.detach() if isinstance(x, torch.Tensor) else x
 
 def get_tensor_shape():
     if hasattr(gpc.config, "TENSOR_SHAPE"):
@@ -461,23 +463,20 @@ class PipelineScheduler(BaseScheduler):
         else:
             moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
             moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
-
-        def safe_detach(x):
-            return x.detach() if isinstance(x, torch.Tensor) else x
         
         # accum_moe_loss.add_(moe_loss.detach())
         # accum_moe_z_loss.add_(moe_z_loss.detach())
-        if accum_moe_loss is None:
-            accum_moe_loss = safe_detach(moe_loss)
-        else:
-            accum_moe_loss.add_(moe_loss.detach())
-        # accum_moe_loss.add_(safe_detach(moe_loss))
+        accum_moe_loss.add_(safe_detach(moe_loss))
+        accum_moe_z_loss.add_(safe_detach(moe_z_loss))
 
-        if accum_moe_z_loss is None:
-            accum_moe_z_loss = safe_detach(moe_z_loss)
-        else:
-            accum_moe_z_loss.add_(safe_detach(moe_z_loss))
-        # accum_moe_z_loss.add_(safe_detach(moe_z_loss))
+        # if accum_moe_loss is None:
+        #     accum_moe_loss = safe_detach(moe_loss)
+        # else:
+        #     accum_moe_loss.add_(safe_detach(moe_loss.detach()))
+        # if accum_moe_z_loss is None:
+        #     accum_moe_z_loss = safe_detach(moe_z_loss)
+        # else:
+        #     accum_moe_z_loss.add_(safe_detach(moe_z_loss))
 
         return output_obj, moe_loss, moe_z_loss
 
@@ -770,7 +769,6 @@ class PipelineScheduler(BaseScheduler):
         import time
         import os
         import json
-        from datetime import datetime
 
         for i in range(num_1f1b_micropairs):
             # Perform forward computation
@@ -834,20 +832,40 @@ class PipelineScheduler(BaseScheduler):
                         scatter_gather_tensors=self.scatter_gather_tensors,
                     )
 
-        if gpc.config["profile_fwd_bwd"] and gpc.get_local_rank(ParallelMode.DATA) == 0:
-            timestamp = datetime.now().strftime("%Y-%m-%d-%H")
-            output_dir = os.path.join("/cpfs01/user/guojihu/results/fwd_bwd_time",timestamp, gpc.config["JOB_NAME"], str(gpc.config["SEQ_LEN"]))
+        if gpc.config.profile_fwd_bwd and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            output_dir = os.path.join("./results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
-            # 准备要写入的数据
-            data = {
-                "fwd_times": fwd_times,
-                "avg_fwd": sum(fwd_times)/len(fwd_times),
-                "bwd_times": bwd_times,
-                "avg_bwd": sum(bwd_times)/len(bwd_times),
+
+            history = {
+                "fwd_times": [],
+                "bwd_times": [],
             }
 
-            # 写入文件
+            # 2. 如果文件存在，则读取旧数据
+            if os.path.exists(output_file):
+                with open(output_file, 'r') as f:
+                    try:
+                        history = json.load(f)
+                    except json.JSONDecodeError:
+                        pass  # 文件为空或损坏则跳过
+
+            # 3. 追加新数据
+            history["fwd_times"].extend(fwd_times)
+            history["bwd_times"].extend(bwd_times)
+
+            from collections import OrderedDict
+            data = OrderedDict()
+            # 4. 更新平均值
+            data["avg_fwd"] = sum(history["fwd_times"]) / len(history["fwd_times"])
+            data["avg_bwd"] = sum(history["bwd_times"]) / len(history["bwd_times"])
+            f_f = round(data["avg_fwd"]/data["avg_fwd"],3)
+            b_f = round(data["avg_bwd"]/data["avg_fwd"],3)
+            data["f_b_w"] = (f_f, b_f)
+            data["fwd_times"] = history["fwd_times"]
+            data["bwd_times"] = history["bwd_times"]
+
+            # 5. 写回文件
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=4)
                 
@@ -1391,9 +1409,9 @@ class InterleavedPipelineScheduler(PipelineScheduler):
             moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
         if self._accum_moe_loss is not None:
-            self._accum_moe_loss.add_(moe_loss.detach())
+            self._accum_moe_loss.add_(safe_detach(moe_loss))
         if self._accum_moe_z_loss is not None:
-            self._accum_moe_z_loss.add_(moe_z_loss.detach())
+            self._accum_moe_z_loss.add_(safe_detach(moe_z_loss))
 
         self._output_objs[chunk_id].append(output_obj)
         self._moe_losses[chunk_id].append(moe_loss)
@@ -1938,7 +1956,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
             output, label = (None, None)
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            all_moe_losses = torch.cat([self._accum_moe_loss.unsqueeze(0), self._accum_z_moe_loss.unsqueeze(0)])
+            all_moe_losses = torch.cat([self._accum_moe_loss.unsqueeze(0), self._accum_moe_z_loss.unsqueeze(0)])
             dist.all_reduce(all_moe_losses, group=gpc.get_group(ParallelMode.PIPELINE))
             self._accum_moe_loss = all_moe_losses[0]
             self._accum_z_moe_loss = all_moe_losses[1]
