@@ -205,7 +205,7 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
     if gpc.config.ALPA:
         parts = []
         partition = []
-        with open("InternEvo/partition.txt", "r") as f:
+        with open("InternEvo/mist_partition.txt", "r") as f:
             content = f.read().strip()
             partition = eval(content)
         assert partition is not None, "Partition not set."

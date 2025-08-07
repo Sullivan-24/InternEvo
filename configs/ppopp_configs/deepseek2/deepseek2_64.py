@@ -35,7 +35,7 @@ if SCHEDULE == 0:
     split_backward, unified_scheduler, comm_graph, first_stage, \
     last_stage, Devices_containing_last_stage, recomp_stages = generate_()
 
-PP_MODE, CHUNK_NUM = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN, adap_partition=ALPA)
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
 VOCAB_FILE = "/mnt/inspurfs/share_data/llm_data/tokenizers/deepseek/"
 # ali
@@ -175,7 +175,7 @@ beta2_scheduler = dict(
 
 model = dict(
     checkpoint=0,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
     parallel_output=True,

@@ -3,8 +3,8 @@ from configs.ppopp_configs.base import *
 JOB_NAME = "14b_gemma_train"
 model_type = "GEMMA"
 
-VOCAB_SIZE = 256000
-HIDDEN_SIZE = 3072
+VOCAB_SIZE = 256000 * 2
+HIDDEN_SIZE = 1536
 NUM_ATTENTION_HEAD = 16
 NUM_KV_ATTENTION_HEAD = 16
 HEAD_DIM = 256
@@ -21,7 +21,7 @@ if SCHEDULE == 0:
     split_backward, unified_scheduler, comm_graph, first_stage, \
     last_stage, Devices_containing_last_stage, recomp_stages = generate_()
 
-PP_MODE, CHUNK_NUM = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN, adap_partition=ALPA)
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
@@ -145,7 +145,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     max_position_embeddings=8192,

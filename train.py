@@ -42,7 +42,7 @@ def main(args):
 
     if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
         end_time = time.strftime("%Y-%m-%d-%H:%M",time.localtime(time.time()))
-        snapshot_dir_path = f"/cpfs01/user/guojihu/memory traces/{end_time}/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
+        snapshot_dir_path = f"./Memory traces/{end_time}/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
         snapshot_file_name = (
             f"snapshot{gpc.get_global_rank()}_recomp{gpc._config['model']['checkpoint']}_mb{gpc.micro_num}_"
             + f"tp{gpc.expert_tensor_parallel_size}_pp{gpc.pipeline_parallel_size}_{gpc._config['parallel']['pipeline']['mode']}_chunks{gpc._config['model']['num_chunks']}_"

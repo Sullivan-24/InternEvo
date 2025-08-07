@@ -783,6 +783,7 @@ def _torch_varlen_kvpacked_attn(
     softmax_scale=None,
     causal=False,
     key_padding_mask=None,
+    layer_idx=0,
 ):
 
     packed_length = q.size(dim=1)
