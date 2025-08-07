@@ -147,7 +147,9 @@ llm_ckpts
 events.*
 memory_trace
 RUN*/
-/result.txt
-/placement.txt
+result.txt
+placement.txt
 *.json
 debug/
+*.txt
+configs/ppopp_configs/*/*.txt
