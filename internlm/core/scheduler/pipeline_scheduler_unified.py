@@ -1004,7 +1004,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             op_type, _, match_device_id, source_stage_id, source_chunk_id, source_microbatch_id, _ = ops
             match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,match_device_id)
             if op_type == 'SA':
-                comm.AsynCommunicator(
+                comm.AsynCommunicator_unified(
                     object_send_next=self.send_forward_result[source_chunk_id][source_microbatch_id],
                     next_rank=match_global_rank,
                     dtype=self.dtype,
@@ -1013,12 +1013,12 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                     # microbatch_id = microbatch_id,
                     # step_type = step_type,
                     # chunk_id = chunk_id
-                    # local_rank = self.local_rank,
-                    # match_rank = match_device_id, 
-                    # step_id = self.step_id,
+                    local_rank = self.local_rank,
+                    match_rank = match_device_id, 
+                    step_id = self.step_id,
                 ).start()
             elif op_type == 'SG':
-                comm.AsynCommunicator(
+                comm.AsynCommunicator_unified(
                         object_send_prev=self.send_backward_result[source_chunk_id][source_microbatch_id],
                         prev_rank=match_global_rank,
                         dtype=self.dtype,
@@ -1027,13 +1027,13 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         # microbatch_id = microbatch_id,
                         # step_type = step_type,
                         # chunk_id = chunk_id
-                        # local_rank = self.local_rank,
-                        # match_rank = match_device_id, 
-                        # step_id = self.step_id,
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id, 
+                        step_id = self.step_id,
                     ).start()
                 
             elif op_type == 'RA':
-                recv_f_buffer = comm.AsynCommunicator(
+                recv_f_buffer = comm.AsynCommunicator_unified(
                             recv_prev_shape=self.input_obj_shape,
                             prev_rank=match_global_rank,
                             dtype=self.dtype,
@@ -1042,15 +1042,15 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                             # microbatch_id = recv_microbatch_id,
                             # step_type = recv_op_type,
                             # chunk_id = recv_chunk_id,                      
-                            # local_rank = self.local_rank,
-                            # match_rank = match_device_id,
-                            # step_id = self.step_id,  
+                            local_rank = self.local_rank,
+                            match_rank = match_device_id,
+                            step_id = self.step_id,  
                         )
                 recv_f_buffer.start()
                 store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id+1,self.stage_placement[self.local_rank])
                 self.recv_forward_buffer[store_recv_chunk_id][source_microbatch_id] = recv_f_buffer
             elif op_type == 'RG':
-                recv_b_buffer = comm.AsynCommunicator(
+                recv_b_buffer = comm.AsynCommunicator_unified(
                         recv_next_shape=self.output_obj_shape,
                         next_rank=match_global_rank,
                         dtype=self.dtype,
@@ -1059,9 +1059,9 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         # microbatch_id = recv_microbatch_id,
                         # step_type = recv_op_type,
                         # chunk_id = recv_chunk_id,
-                        # local_rank = self.local_rank,
-                        # match_rank = match_device_id,
-                        # step_id = self.step_id,    
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id,
+                        step_id = self.step_id,    
                     )
                 recv_b_buffer.start()
                 store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id-1,self.stage_placement[self.local_rank])
@@ -1219,8 +1219,8 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
                     self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
-                # json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
-                # write_json(jsonpath, json_content)
+                json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
+                write_json(jsonpath, json_content)
                 for chunk in range (chunks):
                     for microbatch in range(self.num_microbatches):
                         if self.recv_forward_buffer[chunk][microbatch] is not None and self.recv_forward_result[chunk][microbatch] is None:
@@ -1239,8 +1239,8 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
                 input_obj_grad_map[chunk_id][microbatch_id] = 0
                 engine.optimizer.skip_grad_reduce = origin_skip
-                # json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
-                # write_json(jsonpath, json_content)
+                json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
+                write_json(jsonpath, json_content)
 
             if s == len(steps)-1:             
                 after_comms = comm_list[s+1]

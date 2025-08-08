@@ -1151,11 +1151,11 @@ def generate_comm_martix_(comm_graph, comp_graph):
             for comm in comms:
                 op_type, _, match_device_id, stage_id, chunk_id, microbatch_id, match_step_index = comm
                 comm_graph_martix[device_id][match_device_id].append((op_type)) 
-            #     write_json(jsonpath,{"operation":op_type, "local_rank":device_id, "step_index":step_index, "match_rank":match_device_id,"match_step_index":match_step_index, "source_stage_id":stage_id,"microbatch_id":microbatch_id}) 
-            # if step_index< len(comps):
-            #     op, microbatch_id, stage_id, chunk_id, _, _ = comps[step_index]
-            #     json_content = {"step_type": op, "local_rank": device_id, "step_id": step_index, "chunk_id": chunk_id, "stage_id": stage_id, "microbatch_id": microbatch_id, "operation": "compute"}
-            #     write_json(jsonpath,json_content)
+                write_json(jsonpath,{"operation":op_type, "local_rank":device_id, "step_index":step_index, "match_rank":match_device_id,"match_step_index":match_step_index, "source_stage_id":stage_id,"microbatch_id":microbatch_id}) 
+            if step_index< len(comps):
+                op, microbatch_id, stage_id, chunk_id, _, _ = comps[step_index]
+                json_content = {"step_type": op, "local_rank": device_id, "step_id": step_index, "chunk_id": chunk_id, "stage_id": stage_id, "microbatch_id": microbatch_id, "operation": "compute"}
+                write_json(jsonpath,json_content)
     return comm_graph_martix
 
 def generate_comm_graph(comp_graph, stage_alignment, max_end_time):
@@ -1272,7 +1272,7 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = 16
+    num_microbatches = 32
     unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement, max_end_time)
     scheduler_type = judge_scheduler_type(stage_placement)
@@ -1281,14 +1281,14 @@ def generate_():
     first_stage = min(min(row) for row in stage_placement)
     Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
     # self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
-    result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
-              'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
-              'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
-               'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph, 'recomp_stages':recomp_stages}
-    with open(file_path+'/runtime.json','w') as file:
-        json.dump(result,file)
-    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
-          recomp_stages:{recomp_stages}')
+    # result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
+    #           'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+    #           'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
+    #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph, 'recomp_stages':recomp_stages}
+    # with open(file_path+'/runtime.json','w') as file:
+    #     json.dump(result,file)
+    # print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+    #       recomp_stages:{recomp_stages}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
             last_stage, Devices_containing_last_stage, recomp_stages
