@@ -347,9 +347,6 @@ def pipeline_parallel_sharding_wrapper(
         kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
         kwargs["device"] = device
         kwargs["start_layer_idx"] = start
-        if gpc.config["model_type"] == "LLAMA2" and gpc.config["LLAMA_VF"]:
-            kwargs["mlp_ratio"] = 2 * origin_mlp_ratio / pipeline_size * (pipeline_rank + 1)
-                
         chunk = model_builder(**kwargs).to(device)
         setattr(chunk, "first_layer", start)
         setattr(chunk, "last_layer", end)

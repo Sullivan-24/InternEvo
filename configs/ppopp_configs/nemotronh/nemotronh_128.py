@@ -1,18 +1,18 @@
 from configs.ppopp_configs.base import *
 
 MEMORY_PROFILE_ALL = False
-JOB_NAME = "7b_llama3_train"
+JOB_NAME = "7b_nemotronh_train"
 model_type = "LLAMA2"
 NEMOTRON_H = True
 
 VOCAB_SIZE = 128*1024
 HIDDEN_SIZE = 1024
 NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 8
+NUM_KV_ATTENTION_HEAD = 4
 MLP_RATIO = 5.25
 NUM_LAYER = 112
-PP_SIZE = 8
-TP_SIZE = 4
+PP_SIZE = 16
+TP_SIZE = 2
 ZERO_SZIE = -1
 MICRO_NUM = PP_SIZE * 4
 PP_MODE = "1f1b"
@@ -23,7 +23,7 @@ if SCHEDULE == 0:
     split_backward, unified_scheduler, comm_graph, first_stage, \
     last_stage, Devices_containing_last_stage, recomp_stages = generate_()
 
-PP_MODE, CHUNK_NUM = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN, adap_partition=ALPA)
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
@@ -167,7 +167,7 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    mlp_layer_fusion=True,
+    mlp_layer_fusion=False,
     enable_qkv_fusion=True,
 )
 

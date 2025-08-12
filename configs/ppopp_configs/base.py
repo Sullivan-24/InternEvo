@@ -8,9 +8,11 @@ DO_ALERT = False
 HETER = True
 SLEEP_TIME = 0
 layerwise = False
-profile_fwd_bwd = False
-SEQ_LEN = 2048*1
-SCHEDULE = 4
+profile_fwd_bwd = True
+SEQ_LEN = 1024*4
+SCHEDULE = 3
+
+HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
 def set_pp_mode(JOB_NAME, pp_size, layer_num, chunk_num, seq_len):
