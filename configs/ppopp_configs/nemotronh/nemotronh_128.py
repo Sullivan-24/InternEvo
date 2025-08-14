@@ -2,10 +2,11 @@ from configs.ppopp_configs.base import *
 
 MEMORY_PROFILE_ALL = False
 JOB_NAME = "7b_nemotronh_train"
-model_type = "LLAMA2"
+model_type = "NEMOTRON_H"
 NEMOTRON_H = True
 
-VOCAB_SIZE = 128*1024
+ATTN_FREQ = 12
+VOCAB_SIZE = 128*1024*4
 HIDDEN_SIZE = 1024
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 4

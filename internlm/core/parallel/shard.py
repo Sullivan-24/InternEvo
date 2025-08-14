@@ -360,6 +360,9 @@ def pipeline_parallel_sharding_wrapper(
     else:
         model = nn.ModuleList(models)
 
+    # if gpc.get_local_rank(ParallelMode.TENSOR) == 0 and gpc.get_local_rank(ParallelMode.DATA) == 0:
+    #     print(f"{str(model)}", flush=True)
+    
     return model
 
 def pipeline_parallel_sharding_wrapper_hydra(

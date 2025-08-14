@@ -93,7 +93,7 @@ from internlm.utils.parallel import (
 )
 from internlm.utils.timeout import llm_timeout
 from internlm.utils.utils import TensorParallelMode
-
+from internlm.model.modeling_nemotron_h import NemotronHMamba2Mixer, NemotronHRMSNorm, NemotronHAttention
 try:
     import torch_npu
 except (ImportError, ModuleNotFoundError):
@@ -117,16 +117,50 @@ logger = get_logger(__file__)
 internlm_accelerator = get_accelerator()
 
 
+# def set_param_unique_tracking_name(model):
+#     for chunk_id, chunk in enumerate(unwrap_naive_amp(model)):
+#         # Important: only works for llama-class models
+#         childrens = chunk.named_children()
+#         for _, children in childrens:
+#             if isinstance(children, nn.ModuleList):
+#                 for idx, block in enumerate(children):
+#                     for name, child in block.named_modules():
+#                         if isinstance(child, (ParallelLinearWithCommExt)):
+#                             full_name = f"{chunk_id}.{idx}.{name}"
+#                             setattr(
+#                                 child.weight,
+#                                 "tracking_name",
+#                                 f"{full_name}.weight",
+#                             )
+#                             if child.bias is not None:
+#                                 setattr(
+#                                     child.bias,
+#                                     "tracking_name",
+#                                     f"{full_name}.bias",
+#                                 )
+#             else:
+#                 if isinstance(children, Embedding1D):
+#                     setattr(
+#                         children.weight,
+#                         "tracking_name",
+#                         f"{chunk_id}_embedding.weight",
+#                     )
+#                 else:
+#                     setattr(
+#                         children.weight,
+#                         "tracking_name",
+#                         f"{chunk_id}_head.weight",
+#                     )
 def set_param_unique_tracking_name(model):
     for chunk_id, chunk in enumerate(unwrap_naive_amp(model)):
-        # Important: only works for llama-class models
+        # Important: only works for llama-class models, but add compatibility for NemotronH
         childrens = chunk.named_children()
-        for _, children in childrens:
+        for name, children in childrens:
             if isinstance(children, nn.ModuleList):
                 for idx, block in enumerate(children):
-                    for name, child in block.named_modules():
+                    for sub_name, child in block.named_modules():
                         if isinstance(child, (ParallelLinearWithCommExt)):
-                            full_name = f"{chunk_id}.{idx}.{name}"
+                            full_name = f"{chunk_id}.{idx}.{sub_name}"
                             setattr(
                                 child.weight,
                                 "tracking_name",
@@ -139,19 +173,27 @@ def set_param_unique_tracking_name(model):
                                     f"{full_name}.bias",
                                 )
             else:
-                if isinstance(children, Embedding1D):
+                # Check if children has weight attribute before accessing
+                if hasattr(children, 'weight'):
+                    if isinstance(children, Embedding1D):
+                        setattr(
+                            children.weight,
+                            "tracking_name",
+                            f"{chunk_id}_embedding.weight",
+                        )
+                    else:
+                        setattr(
+                            children.weight,
+                            "tracking_name",
+                            f"{chunk_id}_{name}.weight",  # Use name instead of hard-coded 'head'
+                        )
+                # Check if children has bias attribute
+                if hasattr(children, 'bias') and children.bias is not None:
                     setattr(
-                        children.weight,
+                        children.bias,
                         "tracking_name",
-                        f"{chunk_id}_embedding.weight",
+                        f"{chunk_id}_{name}.bias",
                     )
-                else:
-                    setattr(
-                        children.weight,
-                        "tracking_name",
-                        f"{chunk_id}_head.weight",
-                    )
-
 
 def set_fp32_attr_for_model(model: Union[nn.Module, nn.ModuleList]):
     if not isinstance(model, nn.ModuleList):
@@ -170,7 +212,7 @@ def set_parallel_attr_for_param_groups(model: Union[nn.Module, nn.ModuleList]):
 
     def _check_module(name, module):
         # layer_norm
-        if isinstance(module, (RMSNorm, nn.LayerNorm)):
+        if isinstance(module, (RMSNorm, nn.LayerNorm, NemotronHRMSNorm)):
             for param in module.parameters():
                 setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
@@ -182,7 +224,7 @@ def set_parallel_attr_for_param_groups(model: Union[nn.Module, nn.ModuleList]):
                     setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
         # embedding and head
-        if isinstance(module, (Embedding1D, ScaleColumnParallelLinear)):
+        if isinstance(module, (Embedding1D, ScaleColumnParallelLinear, nn.Embedding)):
             for param in module.parameters():
                 if gpc.is_initialized(ParallelMode.WEIGHT) and is_using_isp():
                     setattr(param, IS_WEIGHT_ZERO_PARALLEL, True)
@@ -207,7 +249,7 @@ def set_parallel_attr_for_param_groups(model: Union[nn.Module, nn.ModuleList]):
                 elif gpc.is_initialized(ParallelMode.WEIGHT) and is_using_isp():
                     setattr(param, IS_WEIGHT_EXPERT_DATA_PARALLEL, True)
         # for non-moe linear module
-        elif isinstance(module, ParallelLinearWithCommExt):
+        elif isinstance(module, (ParallelLinearWithCommExt, NemotronHMamba2Mixer)):
             for param in module.parameters():
                 if gpc.is_initialized(ParallelMode.TENSOR) and not is_using_isp():
                     setattr(param, IS_TENSOR_ZERO_PARALLEL, True)

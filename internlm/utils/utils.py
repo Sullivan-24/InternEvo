@@ -57,6 +57,7 @@ class ModelType(Enum):
     QWEN2MOE = 9
     MIXTRALMOE = 10
     DEEPSEEK2_MoE = 11
+    NEMOTRON_H = 12
 
 
 class DataType(Enum):

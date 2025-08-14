@@ -39,22 +39,6 @@ def _convert_cu_seqlens_for_qksplited(kwargs: Dict):
 
     return kwargs
 
-
-def _convert_cu_seqlens_for_qksplited(kwargs: Dict):
-    cu_seqlens = kwargs.pop("cu_seqlens", None)
-    max_seqlen = kwargs.pop("max_seqlen", None)
-
-    if cu_seqlens is not None:
-        kwargs["cu_seqlens_q"] = cu_seqlens
-        kwargs["cu_seqlens_k"] = cu_seqlens
-
-    if max_seqlen is not None:
-        kwargs["max_seqlen_q"] = max_seqlen
-        kwargs["max_seqlen_k"] = max_seqlen
-
-    return kwargs
-
-
 def split_fused_wqkv_weight(wqkv, *args, **kwargs):  # pylint: disable=W0613
     q_dim = kwargs["q_dim"]
     kv_dim = kwargs["kv_dim"]
