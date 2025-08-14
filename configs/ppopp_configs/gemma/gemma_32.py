@@ -3,7 +3,7 @@ from configs.ppopp_configs.base import *
 JOB_NAME = "7b_gemma_train"
 model_type = "GEMMA"
 
-VOCAB_SIZE = 256000
+VOCAB_SIZE = 256000 * 1
 HIDDEN_SIZE = 1536
 NUM_ATTENTION_HEAD = 16
 NUM_KV_ATTENTION_HEAD = 16
