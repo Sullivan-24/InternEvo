@@ -1,6 +1,6 @@
 
 from preprocess import generate_Wavelike_4pp_20chunk_16mb, generate_Interleaved_4pp_20chunk_16mb
-from internlm.utils.utils import judge_scheduler_type, judge_split_backward
+from internlm.utils.utils import judge_placement_strategy, judge_split_backward
 import json
 # {
 #   "architectures": [
@@ -252,6 +252,6 @@ with open('/cpfs01/user/matenghui/InternEvo/runtime.json', 'r', encoding='utf-8'
     input_info = json.load(file)
 stage_placement,unified_scheduler,comm_graph = input_info['stage_placement'],input_info['unified_scheduler'],input_info['comm_graph']
 # stage_placement,unified_scheduler,comm_graph = generate_Interleaved_4pp_20chunk_16mb()
-scheduler_type = judge_scheduler_type(stage_placement)
+placement_strategy = judge_placement_strategy(stage_placement)
 split_backward = judge_split_backward(unified_scheduler)
 layerwise = False

@@ -326,42 +326,40 @@ def _communicate_async(
     # return and do other things
     yield
 
-    # if len(ops) > 0:
-    #     if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
-    #         for req in reqs:
-    #             req.wait()
-    #         # To protect against race condition when using batch_isend_irecv().
-    #         internlm_accelerator.synchronize()
-    #     else:
-    #         for req in ops:
-    #             req.wait()
-
-    def wait_with_timeout_and_fallback(req, timeout=0.02, fallback=None, **kwargs):
-        start = time.perf_counter()
-        while not req.is_completed():
-            if time.perf_counter() - start > timeout:
-                if fallback:
-                    fallback(**kwargs)
-                return False  # 超时
-            # time.sleep(0.1)
-        req.wait()  # 确保完成
-        return True
-    TIMEOUT = 0.02
-
-    if len(ops) > 0:
-        if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
-            for req in reqs:
-                while True:
-                    success = wait_with_timeout_and_fallback(req, timeout=TIMEOUT, fallback=func,steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w)
-                    if success:
-                        break  # 成功才退出
-            internlm_accelerator.synchronize()
-        else:
-            for req in ops:
-                while True:
-                    success = wait_with_timeout_and_fallback(req, timeout=TIMEOUT, fallback=func,steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w)
-                    if success:
-                        break  # 成功才退出
+    if func is None:
+        if len(ops) > 0:
+            if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+                for req in reqs:
+                    req.wait()
+                # To protect against race condition when using batch_isend_irecv().
+                internlm_accelerator.synchronize()
+            else:
+                for req in ops:
+                    req.wait()
+    else:
+        TIMEOUT = 0.01
+        if len(ops) > 0:
+            if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
+                for req in reqs:
+                    start = time.perf_counter()
+                    while not req.is_completed():
+                        if time.perf_counter() - start > TIMEOUT:
+                            if func(steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w):
+                                start = time.perf_counter()
+                            else:
+                                break
+                    req.wait()
+                internlm_accelerator.synchronize()
+            else:
+                for req in ops:
+                    start = time.perf_counter()
+                    while not req.is_completed():
+                        if time.perf_counter() - start > TIMEOUT:
+                            if func(steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w):
+                                start = time.perf_counter()
+                            else:
+                                break
+                    req.wait()
 
     if recv_prev and recv_prev_split:
         if isinstance(tensor_recv_prev, torch.Tensor):

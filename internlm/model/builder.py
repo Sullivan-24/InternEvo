@@ -38,7 +38,7 @@ def create_model(model_type) -> Union[nn.Module, List[nn.Module]]:
         setattr(model, "last_layer", num_layers)
     else:
         if getattr(gpc.config.parallel["pipeline"], "mode", "1F1B").upper() == "UNIFIED":
-            model = pipeline_parallel_sharding_wrapper_unifiedPP(num_layers, num_chunks, gpc.config.stage_placement, gpc.config.scheduler_type, model_buidler, **kwargs)
+            model = pipeline_parallel_sharding_wrapper_unifiedPP(num_layers, num_chunks, gpc.config.stage_placement, gpc.config.placement_strategy, model_buidler, **kwargs)
         else:
             model = pipeline_parallel_sharding_wrapper(num_layers, num_chunks, model_buidler, **kwargs)
     if not isinstance(model, BaseModel) and gpc.is_rank_for_log():

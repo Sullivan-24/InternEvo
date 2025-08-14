@@ -223,7 +223,7 @@ def partition_uniform_alpa(num_items: int, pipeline_parallel_size: int, num_chun
     assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
     return parts
 
-def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
+def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, placement_strategy):
     assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
     parts = []
     if gpc.config.layerwise:#!only for Interleaved-base-type
@@ -254,13 +254,13 @@ def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num
     for _parts in parts:
         for s, e in _parts:
             indexes.extend(list(range(s, e)))
-    if scheduler_type != ModuleType.CHIMERA.value:
+    if placement_strategy != ModuleType.CHIMERA.value:
         assert len(indexes) == len(set(indexes)), indexes  # should have no duplicates
         assert set(indexes) == set(list(range(num_items))), (indexes, num_items)  # should have the same indexes as expected
     return parts
 
 def pipeline_parallel_sharding_wrapper_unifiedPP(
-    num_layers: int, num_chunks: int, stage_placement, scheduler_type, model_builder: Callable, device: torch.device, **kwargs
+    num_layers: int, num_chunks: int, stage_placement, placement_strategy, model_builder: Callable, device: torch.device, **kwargs
 ):
     """
     build generic model 1d
@@ -274,7 +274,7 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
-    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks, stage_placement, scheduler_type)
+    all_parts = partition_uniform_unifiedPP(num_layers, pipeline_size, num_chunks, stage_placement, placement_strategy)
     parts = all_parts[pipeline_rank]
 
     if gpc.is_rank_for_log():

@@ -9,7 +9,7 @@ recomp_stages = []
 recomp_microbatches = []
 recomp_layers = []
 open_recomp = False
-num_microbatches, pp_size, stage_placement, scheduler_type, \
+num_microbatches, pp_size, stage_placement, placement_strategy, \
 split_backward, unified_scheduler, comm_graph, first_stage, \
 last_stage, Devices_containing_last_stage, recomp_stages,all_pre_fetch_w = generate_() #recomp_layers,recomp_microbatches
 

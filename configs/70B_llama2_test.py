@@ -1,5 +1,5 @@
 from preprocess import generate
-from internlm.utils.utils import ModuleType, judge_scheduler_type, judge_split_backward
+from internlm.utils.utils import ModuleType, judge_split_backward
 
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
@@ -217,5 +217,5 @@ monitor = dict(
 # metric_dtype = "fp32"
 if PP_MODE == "unified":
     stage_placement,unified_scheduler,comm_graph = generate()
-    scheduler_type = ModuleType.HET.value
+    placement_strategy = ModuleType.HET.value
     split_backward = judge_split_backward(unified_scheduler)

@@ -16,7 +16,7 @@ dp_size = 1
 tp_size = 8
 pp_size = 4
 num_microbatches = pp_size*4
-num_microbatches, pp_size, stage_placement, scheduler_type, \
+num_microbatches, pp_size, stage_placement, placement_strategy, \
 split_backward, unified_scheduler, comm_graph, first_stage, \
 last_stage, Devices_containing_last_stage = generate_()
 

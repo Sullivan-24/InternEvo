@@ -4,7 +4,7 @@
 source /conda_env/llm-torch2.1-flash2.2.1.sh
 unset NCCL_DEBUG
 unset NCCL_DEBUG_SUBSYS
-export CUDA_LAUNCH_BLOCKING=1
+export CUDA_LAUNCH_BLOCKING=0
 # 定义参数
 train_file="InternEvo/train.py"
 config_file="InternEvo/configs/14B_llama2.py"

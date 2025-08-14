@@ -7,14 +7,14 @@ import json
 # num_microbatches=input_info['num_microbatches']
 # pp_size=input_info['pp_size']
 # stage_placement=input_info['stage_placement'] 
-# scheduler_type=input_info['scheduler_type']
+# placement_strategy=input_info['placement_strategy']
 # split_backward=input_info['split_backward']
 # unified_scheduler=input_info['unified_scheduler']
 # comm_graph=input_info['comm_graph']
 # first_stage = input_info['first_stage'], 
 # last_stage=input_info['last_stage'] 
 # Devices_containing_last_stage=input_info['Devices_containing_last_stage']
-num_microbatches, pp_size, stage_placement, scheduler_type ,\
+num_microbatches, pp_size, stage_placement, placement_strategy ,\
 split_backward, unified_scheduler, comm_graph, first_stage ,\
 last_stage, Devices_containing_last_stage = generate_()
 layerwise = False

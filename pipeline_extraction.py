@@ -155,7 +155,7 @@ def strip_name(s: str):
 def main(path_prefix, rank_start, rank_end, rank_step):
     merged_trace = None
     for rank in range(rank_start, rank_end, rank_step):
-        fns = glob(path_prefix + f"{rank}.json")
+        fns = glob(path_prefix + f"rank{rank}_dp0_wp0_tp0/*.json")
         assert len(fns) == 1
         fn = fns[0]
         trace = json.load(open(fn))
@@ -171,21 +171,22 @@ def main(path_prefix, rank_start, rank_end, rank_step):
 
 if __name__ == "__main__":
     start, end, step = 0, 7, 1
-    if len(sys.argv) > 1:
-        path_prefix = sys.argv[1]
-        # f"/data0/tsinghua/huangkz/logs/trace_ite_4-0801-073644-rank_{rank}/*.pt.trace.json"
-    else:
-        print(
-            f"Usage: python {sys.argv[0]} <path_prefix> [rank_start={start}] [end={end}] [step={step}]"
-        )
-        print(
-            f"Example: python /data0/tsinghua/huangkz/logs/trace_ite_4-0801-073644-rank_"
-        )
-        exit()
-    if len(sys.argv) > 2:
-        start = int(sys.argv[2])
-    if len(sys.argv) > 3:
-        end = int(sys.argv[3])
-    if len(sys.argv) > 4:
-        step = int(sys.argv[4])
+    # if len(sys.argv) > 1:
+    #     path_prefix = sys.argv[1]
+    #     # f"/data0/tsinghua/huangkz/logs/trace_ite_4-0801-073644-rank_{rank}/*.pt.trace.json"
+    # else:
+    #     print(
+    #         f"Usage: python {sys.argv[0]} <path_prefix> [rank_start={start}] [end={end}] [step={step}]"
+    #     )
+    #     print(
+    #         f"Example: python /data0/tsinghua/huangkz/logs/trace_ite_4-0801-073644-rank_"
+    #     )
+    #     exit()
+    # if len(sys.argv) > 2:
+    #     start = int(sys.argv[2])
+    # if len(sys.argv) > 3:
+    #     end = int(sys.argv[3])
+    # if len(sys.argv) > 4:
+    #     step = int(sys.argv[4])
+    path_prefix = "/cpfs01/user/matenghui/RUN/14b_llama2_train/08-13-19.00.15/traces/"
     main(path_prefix, start, end, step)

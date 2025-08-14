@@ -23,8 +23,6 @@ from internlm.core.scheduler import (
     ZeroBubblePipelineScheduler,
     ZeroBubblePipelineVShapeScheduler,
     UnifiedSingleChunkPipelineScheduler,
-    UnifiedMultipleChunksPipelineScheduler,
-    UnifiedMultipleStreamsPipelineScheduler,
     UnifiedHetPipelineScheduler
 )
 from internlm.core.scheduler.pipeline_scheduler_1f1b import get_tensor_shape
@@ -149,73 +147,16 @@ def initialize_trainer(
                 optimizer=optimizer,
             )
         elif pp_mode == "UNIFIED":
-            if gpc.config.model.num_chunks > 1:
-                stage_placement = gpc.config.stage_placement
-                scheduler_type = gpc.config.scheduler_type
-                local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-                num_chunks = len(stage_placement[local_rank])
-                Devices_containing_last_stage = gpc.config.Devices_containing_last_stage
-                if local_rank in Devices_containing_last_stage:
-                    gpc.devices_have_lastStage = True
-                assert stage_placement is not None, "stage_placement must be provided for unified pipeline"
-                assert  scheduler_type is not None, "scheduler_type must be provided for unified pipeline"
-                if scheduler_type == ModuleType.CHIMERA.value:
-                    scheduler = UnifiedMultipleStreamsPipelineScheduler(
-                        num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                        num_chunks=num_chunks,
-                        dtype=gpc.config.model["dtype"],
-                        data_process_func=_data_preparation_func,
-                        tensor_shape=tensor_shape,
-                        scatter_gather_tensors=scatter_gather,
-                        scheduler_hooks=scheduler_hooks,
-                        optimizer=optimizer,
-                        unified_scheduler=gpc.config.unified_scheduler,
-                        stage_placement = gpc.config.stage_placement,
-                        comm_graph=gpc.config.comm_graph,
-                    )
-                elif scheduler_type == ModuleType.HET.value:
-                    scheduler = UnifiedHetPipelineScheduler(
-                    num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                    num_chunks=num_chunks,
-                    dtype=gpc.config.model["dtype"],
-                    data_process_func=_data_preparation_func,
-                    tensor_shape=tensor_shape,
-                    scatter_gather_tensors=scatter_gather,
-                    scheduler_hooks=scheduler_hooks,
-                    optimizer=optimizer,
-                    unified_scheduler=gpc.config.unified_scheduler,
-                    stage_placement = gpc.config.stage_placement,
-                    comm_graph=gpc.config.comm_graph,
-                    scheduler_type=scheduler_type,
-                    split_backward=gpc.config.split_backward,
-                    layerwise=gpc.config.layerwise,
-                    first_stage=gpc.config.first_stage,
-                    last_stage=gpc.config.last_stage
-                    )
-                    gpc.het = True
-                else:
-                    scheduler = UnifiedMultipleChunksPipelineScheduler(
-                    num_microbatches=gpc.config.NUM_MICRO_BATCHES,
-                    num_chunks=num_chunks,
-                    dtype=gpc.config.model["dtype"],
-                    data_process_func=_data_preparation_func,
-                    tensor_shape=tensor_shape,
-                    scatter_gather_tensors=scatter_gather,
-                    scheduler_hooks=scheduler_hooks,
-                    optimizer=optimizer,
-                    unified_scheduler=gpc.config.unified_scheduler,
-                    stage_placement = gpc.config.stage_placement,
-                    comm_graph=gpc.config.comm_graph,
-                    scheduler_type=scheduler_type,
-                    split_backward=gpc.config.split_backward,
-                    layerwise=gpc.config.layerwise,
-                    first_stage=gpc.config.first_stage,
-                    last_stage=gpc.config.last_stage
-                    )
-                    if scheduler_type == ModuleType.VSHAPE.value:
-                        gpc.v_shape = True
-
-            else:
+            stage_placement = gpc.config.stage_placement
+            placement_strategy = gpc.config.placement_strategy
+            local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+            num_chunks = len(stage_placement[local_rank])
+            Devices_containing_last_stage = gpc.config.Devices_containing_last_stage
+            if local_rank in Devices_containing_last_stage:
+                gpc.devices_have_lastStage = True
+            assert stage_placement is not None, "stage_placement must be provided for unified pipeline"
+            assert  placement_strategy is not None, "placement_strategy must be provided for unified pipeline"
+            if placement_strategy == ModuleType.ONEFONEB.value:
                 scheduler = UnifiedSingleChunkPipelineScheduler(
                     data_process_func=_data_preparation_func,
                     num_microbatches=gpc.config.NUM_MICRO_BATCHES,
@@ -226,7 +167,30 @@ def initialize_trainer(
                     optimizer=optimizer,
                     unified_scheduler=gpc.config.unified_scheduler,
                     comm_graph=gpc.config.comm_graph,
+                )               
+            else:
+                scheduler = UnifiedHetPipelineScheduler(
+                num_microbatches=gpc.config.NUM_MICRO_BATCHES,
+                num_chunks=num_chunks,
+                dtype=gpc.config.model["dtype"],
+                data_process_func=_data_preparation_func,
+                tensor_shape=tensor_shape,
+                scatter_gather_tensors=scatter_gather,
+                scheduler_hooks=scheduler_hooks,
+                optimizer=optimizer,
+                unified_scheduler=gpc.config.unified_scheduler,
+                stage_placement = gpc.config.stage_placement,
+                comm_graph=gpc.config.comm_graph,
+                placement_strategy=placement_strategy,
+                split_backward=gpc.config.split_backward,
+                layerwise=gpc.config.layerwise,
+                first_stage=gpc.config.first_stage,
+                last_stage=gpc.config.last_stage
                 )
+                if placement_strategy == ModuleType.HET.value:
+                    gpc.het = True
+                if placement_strategy == ModuleType.VSHAPE.value:
+                    gpc.v_shape = True
         else:
             scheduler = PipelineScheduler(
                 data_process_func=_data_preparation_func,

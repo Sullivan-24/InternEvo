@@ -171,7 +171,7 @@ def dfs(op, rec_stack,visited,communication_graph):
     rec_stack.remove(key)
     return False, -1  # 不存在环
 
-def judge_scheduler_type(stage_placement):
+def judge_placement_strategy(stage_placement):
     ranks = len(stage_placement)
     if ranks <= 1:
         return None
@@ -777,21 +777,21 @@ def generate_():
     num_microbatches = 16
     unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
-    scheduler_type = judge_scheduler_type(stage_placement)
+    placement_strategy = judge_placement_strategy(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
     first_stage = min(min(row) for row in stage_placement)
     Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
     # self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
     result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
-              'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+              'stage_placement':stage_placement, 'placement_strategy': placement_strategy, 'split_backward':split_backward, \
               'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
                'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph}
     with open(file_path+'/runtime.json','w') as file:
         json.dump(result,file)
-    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+    print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, placement_strategy:{placement_strategy}, split_backward:{split_backward}, \
           recomp_stages:{recomp_stages}')
-    return num_microbatches, pp_size, stage_placement, scheduler_type ,\
+    return num_microbatches, pp_size, stage_placement, placement_strategy ,\
             split_backward, unified_scheduler, comm_graph, first_stage ,\
             last_stage, Devices_containing_last_stage, recomp_stages
 

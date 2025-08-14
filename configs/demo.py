@@ -1,7 +1,7 @@
 # Copyright (c) InternLM. All rights reserved.
 from internlm.utils.utils import read_base
 from preprocess import generate_
-from internlm.utils.utils import judge_scheduler_type, judge_split_backward
+from internlm.utils.utils import judge_placement_strategy, judge_split_backward
 with read_base():
     from configs._base_.default_runtime import *  # pylint: disable=W0401,W0614  # noqa: F401
     from configs._base_.models.internlm2_7B import *  # pylint: disable=W0401,W0614  # noqa: F401
@@ -434,5 +434,5 @@ stage_placement,unified_scheduler,comm_graph = generate_()
 # [{'Infor': ('f', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 2), 'B': [], 'A': [('f', 38.0, 2, 2, 0, 0, 1, 0)]}, {'Infor': ('f', 0, 1, 3), 'B': [], 'A': [('f', 62.0, 2, 2, 0, 1, 3, 0)]}, {'Infor': ('f', 3, 0, 0), 'B': [], 'A': [('f', 86.0, 2, 2, 0, 2, 5, 0)]}, {'Infor': ('f', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 5), 'B': [], 'A': [('f', 110.0, 2, 2, 0, 3, 7, 0)]}, {'Infor': ('b', 3, 0, 0), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('f', 0, 1, 6), 'B': [], 'A': [('f', 190.0, 2, 2, 0, 4, 9, 0)]}, {'Infor': ('f', 0, 1, 7), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 0), 'B': [], 'A': [('f', 226.0, 2, 2, 0, 5, 11, 0)]}, {'Infor': ('b', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 2), 'B': [], 'A': [('f', 276.0, 2, 2, 0, 6, 14, 0)]}, {'Infor': ('b', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 0), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 1), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 2), 'B': [], 'A': [('f', 368.0, 2, 2, 0, 7, 19, 0)]}, {'Infor': ('f', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 1), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 2), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 2), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 2), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 3), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 3), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 3), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 4), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 4), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 5), 'B': [], 'A': []}, {'Infor': ('f', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 5), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 5), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 6), 'B': [], 'A': []}, {'Infor': ('b', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 6), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 6), 'B': [], 'A': []}, {'Infor': ('w', 3, 0, 7), 'B': [], 'A': []}, {'Infor': ('b', 0, 1, 7), 'B': [], 'A': []}, {'Infor': ('w', 0, 1, 7), 'B': [], 'A': []}],
 # ]
 
-scheduler_type = judge_scheduler_type(stage_placement)
+placement_strategy = judge_placement_strategy(stage_placement)
 split_backward = judge_split_backward(unified_scheduler)
