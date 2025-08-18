@@ -151,10 +151,14 @@ def strip_name(s: str):
     op = s.split("-")[1]
     return "-".join([types.get(op, op)] + s.split("-")[2:])
 
-
+import os
 def main(path_prefix, rank_start, rank_end, rank_step):
     merged_trace = None
-    for rank in range(rank_start, rank_end, rank_step):
+    files_path = sorted(os.listdir(path_prefix), key=lambda x: int(x[4:5]))
+    print(files_path)
+    for file_path in files_path:
+        rank = int(file_path.split('_')[0][-1])
+    # for rank in range(rank_start, rank_end, rank_step):
         fns = glob(path_prefix + f"rank{rank}_dp0_wp0_tp0/*.json")
         assert len(fns) == 1
         fn = fns[0]
@@ -188,5 +192,5 @@ if __name__ == "__main__":
     #     end = int(sys.argv[3])
     # if len(sys.argv) > 4:
     #     step = int(sys.argv[4])
-    path_prefix = "/cpfs01/user/matenghui/RUN/14b_llama2_train/08-13-19.00.15/traces/"
+    path_prefix = "/cpfs01/user/matenghui/RUN/internevo/08-18-21.41.27/traces/"
     main(path_prefix, start, end, step)

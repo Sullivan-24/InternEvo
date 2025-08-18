@@ -133,6 +133,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         return False
 
     def do_comms(self,comm_list):
+        have_recv = False
         for ops in comm_list:
             op_type, _, match_device_id, source_stage_id, _, source_microbatch_id, _ = ops
             match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,match_device_id)
@@ -151,7 +152,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        func = self._process_prefetch 
+                        #func = self._process_prefetch 
                 ).start()
             elif op_type == 'SG':
                 comm.AsynCommunicator_unified(
@@ -168,7 +169,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        func = self._process_prefetch 
+                        #func = self._process_prefetch 
                     ).start()
                 
             elif op_type == 'RA':
@@ -186,10 +187,14 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        func = self._process_prefetch
+                        #func = self._process_prefetch
                         )
                 recv_f_buffer.start()
                 self.recv_forward_buffer[source_microbatch_id] = recv_f_buffer
+                # have_recv = True
+                #每个recv阻塞一次
+                # if gpc.config.add_president_latency and (match_device_id, self.local_rank) in gpc.config.comm_latency_pair:
+                #     time.sleep(gpc.config.latency_time/1000)
             elif op_type == 'RG':
                 recv_b_buffer = comm.AsynCommunicator_unified(
                         recv_next_shape=self.output_obj_shape,
@@ -205,10 +210,18 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        func = self._process_prefetch 
+                        #func = self._process_prefetch 
                     )
                 recv_b_buffer.start()
                 self.recv_backward_buffer[source_microbatch_id] = recv_b_buffer
+                # have_recv = True
+                #每个recv阻塞一次
+                # if gpc.config.add_president_latency and (match_device_id, self.local_rank) in gpc.config.comm_latency_pair:
+                #     time.sleep(gpc.config.latency_time/1000)
+            #每个step只阻塞一次
+            # if have_recv:
+            #     if gpc.config.add_president_latency and (match_device_id, self.local_rank) in gpc.config.comm_latency_pair:
+            #         time.sleep(gpc.config.latency_time/1000)
 
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
@@ -298,6 +311,10 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         accum_moe_loss=accum_moe_loss,
                     )
                     self.send_forward_result[microbatch_id] = output_obj
+                    #slow down compute
+                    if gpc.config.slow_compute and self.local_rank == gpc.config.slow_compute_rank and microbatch_id == gpc.config.slow_microbatch_id:
+                        for i in range(gpc.config.slow_compute_time):
+                            do_compute()
                 #end_time = time.perf_counter()
                 json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
                 #write_json(jsonpath, json_content)

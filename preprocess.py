@@ -234,7 +234,7 @@ def generate_comm_martix_(comm_graph, comp_graph):
             #     write_json(jsonpath,json_content)
     return comm_graph_martix
 
-def generate_comm_graph(comp_graph, stage_placement, max_end_time):
+def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediately=False):
     #comp_graph 是之前生成的计算图
     # 初始化通信图,comm_graph[deviceid][step]表示计算操作前需要进行的通信操作list
     comm_graph = [[[] for __ in range(len(comp_graph[0])+1)] for _ in range(len(comp_graph))]
@@ -277,9 +277,14 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time):
                                     recv_end_index = search_by_infor(recv_steps,op,microbatch_id,stage_id-1)+1
                                 #确定发送的device有哪些
                                 recv_op_start_time = recv_steps[recv_end_index][-2]
-                                send_end_index = search_by_time(stage_ops, recv_op_start_time)+1
-
+                                send_end_index = current_op_index+1
+                                if not send_immediately:
+                                    send_end_index = search_by_time(stage_ops, recv_op_start_time)+1
+                                if recv_start_index is None or recv_start_index>=recv_end_index:
+                                    recv_start_index = recv_end_index-1
+                                #print(f"device_id:{device_id}, stage_id:{stage_id}, chunk_id:{chunk_id}, microbatch_id:{microbatch_id}, op:{op}, end_time:{end_time}")
                                 # print(f"send_location:{send_location}, send_end_index:{send_end_index}, recv_start_index:{recv_start_index}, recv_end_index:{recv_end_index}")
+                                #做完就发
                                 for s_index in range(current_op_index, send_end_index):
                                     if s_index < len(stage_ops)-1:
                                         send_interval = (stage_ops[s_index][-1],stage_ops[s_index+1][-2])
@@ -293,7 +298,7 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time):
                                         else:
                                             recv_interval = (recv_steps[r_index-1][-1],r_start_time)
                                         wait_time_ = interval_distance(send_interval, recv_interval)
-                                        # print(f"wait_time_:{wait_time_}")
+                                        # print(f"wait_time:{wait_time} ; wait_time_:{wait_time_}")
                                         if wait_time_ < wait_time:
                                             wait_time = wait_time_
                                             recv_location = r_index
@@ -371,9 +376,10 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = 8
+    num_microbatches = 12
     unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str,stage_placement,num_microbatches)
-    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time)
+    send_immediately = True#
+    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time,send_immediately)
     all_pre_fetch_w = pre_fetch_w(unified_scheduler)    
     placement_strategy = judge_placement_strategy(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)

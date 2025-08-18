@@ -6,7 +6,7 @@ IMAGE="pjlab-shanghai-acr-registry-vpc.cn-shanghai.cr.aliyuncs.com/paieflops/jia
 DLC_CONFIG="/cpfs01/user/matenghui/InternEvo/demo_dlc.config"
 
 # gpu numbers
-GPU_NUMS=8
+GPU_NUMS=4
 
 # job name
 JOB_NAME="demo"
@@ -26,11 +26,14 @@ PRIORITY=4
 PARTITION="llm_s"
 WORKSPACE_ID="wsbuzbigeh1hjmst"
 
+MODEL_TYPE="llama2"
+MODEL_SIZE="7B"
+log_path="InternEvo/test/${MODEL_SIZE}_${MODEL_TYPE}"
 # PARTITION="llm_ddd"
 # WORKSPACE_ID="ws1ujefpjyfgqjwp"
 DLC_PATH="/cpfs01/user/matenghui/dlc"
 #log_path="InternEvo/test_het/14B_llama2/unified_block"
-log_path="InternEvo/test/14B_llama2"
+
 # 判断路径是否为目录，若不存在则递归创建
 if [ ! -d "$log_path" ]; then
     mkdir -p "$log_path"
