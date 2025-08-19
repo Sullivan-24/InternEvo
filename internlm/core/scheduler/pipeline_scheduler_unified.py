@@ -83,7 +83,6 @@ def debug_print(input_rank, msg: str) -> None:
         return
     if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0 and gpc.get_local_rank(ParallelMode.PIPELINE) in (input_rank):
         print(f"# rank {rank}: {msg}, flush=True")
-
 class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
     """
     A helper schedule class for pipeline parallelism running environment.
@@ -125,7 +124,6 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         assert len(unified_scheduler) == gpc.pipeline_parallel_size
         self.split_backward = gpc.config.split_backward
         if self.split_backward:
-            gpc.config.placement_strategy = ModuleType.ZBH1.value
             WeightGradStore.set_pp_mode("ZBV")
             WeightGradStore.set_optim(optimizer)
 
@@ -137,8 +135,6 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.comm_graph = comm_graph
         self.comms = comm_graph[self.local_rank]
         self.steps = unified_scheduler[self.local_rank]
-        self.local_pre_fetch_w = gpc.config.all_pre_fetch_w[self.local_rank]
-        gpc.config.done_w = [False for _ in range(num_microbatches)] #TODO not sure if this is global variable
         self.input_obj_shape = self.tensor_shape
         self.output_obj_shape = None
         self.recv_backward_buffer = [None for __ in range(self.num_microbatches) ]
@@ -148,7 +144,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.send_forward_result = [None for __ in range(self.num_microbatches) ]
         self.send_backward_result = [None for __ in range(self.num_microbatches) ]
 
-        file_path = f"InternEvo/jsonResult/async/{gpc.config.placement_strategy}_pp{gpc.pipeline_parallel_size}_mb{self.num_microbatches}"
+        file_path = f"InternEvo/jsonResult/async/pp{gpc.pipeline_parallel_size}_mb{self.num_microbatches}"
         os.makedirs(file_path, exist_ok=True)
         gpc._config['jsonpath'] = file_path+f"/iter0_rank{self.local_rank}_opeartion_list.json"
 
@@ -231,13 +227,14 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         output_objs = queue.Queue()
         moe_losses = queue.Queue()
         return_tensors = queue.Queue()
+        moe_z_losses = queue.Queue()
         accum_loss = (
             torch.zeros(1, device=get_current_device())
             if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
             else None
         )
         accum_moe_loss = torch.zeros(1, device=get_current_device())
-
+        accum_moe_z_loss = torch.zeros(1, device=get_current_device())
         #rank_info
         local_rank = self.local_rank
         comm_list = self.comms
@@ -268,13 +265,14 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 # Perform forward computation
                 #start_time = time.perf_counter()
                 # with torch.profiler.record_function(f"SCH-forward_step-{microbatch_id}-0"):
-                output_obj, moe_loss = self._forward_step(
+                output_obj, moe_loss, moe_z_loss = self._forward_step(
                     engine,
                     input_obj,
                     return_tensors,
                     return_output_label=return_output_label,
                     accum_loss=accum_loss,
                     accum_moe_loss=accum_moe_loss,
+                    accum_moe_z_loss=accum_moe_z_loss,
                 )
                 self.send_forward_result[microbatch_id] = output_obj
                 #end_time = time.perf_counter()
@@ -301,11 +299,13 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 input_objs.put(input_obj)
                 output_objs.put(output_obj)
                 moe_losses.put(moe_loss)
+                moe_z_losses.put(moe_z_loss)
 
             elif step_type == Step.BACKWARD.value:# Backward pass
                 input_obj = input_objs.get()
                 output_obj = output_objs.get()
                 moe_loss = moe_losses.get()
+                moe_z_loss = moe_z_losses.get()
                 
                 if stage_id<self.last_stage:
                     if self.recv_backward_result[microbatch_id] is not None:
@@ -321,7 +321,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 #start_time = time.perf_counter()
                 # with torch.profiler.record_function(f"SCH-backward_step-{microbatch_id}-0"):
                 input_obj_grad = self._backward_step(
-                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss
+                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
                 )
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()
@@ -339,12 +339,11 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
             elif step_type == Step.WEIGHT.value: # Weight update
                 #start_time = time.perf_counter()
-                if gpc.config.done_w[microbatch_id] is False:
-                    # with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
-                    WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
-                    #end_time = time.perf_counter()
-                    json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
-                    #write_json(jsonpath, json_content)
+                # with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
+                WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
+                #end_time = time.perf_counter()
+                json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
+                #write_json(jsonpath, json_content)
             if s == len(steps)-1:             
                 after_comms = comm_list[s+1]
                 if len(after_comms)>0:
@@ -358,7 +357,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         if accum_loss is not None:
             accum_loss += accum_moe_loss
         gpc.config.done_w = [False for _ in range(self.num_microbatches)]
-        return output, label, accum_loss, accum_moe_loss
+        return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
+
 class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
     def __init__(
         self,
