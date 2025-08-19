@@ -923,7 +923,7 @@ def detect_cross_deadlock_mutichunk(comm_graph, stage_alignment):
                         break
     return comm_graph
 
-def generate_():
+def generate_(num_microbatches=None):
     stage_placement = ""
     input_str=""
     file_path = 'InternEvo'
@@ -934,7 +934,8 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = pp_size * 4
+    if not num_microbatches:
+        num_microbatches = pp_size * 4
     unified_scheduler, recomp_stages = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     comm_graph = comm_graph_muti_chunk(unified_scheduler,stage_placement)
     scheduler_type = judge_scheduler_type(stage_placement)

@@ -703,10 +703,10 @@ def initialize_llm_profile(profiling: bool = False, start_time: str = None):
         )
 
         trace_path = (
-            f"RUN/{gpc.config.JOB_NAME}/{start_time}/traces/{file_name}/rank{gpc.get_global_rank()}_"
+            f"RUN/{gpc.config.JOB_NAME}/{start_time}/traces/{file_name}/pp{gpc.get_local_rank(ParallelMode.PIPELINE)}_"
             f"dp{gpc.get_local_rank(ParallelMode.DATA)}_"
             f"wp{gpc.get_local_rank(ParallelMode.WEIGHT)}_"
-            f"tp{gpc.get_local_rank(ParallelMode.TENSOR)}"
+            f"tp{gpc.get_local_rank(ParallelMode.TENSOR)}_rank{gpc.get_global_rank()}"
         )
         if internlm_accelerator.get_accelerator_backend() == AcceleratorType.NPU:
             experimental_config = torch_npu.profiler._ExperimentalConfig(
@@ -845,16 +845,16 @@ def record_current_batch_training_metrics(
         )
 
         infos = {
-            "tflops": tflops,
             "step": batch_count,
-            "loss": loss.item() - moe_loss.item() if moe_loss is not None else loss.item(),
-            "real_tgs": real_tgs,
             "tgs (tokens/gpu/second)": tgs_origin,
+            "tgs/last_tgs_10": last_tgs_10,
+            "tgs/tgs_avg": tgs_avg,
+            "tflops": tflops,
+            "real_tgs": real_tgs,
+            "loss": loss.item() - moe_loss.item() if moe_loss is not None else loss.item(),
             "tgs/last_tgs_1": last_tgs_1,
             "tgs/tgs_all": tgs_all,
-            "tgs/tgs_avg": tgs_avg,
             "tgs/tgs_SMA": tgs_SMA,
-            "tgs/last_tgs_10": last_tgs_10,
             "tgs/last_tgs_50": last_tgs_50,
             "lr": lr,
             "loss_scale": scaler,

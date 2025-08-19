@@ -1,6 +1,5 @@
 from configs.ppopp_configs.base import *
 
-MEMORY_PROFILE_ALL = False
 JOB_NAME = "7b_nemotronh_train"
 model_type = "NEMOTRON_H"
 NEMOTRON_H = True
@@ -22,7 +21,7 @@ CHUNK_NUM = 1
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages = generate_()
+    last_stage, Devices_containing_last_stage, recomp_stages = generate_(MICRO_NUM)
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 

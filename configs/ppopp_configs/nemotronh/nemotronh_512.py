@@ -4,15 +4,15 @@ JOB_NAME = "7b_nemotronh_train"
 model_type = "NEMOTRON_H"
 NEMOTRON_H = True
 
-ATTN_FREQ = 3
-VOCAB_SIZE = 128*1024*1
+ATTN_FREQ = 12
+VOCAB_SIZE = 128*1024*2
 HIDDEN_SIZE = 1024
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 4
 MLP_RATIO = 5.25
-NUM_LAYER = 28
-PP_SIZE = 4
-TP_SIZE = 2
+NUM_LAYER = 112
+PP_SIZE = 8
+TP_SIZE = 1
 ZERO_SZIE = -1
 MICRO_NUM = PP_SIZE * 4
 PP_MODE = "1f1b"
@@ -40,14 +40,7 @@ LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
-    enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
-    # 'load_ckpt_info' setting guide:
-    # 1. the 'path' indicate ckpt path,
-    # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
-    # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
-    # load function such as "llama"
-    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -175,49 +168,7 @@ model = dict(
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
     mlp_layer_fusion=False,
-    enable_qkv_fusion=False,
-
-    # vocab_size=VOCAB_SIZE,
-    # tie_word_embeddings=False,
-    # hidden_size=HIDDEN_SIZE,
-    # intermediate_size=21504,
-    # num_hidden_layers=NUM_LAYER,
-    # hybrid_override_pattern="M-M-M-M*-M-M-M-M-M*-M-M-M-M-M*-M-M-M-M-M*-M-M-M-M-M-",
-    # num_attention_heads=NUM_ATTENTION_HEAD,
-    # attention_head_dim=128,
-    # num_key_value_heads=NUM_KV_ATTENTION_HEAD,  # nemo: num_query_groups
-    # mlp_hidden_act="relu2",
-    # attention_bias=False,
-    # mlp_bias=False,
-    # use_bias=False,
-    # initializer_range=0.02, # nemo: init_method_std
-    # layer_norm_epsilon=1e-5, # nemo: layernorm_epsilon
-    # residual_in_fp32=False,  #  Megatron Core default value
-    # use_cache=True,
-    # num_logits_to_keep=1,
-    # pad_token_id=0,
-    # bos_token_id=1,
-    # eos_token_id=2,
-    # sliding_window=None,
-    # max_position_embeddings=4096,
-    # attention_dropout=0.0,
-    # hidden_dropout=0.0, # * ADDED
-    # use_mamba_kernels=True,
-    # ssm_state_size=128, # mamba_state_size
-    # mamba_num_heads=128,
-    # mamba_n_groups=8,  # nemo: mamba_ssm_ngroups = num_heads
-    # mamba_head_dim=64,
-    # mamba_d_conv=4,
-    # mamba_expand=2,
-    # mamba_hidden_act="silu",
-    # mamba_dt_min=0.001,
-    # mamba_dt_max=0.1,
-    # mamba_dt_limit=(0.0, float("inf")),
-    # mamba_dt_init_floor=1e-4,
-    # mamba_conv_bias=True,
-    # mamba_proj_bias=False,
-    # mamba_chunk_size=256,
-    # rescale_prenorm_residual=True,
+    enable_qkv_fusion=True,
 )
 
 """

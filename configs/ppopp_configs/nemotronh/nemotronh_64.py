@@ -15,14 +15,14 @@ NUM_LAYER = 56
 PP_SIZE = 8
 TP_SIZE = 2
 ZERO_SZIE = -1
-MICRO_NUM = PP_SIZE * 4
+MICRO_NUM = PP_SIZE * 8
 PP_MODE = "1f1b"
 CHUNK_NUM = 1
 
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages = generate_()
+    last_stage, Devices_containing_last_stage, recomp_stages = generate_(MICRO_NUM)
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
