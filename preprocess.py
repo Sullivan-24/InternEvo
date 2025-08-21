@@ -1285,12 +1285,12 @@ def generate_(num_microbatches=None):
     first_stage = min(min(row) for row in stage_placement)
     Devices_containing_last_stage = [i for i, row in enumerate(stage_placement) if last_stage in row]
     # self.TheDevices_containg_first_stage = [i for i, row in enumerate(self.stage_placement) if self.first_stage in row]
-    result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
-              'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
-              'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
-               'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph, 'recomp_stages':recomp_stages}
-    with open(file_path+'/runtime.json','w') as file:
-        json.dump(result,file)
+    # result = {'num_microbatches':num_microbatches, 'pp_size':pp_size, \
+    #           'stage_placement':stage_placement, 'scheduler_type': scheduler_type, 'split_backward':split_backward, \
+    #           'first_stage':first_stage, 'last_stage':last_stage, 'Devices_containing_last_stage':Devices_containing_last_stage,\
+    #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph, 'recomp_stages':recomp_stages}
+    # with open(file_path+'/runtime.json','w') as file:
+    #     json.dump(result,file)
     # print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
     #       recomp_stages:{recomp_stages}')
     return num_microbatches, pp_size, stage_placement, scheduler_type ,\

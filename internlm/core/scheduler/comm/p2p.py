@@ -678,6 +678,7 @@ def write_json(jsonpath, content):
     with open(jsonpath, 'a',encoding='utf-8') as f:
         json.dump(content, f)
         f.write('\n')
+
 class AsynCommunicator_unified:
     """AsynCommunicator for managing async communication."""
     def __init__(
@@ -690,33 +691,45 @@ class AsynCommunicator_unified:
         next_rank: int = None,
         dtype: torch.dtype = None,
         scatter_gather_tensors: bool = False,
-        stage_id: int = None,
-        microbatch_id: int = None,
-        step_type: str = None,
+        # stage_id: int = None,
+        # microbatch_id: int = None,
+        # step_type: str = None,
         local_rank = None,
-        chunk_id = None,
-        
+        # chunk_id = None,
+        match_rank = None,
+        step_id = None,
     ) -> None:
         # self.stage_id = stage_id
         # self.step_type = step_type
         # self.microbatch_id = microbatch_id
         # self.chunk_id = chunk_id
-        # self.local_rank = local_rank
+        self.local_rank = local_rank
+        self.match_rank = match_rank
+        self.step_id = step_id
         #tag = 0
-        # self.operation = "communicate:"
-        # if object_send_next is not None:
-        #     self.operation += "send_forward;"
-        #     #tag = stage_id*10000+microbatch_id
-        # if object_send_prev is not None:
-        #     self.operation += "send_backward;"
-        #     #tag = stage_id*10000+microbatch_id
-        # if recv_prev_shape is not None:
-        #     self.operation += "recv_forward;"
-        #     #tag = prev_stage_id*10000+microbatch_id
-        # if recv_next_shape is not None:
-        #     self.operation += "recv_backward;"
-        #     #tag = next_stage_id*10000+microbatch_id
-        
+        # self.operation = ""
+        self.tensor_shape = None
+        if object_send_next is not None:
+            self.operation = "SA"
+            assert object_send_next is not None
+            self.tensor_shape = object_send_next.shape
+            #tag = stage_id*10000+microbatch_id
+        elif object_send_prev is not None:
+            self.operation = "SG"
+            assert object_send_prev is not None
+            self.tensor_shape = object_send_prev.shape
+            #tag = stage_id*10000+microbatch_id
+        elif recv_prev_shape is not None:
+            self.operation = "RA"
+            assert recv_prev_shape is not None
+            self.tensor_shape = recv_prev_shape
+            #tag = prev_stage_id*10000+microbatch_id
+        elif recv_next_shape is not None:
+            self.operation = "RG"
+            assert recv_next_shape is not None
+            self.tensor_shape = recv_next_shape
+            #tag = next_stage_id*10000+microbatch_id
+
         self._need_receive = recv_prev_shape is not None or recv_next_shape is not None
         self._coroutine = _communicate_async(
             object_send_prev=object_send_prev,
@@ -729,7 +742,6 @@ class AsynCommunicator_unified:
             next_rank=next_rank,
             dtype=dtype,
             scatter_gather_tensors=scatter_gather_tensors,
-            #tag=tag,
         )
 
     @property
@@ -737,17 +749,9 @@ class AsynCommunicator_unified:
         return self._need_receive
 
     def start(self) -> None:
-        # start_time = time.perf_counter()
         next(self._coroutine)
-        # end_time = time.perf_counter()
-        # commOperation_info = {"local_rank":self.local_rank, "stage_id":self.stage_id, "chunk_id":self.chunk_id, "microbatch_id":self.microbatch_id, "step_type":self.step_type, "operation":self.operation, "start_time":start_time,  "timespan":(end_time - start_time)}
-        # write_json(gpc._config['jsonpath'], commOperation_info)
 
     def wait_and_receive(self) -> Union[torch.Tensor, List[torch.Tensor]]:
-        # start_time = time.perf_counter()
         received = next(self._coroutine)
         self._coroutine.close()
-        # end_time = time.perf_counter()
-        # commOperation_info = {"local_rank":self.local_rank, "stage_id":self.stage_id, "chunk_id":self.chunk_id, "microbatch_id":self.microbatch_id, "step_type":self.step_type, "operation":self.operation, "start_time":start_time,  "timespan":(end_time - start_time)}
-        # write_json(gpc._config['jsonpath'], commOperation_info)
         return received

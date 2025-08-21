@@ -34,6 +34,9 @@ import time
 import json
 import os
 
+def safe_detach(x):
+    return x.detach() if isinstance(x, torch.Tensor) else x
+
 logger = get_logger(__file__)
 
 def write_debug_file(file_path, content, new_line=True):
@@ -775,7 +778,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 recv_forward_queue_list, recv_backward_queue_list = \
                     self.recv_all(recv_forward_queue_list,recv_backward_queue_list,after_recv_list)
 
-class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
+class UnifiedHetPipelineScheduler(InterleavedPipelineScheduler):
     def __init__(
         self,
         num_microbatches: int,
@@ -817,17 +820,23 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self.num_layers = gpc.config.model.get("num_layers", torch.half)
         self.first_stage = first_stage
         self.last_stage = last_stage
-        file_path = f"./jsonResult/het/{scheduler_type}_pp{gpc.pipeline_parallel_size}_layers{self.num_layers}_mb{num_microbatches}"
-        os.makedirs(file_path, exist_ok=True)
+        self.input_obj_shape = self._input_obj_shapes[0]
+        self.output_obj_shape = None
 
-        self.debug_path = f"InternEvo/debug/pp{self.local_rank}.txt"
-        
-        gpc._config['jsonpath'] = file_path+f"/iter0_rank{self.local_rank}_opeartion_list.json"
         #TODO, num_chunks is different in different rank
         if split_backward:
+            WeightGradStore.set_pp_mode("ZBV")
+            WeightGradStore.set_optim(optimizer)
             self._backward_step_num = [0]*num_chunks
             self._num_microbatches = num_microbatches
         WeightGradStore.set_weight_grad_queue(num_chunks=num_chunks, num_microbatches=num_microbatches)
+        self.num_chunks = num_chunks
+        self.recv_backward_buffer = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.recv_forward_buffer = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.recv_forward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.recv_backward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.send_forward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.send_backward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
 
     def _clear_state(self) -> None:
         super()._clear_state()
@@ -836,7 +845,12 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         local_placement = gpc.config.stage_placement[gpc.get_local_rank(ParallelMode.PIPELINE)]
         self._backward_step_num = [0]*len(local_placement)#self.num_chunks
 
-    def _forward_step(self, engine, chunk_id, input_obj=None, stage_id = None):
+    def _forward_step(self, engine, chunk_id=None,
+                    input_obj=None,
+                    stage_id = None,
+                    accum_loss=None,
+                    accum_moe_loss=None,
+                    accum_moe_z_loss=None,):
         """Forward step for passed-in model. If it is the first stage, the input tensor
         is obtained from data_iterator, otherwise the passed-in input_obj is used.
         Returns output tensor. This is a helper function and can be ignored by users.
@@ -863,7 +877,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
-            output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
+            output_obj, moe_losses, moe_z_losses = self._call_engine(engine.model[chunk_id], data)
         else:
             output_obj = self._call_engine(engine.model[chunk_id], data)
         # Convert output_obj to fp32 when last model chunk of last stage
@@ -887,25 +901,44 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
-
+            if len(moe_z_losses) > 0:
+                moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+            else:
+                moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+            
             # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
             # so we need to do allreduce
             if gpc.config.parallel.sequence_parallel or gpc.config.parallel.expert.no_tp:
-                dist.all_reduce(moe_loss, op=dist.ReduceOp.AVG, group=gpc.get_group(ParallelMode.TENSOR))
-            moe_loss /= self.num_microbatches
+                # dist.all_reduce(moe_loss, op=dist.ReduceOp.AVG, group=gpc.get_group(ParallelMode.TENSOR))
+                all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
+                dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                moe_loss = all_moe_losses[0]
+                moe_z_loss = all_moe_losses[1]
 
-            if self._accum_moe_loss is not None:
-                self._accum_moe_loss.add_(moe_loss.detach())
+            moe_loss /= self.num_microbatches
+            moe_z_loss /= self.num_microbatches
+
         else:
-            moe_loss = None
+            # moe_loss = None
+            moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+            moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+
+        if accum_moe_loss is None:
+            accum_moe_loss = safe_detach(moe_loss)
+        else:
+            accum_moe_loss.add_(safe_detach(moe_loss))
+        if accum_moe_z_loss is None:
+            accum_moe_z_loss = safe_detach(moe_z_loss)
+        else:
+            accum_moe_z_loss.add_(safe_detach(moe_z_loss))
 
         self._output_objs[chunk_id].append(output_obj)
         self._moe_losses[chunk_id].append(moe_loss)
+        self._moe_z_losses[chunk_id].append(moe_z_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
-            busy_wait_kernel(gpc.config["SLEEP_TIME"])
+
         return output_obj
     
     #this is for split backward
@@ -939,6 +972,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         output_obj = self._output_objs[chunk_id].pop(0)
         output_obj_grad = self._output_obj_grads[chunk_id].pop(0)
         moe_loss = self._moe_losses[chunk_id].pop(0)
+        moe_z_loss = self._moe_z_losses[chunk_id].pop(0)
 
         # if not gpc.is_pipeline_last_stage():
         if stage_id < self.last_stage:
@@ -947,48 +981,126 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         if stage_id > self.first_stage:
             assert input_obj is not None
 
-        input_obj_grad = self._backward_step(engine, input_obj, output_obj, output_obj_grad, skip_grad_sync, moe_loss)
+        # input_obj_grad = self._backward_step(engine, input_obj, output_obj, output_obj_grad, skip_grad_sync, moe_loss, moe_z_loss)
+        
+        # Retain the grad on the input_obj.
+        if input_obj is not None:
+            assert input_obj.requires_grad
+            if isinstance(input_obj, torch.Tensor):
+                input_obj.retain_grad()
+            else:
+                for in_tensor in input_obj:
+                    if in_tensor is not None:
+                        in_tensor.retain_grad()
 
+        def to_float(x):
+            return x.item() if isinstance(x, torch.Tensor) else x
+        
+        # Only the last microbatch does syncing grad.
+        engine.optimizer.skip_grad_reduce = skip_grad_sync
+        self._call_hooks("before_backward", output_obj, output_obj_grad)
+        # with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
+        if moe_loss is None or moe_loss.item() == 0.0:
+            if output_obj_grad is None:
+                engine.backward(output_obj)
+            else:
+                engine.backward_by_grad(output_obj, output_obj_grad)
+        elif moe_z_loss is None or to_float(moe_z_loss) == 0.0:
+            if output_obj_grad is None:
+                engine.backward(output_obj + moe_loss)
+            else:
+                moe_loss = moe_loss * engine.optimizer.loss_scale
+                engine.backward_by_grad([output_obj, moe_loss], [output_obj_grad, None])
+        else:
+            if output_obj_grad is None:
+                engine.backward(output_obj + moe_loss)
+            else:
+                moe_loss = moe_loss * engine.optimizer.loss_scale
+                moe_z_loss = moe_z_loss * engine.optimizer.loss_scale
+                engine.backward_by_grad([output_obj, moe_loss, moe_z_loss], [output_obj_grad, None, None])
+
+        # Collect the grad of the input_obj.
+        input_obj_grad = None
+        if input_obj is not None:
+            assert input_obj.grad is not None
+            if isinstance(input_obj, torch.Tensor):
+                input_obj_grad = input_obj.grad
+            else:
+                input_obj_grad = []
+                for in_tensor in input_obj:
+                    input_obj_grad.append(in_tensor.grad)
+    
         WeightGradStore.flush(chunk_id=chunk_id,microbatch_id=microbatch_id)
 
         return input_obj_grad
 
-    def recv_all(self,recv_forward_queue_list,recv_backward_queue_list,recvlist):
-        for ops in recvlist:
-            recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = ops
-            recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
-            #
-            if recv_op_type == Step.FORWARD.value:
-                recv_f_buffer = comm.AsynCommunicator(
-                            recv_prev_shape=self._input_obj_shapes[1],
-                            prev_rank=recv_global_rank,
+    def do_comms(self,comm_list):
+        for ops in comm_list:
+            op_type, _, match_device_id, source_stage_id, source_chunk_id, source_microbatch_id, _ = ops
+            match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,match_device_id)
+            if op_type == 'SA':
+                comm.AsynCommunicator_unified(
+                    object_send_next=self.send_forward_result[source_chunk_id][source_microbatch_id],
+                    next_rank=match_global_rank,
+                    dtype=self.dtype,
+                    scatter_gather_tensors=self.scatter_gather_tensors,
+                    # stage_id = stage_id,
+                    # microbatch_id = microbatch_id,
+                    # step_type = step_type,
+                    # chunk_id = chunk_id
+                    local_rank = self.local_rank,
+                    match_rank = match_device_id, 
+                    step_id = self.step_id,
+                ).start()
+            elif op_type == 'SG':
+                comm.AsynCommunicator_unified(
+                        object_send_prev=self.send_backward_result[source_chunk_id][source_microbatch_id],
+                        prev_rank=match_global_rank,
+                        dtype=self.dtype,
+                        scatter_gather_tensors=self.scatter_gather_tensors,
+                        # stage_id = stage_id,
+                        # microbatch_id = microbatch_id,
+                        # step_type = step_type,
+                        # chunk_id = chunk_id
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id, 
+                        step_id = self.step_id,
+                    ).start()
+                
+            elif op_type == 'RA':
+                recv_f_buffer = comm.AsynCommunicator_unified(
+                            recv_prev_shape=self.input_obj_shape,
+                            prev_rank=match_global_rank,
                             dtype=self.dtype,
                             scatter_gather_tensors=self.scatter_gather_tensors,
                             # stage_id = recv_stage_id,
                             # microbatch_id = recv_microbatch_id,
                             # step_type = recv_op_type,
-                            # local_rank = self.local_rank,
                             # chunk_id = recv_chunk_id,                      
+                            local_rank = self.local_rank,
+                            match_rank = match_device_id,
+                            step_id = self.step_id,  
                         )
                 recv_f_buffer.start()
-                store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id+1,self.stage_placement[self.local_rank])
-                recv_forward_queue_list[store_recv_chunk_id].put(recv_f_buffer)
-            elif recv_op_type == Step.BACKWARD.value:
-                recv_b_buffer = comm.AsynCommunicator(
-                        recv_next_shape=self._output_obj_shapes[1],
-                        next_rank=recv_global_rank,
+                store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id+1,self.stage_placement[self.local_rank])
+                self.recv_forward_buffer[store_recv_chunk_id][source_microbatch_id] = recv_f_buffer
+            elif op_type == 'RG':
+                recv_b_buffer = comm.AsynCommunicator_unified(
+                        recv_next_shape=self.output_obj_shape,
+                        next_rank=match_global_rank,
                         dtype=self.dtype,
                         scatter_gather_tensors=self.scatter_gather_tensors,
                         # stage_id = recv_stage_id,
                         # microbatch_id = recv_microbatch_id,
                         # step_type = recv_op_type,
-                        # local_rank = self.local_rank,
                         # chunk_id = recv_chunk_id,
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id,
+                        step_id = self.step_id,    
                     )
                 recv_b_buffer.start()
-                store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id-1,self.stage_placement[self.local_rank])
-                recv_backward_queue_list[store_recv_chunk_id].put(recv_b_buffer)
-        return recv_forward_queue_list, recv_backward_queue_list
+                store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id-1,self.stage_placement[self.local_rank])
+                self.recv_backward_buffer[store_recv_chunk_id][source_microbatch_id] = recv_b_buffer
 
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
@@ -1034,23 +1146,20 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         global_rank = gpc.get_global_rank()
         steps = self.unified_scheduler[local_rank]
         stages_in_this_device = self.stage_placement[local_rank]
-        chunks = self._num_chunks
+        chunks = self._num_chunks#??
+        chunks = self.num_chunks
         comm_list = self.comm_graph[local_rank]
-        chunk_to_prev_stage_id = [-100 for _ in range(chunks)]
-        chunk_to_next_stage_id = [self.last_stage+1 for _ in range(chunks)]
-        chunk_to_prev_local_rank = [-100 for _ in range(chunks)]
-        chunk_to_next_local_rank = [gpc.pipeline_parallel_size for _ in range(chunks)]
-        chunk_to_prev_global_rank = [-100 for _ in range(chunks)]
-        chunk_to_next_global_rank = [gpc.world_size for _ in range(chunks)]
-        recv_backward_queue_list = [queue.Queue() for _ in range(chunks)]
-        recv_forward_queue_list = [queue.Queue() for _ in range(chunks)]
-        async_communicator_recv_forward_queue = [queue.Queue() for _ in range(chunks)]
-        async_communicator_recv_backward_queue = [queue.Queue() for _ in range(chunks)]
+        chunk_to_prev_stage_id = [None for _ in range(chunks)]
+        chunk_to_next_stage_id = [None for _ in range(chunks)]
+        chunk_to_prev_local_rank = [None for _ in range(chunks)]
+        chunk_to_next_local_rank = [None for _ in range(chunks)]
+        chunk_to_prev_global_rank = [None for _ in range(chunks)]
+        chunk_to_next_global_rank = [None for _ in range(chunks)]
+
         input_obj_grad_map = [
         [[] for _ in range(self.num_microbatches)] 
         for _ in range(chunks)
         ]
-        jsonpath = gpc._config['jsonpath']
 
         for i in range(chunks):
             chunk_id = i
@@ -1067,281 +1176,106 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 chunk_to_next_global_rank[chunk_id] = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,chunk_to_next_local_rank[chunk_id])
 
         for s in range(len(steps)):
-            write_debug_file(self.debug_path,f"Step {s}: {steps[s]} begins.")
-
             step_type, microbatch_id, stage_id, chunk_id, startTime, end_time = steps[s]
             prev_stage = chunk_to_prev_stage_id[chunk_id]
             next_stage = chunk_to_next_stage_id[chunk_id]
+            prev_local_rank = chunk_to_prev_local_rank[chunk_id]
+            next_local_rank = chunk_to_next_local_rank[chunk_id]
             prev_global_rank = chunk_to_prev_global_rank[chunk_id]
             next_global_rank = chunk_to_next_global_rank[chunk_id]
-            before_recv_list = comm_list[s]['B']
-            after_recv_list = comm_list[s]['A']
+            self.step_id = s
 
-            write_debug_file(self.debug_path,f"recv_all begins.")
-            recv_forward_queue_list, recv_backward_queue_list = \
-                self.recv_all(recv_forward_queue_list,recv_backward_queue_list,before_recv_list)
-            write_debug_file(self.debug_path,f"recv_all ends.")
+            before_comms = comm_list[s]
+            if len(before_comms)>0:
+                self.do_comms(before_comms)
 
             if step_type == Step.FORWARD.value:# Forward pass
                 input_obj = None
                 if stage_id>self.first_stage:
-                    if async_communicator_recv_forward_queue[chunk_id].qsize()>0:
-                        input_obj = async_communicator_recv_forward_queue[chunk_id].get()
+                    if self.recv_forward_result[chunk_id][microbatch_id] is not None:
+                        input_obj = self.recv_forward_result[chunk_id][microbatch_id]
                     else:
-                        input_obj,_ = recv_forward_queue_list[chunk_id].get().wait_and_receive()
-                    self._input_objs[chunk_id].append(input_obj)
+                        assert self.recv_forward_buffer[chunk_id][microbatch_id] is not None, f"local_rank:{local_rank}, recv_forward_buffer[{chunk_id}][{microbatch_id}] is None"
+                        input_obj,_ = self.recv_forward_buffer[chunk_id][microbatch_id].wait_and_receive()
+                        assert input_obj is not None
+                        self.recv_forward_result[chunk_id][microbatch_id] = input_obj
+                    self._input_objs[chunk_id].append(input_obj)#TODO, add microbatch_id
 
                 # Perform forward computation
                 # start_time  = time.time()
                 # start_time_ = time.perf_counter()
-                write_debug_file(self.debug_path,f"fwd begins.")
-                output_obj = self._forward_step(engine, chunk_id, input_obj, stage_id)
-                write_debug_file(self.debug_path,f"fwd ends.")
-
+                output_obj = self._forward_step(engine, chunk_id=chunk_id, input_obj=input_obj, stage_id=stage_id)  
                 # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", \
-                #                 "start_time":start_time, "timespan":(end_time - start_time_), "output_obj_shape": output_obj.shape if output_obj is not None else 0, \
-                #                 "self._output_obj_shapes[1]": self._output_obj_shapes[1] if self._output_obj_shapes[1] is not None else 0}
-                # write_json(jsonpath, json_content)
 
+                self.send_forward_result[chunk_id][microbatch_id] = output_obj
                 #TODO:add a flag to determine whether to do num_chunks 
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
-                        self._output_obj_shapes[chunk_id] = output_obj.shape
+                        self.output_obj_shape = output_obj.shape
+                        # self._output_obj_shapes[chunk_id] = output_obj.shape
                     else:
-                        self._output_obj_shapes[chunk_id] = [out_tensor.shape for out_tensor in output_obj]
-
-                    assert self._output_obj_shapes[chunk_id] == self._input_obj_shapes[chunk_id]
-
-                    # if self._send_tensor_shape_flags[chunk_id]:
-                    #     comm.send_obj_meta(output_obj,next_global_rank)
-                    #     self._send_tensor_shape_flags[chunk_id] = False  # send only once for each chunk.
-
-                #FIX, this maybe wrong, it should be the shape of the next chunk
-                # if stage_id < self.last_stage and _get_chunkid_by_stage_placement(stage_id+1,self.stage_placement)-1 == chunk_id:
-                #     if isinstance(output_obj, torch.Tensor):
-                #         self._output_obj_shapes[chunk_id+1] = output_obj.shape
-                #     else:
-                #         self._output_obj_shapes[chunk_id+1] = [out_tensor.shape for out_tensor in output_obj]
-
-                # if stage_id > self.first_stage and self._input_obj_shapes[chunk_id] is None:
-                #     self._input_obj_shapes[chunk_id] = comm.recv_obj_meta(prev_rank=prev_global_rank)
+                        # self._output_obj_shapes[chunk_id] = [out_tensor.shape for out_tensor in output_obj]
+                        self.output_obj_shape = [out_tensor.shape for out_tensor in output_obj]
 
                 for chunk in range (chunks):
-                    if recv_forward_queue_list[chunk].qsize()>0:
-                        recv_f_tensor, _ = recv_forward_queue_list[chunk].get().wait_and_receive()
-                        async_communicator_recv_forward_queue[chunk].put(recv_f_tensor)
-                    if recv_backward_queue_list[chunk].qsize()>0:
-                        _, recv_b_tensor = recv_backward_queue_list[chunk].get().wait_and_receive()
-                        async_communicator_recv_backward_queue[chunk].put(recv_b_tensor)
+                    for microbatch in range(self.num_microbatches):
+                        if self.recv_forward_buffer[chunk][microbatch] is not None and self.recv_forward_result[chunk][microbatch] is None:
+                            recv_f_tensor, _ = self.recv_forward_buffer[chunk][microbatch].wait_and_receive()
+                            self.recv_forward_result[chunk][microbatch] = recv_f_tensor
+                        if self.recv_backward_buffer[chunk][microbatch] is not None and self.recv_backward_result[chunk][microbatch] is None:
+                            _, recv_b_tensor = self.recv_backward_buffer[chunk][microbatch].wait_and_receive()
+                            self.recv_backward_result[chunk][microbatch] = recv_b_tensor
 
-                send_forward_once = True
                 if global_rank == next_global_rank:
-                    #async_communicator_recv_forward_queue[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
+                    #recv_forward_result[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
                     store_send_chunk_id = _get_chunkid_by_stages(stage_id+1,self.stage_placement[self.local_rank])
-                    async_communicator_recv_forward_queue[store_send_chunk_id].put(output_obj.clone().detach().requires_grad_())
-                    #recv_forward_queue_list[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
-                    send_forward_once = False
-                elif local_rank%2 == 0 and stage_id<self.last_stage:
-                    write_debug_file(self.debug_path,f"F-Comm0 begins.")
-                    comm.AsynCommunicator(
-                        object_send_next=output_obj,
-                        next_rank=next_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                        # stage_id = stage_id,
-                        # microbatch_id = microbatch_id,
-                        # step_type = step_type,
-                        # local_rank = self.local_rank,
-                        # chunk_id = chunk_id
-                    ).start()
-                    send_forward_once = False
-                    write_debug_file(self.debug_path,f"F-Comm0 ends.")
-
-                for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
-                    recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
-                    if recv_op_type == Step.FORWARD.value:
-                        write_debug_file(self.debug_path,f"F-Comm1 recv F begins.")
-                        recv_f_buffer = comm.AsynCommunicator(
-                                    recv_prev_shape=self._input_obj_shapes[1],
-                                    prev_rank=recv_global_rank,
-                                    dtype=self.dtype,
-                                    scatter_gather_tensors=self.scatter_gather_tensors,
-                                    # stage_id = recv_stage_id,
-                                    # microbatch_id = recv_microbatch_id,
-                                    # step_type = recv_op_type,
-                                    # local_rank = self.local_rank,
-                                    # chunk_id = recv_chunk_id,
-                                )
-                        recv_f_buffer.start()
-                        write_debug_file(self.debug_path,f"F-Comm1 recv F ends.")
-
-                        store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id+1,self.stage_placement[self.local_rank])
-                        recv_forward_queue_list[store_recv_chunk_id].put(recv_f_buffer)                   
-                    elif recv_op_type == Step.BACKWARD.value:
-                        write_debug_file(self.debug_path,f"F-Comm2 recv B begins.")
-                        recv_b_buffer = comm.AsynCommunicator(
-                                recv_next_shape=self._output_obj_shapes[1],
-                                next_rank=recv_global_rank,
-                                dtype=self.dtype,
-                                scatter_gather_tensors=self.scatter_gather_tensors,
-                                # stage_id = recv_stage_id,
-                                # microbatch_id = recv_microbatch_id,
-                                # step_type = recv_op_type,
-                                # local_rank = self.local_rank,
-                                # chunk_id = recv_chunk_id,
-                            )
-                        recv_b_buffer.start()
-                        write_debug_file(self.debug_path,f"F-Comm2 recv B ends.")
-
-                        store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id-1,self.stage_placement[self.local_rank])
-                        recv_backward_queue_list[store_recv_chunk_id].put(recv_b_buffer)                 
-
-                if stage_id<self.last_stage and send_forward_once:
-                    write_debug_file(self.debug_path,f"F-Comm3 send F begins.")
-                    comm.AsynCommunicator(
-                        object_send_next=output_obj,
-                        next_rank=next_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                        # stage_id = stage_id,
-                        # microbatch_id = microbatch_id,
-                        # step_type = step_type,
-                        # local_rank = self.local_rank,
-                        # chunk_id = chunk_id
-                    ).start()
-                    write_debug_file(self.debug_path,f"F-Comm3 send F ends.")
+                    self.recv_forward_result[store_send_chunk_id][microbatch_id] = output_obj.clone().detach().requires_grad_()
+                    #recv_forward_buffer[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
 
             elif step_type == Step.BACKWARD.value:# Backward pass
-                
-                write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue begins.")
-                if stage_id<self.last_stage:
-                    if async_communicator_recv_backward_queue[chunk_id].qsize()>0:
-                        write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue get begins.")
-                        output_obj_grad = async_communicator_recv_backward_queue[chunk_id].get()
-                        write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue get ends.")
-                    else:
-                        write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue wait_and_receive begins.")
-                        _, output_obj_grad = recv_backward_queue_list[chunk_id].get().wait_and_receive()
-                        write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue wait_and_receive ends.")
-                    self._output_obj_grads[chunk_id].append(output_obj_grad)
-                write_debug_file(self.debug_path,f"async_communicator_recv_backward_queue ends.")
 
-                # start_time = time.time()
-                # start_time_ = time.perf_counter()
-                write_debug_file(self.debug_path,f"Bwd begins.")
+                if stage_id<self.last_stage:
+                    if self.recv_backward_result[chunk_id][microbatch_id] is not None:
+                        output_obj_grad = self.recv_backward_result[chunk_id][microbatch_id]
+                    else:
+                        assert self.recv_backward_buffer[chunk_id][microbatch_id] is not None, f"local_rank:{local_rank}, recv_backward_buffer[{chunk_id}][{microbatch_id}] is None"
+                        _, output_obj_grad = self.recv_backward_buffer[chunk_id][microbatch_id].wait_and_receive()
+                        assert output_obj_grad is not None
+                        self.recv_backward_result[chunk_id][microbatch_id] = output_obj_grad
+                    self._output_obj_grads[chunk_id].append(output_obj_grad)#TODO, add microbatch_id
+
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
                     input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id, microbatch_id)
                     input_obj_grad_map[chunk_id][microbatch_id]=input_obj_grad
+                    self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
-                write_debug_file(self.debug_path,f"Bwd ends.")
-                # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", \
-                #                 "start_time":start_time, "timespan":(end_time - start_time_), "input_obj_grad_shape": input_obj_grad.shape if input_obj_grad is not None else 0}
-                # write_json(jsonpath, json_content)
+                    self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
 
                 for chunk in range (chunks):
-                    if recv_forward_queue_list[chunk].qsize()>0:
-                        recv_f_tensor, _ = recv_forward_queue_list[chunk].get().wait_and_receive()
-                        async_communicator_recv_forward_queue[chunk].put(recv_f_tensor)
-                    if recv_backward_queue_list[chunk].qsize()>0:
-                        _, recv_b_tensor = recv_backward_queue_list[chunk].get().wait_and_receive()
-                        async_communicator_recv_backward_queue[chunk].put(recv_b_tensor)
+                    for microbatch in range(self.num_microbatches):
+                        if self.recv_forward_buffer[chunk][microbatch] is not None and self.recv_forward_result[chunk][microbatch] is None:
+                            recv_f_tensor, _ = self.recv_forward_buffer[chunk][microbatch].wait_and_receive()
+                            self.recv_forward_result[chunk][microbatch] = recv_f_tensor
+                        if self.recv_backward_buffer[chunk][microbatch] is not None and self.recv_backward_result[chunk][microbatch] is None:
+                            _, recv_b_tensor = self.recv_backward_buffer[chunk][microbatch].wait_and_receive()
+                            self.recv_backward_result[chunk][microbatch] = recv_b_tensor
 
-                send_backward_once = True
                 if global_rank == prev_global_rank:
-                    #async_communicator_recv_backward_queue[chunk_id-1].put(input_obj_grad)
                     store_send_chunk_id = _get_chunkid_by_stages(stage_id-1,self.stage_placement[self.local_rank])
-                    async_communicator_recv_backward_queue[store_send_chunk_id].put(input_obj_grad)
-                    #recv_backward_queue_list[chunk_id-1].put(input_obj_grad)
-                    send_backward_once = False
-                elif local_rank%2 == 0 and stage_id > self.first_stage :
-                    write_debug_file(self.debug_path,f"B-Comm0 starts.")
-                    comm.AsynCommunicator(
-                            object_send_prev=input_obj_grad,
-                            prev_rank=prev_global_rank,
-                            dtype=self.dtype,
-                            scatter_gather_tensors=self.scatter_gather_tensors,
-                            # stage_id = stage_id,
-                            # microbatch_id = microbatch_id,
-                            # step_type = step_type,
-                            # local_rank = self.local_rank,
-                            # chunk_id = chunk_id
-                        ).start()
-                    write_debug_file(self.debug_path,f"B-Comm0 ends.")
-                    
-                    send_backward_once = False
-                for after_ops in after_recv_list:
-                    recv_op_type, recv_end_time, recv_device_id, recv_stage_id, recv_chunk_id, recv_microbatch_id, index = after_ops      
-                    recv_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,recv_device_id)
-                    if recv_op_type == Step.FORWARD.value:
-                        write_debug_file(self.debug_path,f"B-Comm1 recv F starts.")
-                        recv_f_buffer = comm.AsynCommunicator(
-                                    recv_prev_shape=self._input_obj_shapes[1],
-                                    prev_rank=recv_global_rank,
-                                    dtype=self.dtype,
-                                    scatter_gather_tensors=self.scatter_gather_tensors,
-                                    # stage_id = recv_stage_id,
-                                    # microbatch_id = recv_microbatch_id,
-                                    # step_type = recv_op_type,
-                                    # local_rank = self.local_rank,
-                                    # chunk_id = recv_chunk_id,
-                                )
-                        recv_f_buffer.start()
-                        write_debug_file(self.debug_path,f"B-Comm1 recv F ends.")
-
-                        store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id+1,self.stage_placement[self.local_rank])
-                        recv_forward_queue_list[store_recv_chunk_id].put(recv_f_buffer)    
-                    elif recv_op_type == Step.BACKWARD.value:
-                        write_debug_file(self.debug_path,f"B-Comm2 recv B starts.")
-                        recv_b_buffer = comm.AsynCommunicator(
-                                recv_next_shape=self._output_obj_shapes[1],
-                                next_rank=recv_global_rank,
-                                dtype=self.dtype,
-                                scatter_gather_tensors=self.scatter_gather_tensors,
-                                # stage_id = recv_stage_id,
-                                # microbatch_id = recv_microbatch_id,
-                                # step_type = recv_op_type,
-                                # local_rank = self.local_rank,
-                                # chunk_id = recv_chunk_id,
-                            )
-                        recv_b_buffer.start()
-                        write_debug_file(self.debug_path,f"B-Comm2 recv B ends.")
-
-                        store_recv_chunk_id = _get_chunkid_by_stages(recv_stage_id-1,self.stage_placement[self.local_rank])
-                        recv_backward_queue_list[store_recv_chunk_id].put(recv_b_buffer)
-                if stage_id > self.first_stage and send_backward_once:
-                    write_debug_file(self.debug_path,f"B-Comm3 send B starts.")
-                    comm.AsynCommunicator(
-                        object_send_prev=input_obj_grad,
-                        prev_rank=prev_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                        # stage_id = stage_id,
-                        # microbatch_id = microbatch_id,
-                        # step_type = step_type,
-                        # local_rank = self.local_rank,
-                        # chunk_id = chunk_id
-                    ).start()
-                    write_debug_file(self.debug_path,f"B-Comm3 send B ends.")
+                    self.recv_backward_result[store_send_chunk_id][microbatch_id] = input_obj_grad
 
             elif step_type == Step.WEIGHT.value: #Weight update
-                # start_time = time.time()
-                # start_time_ = time.perf_counter()
                 WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
                 self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
                 input_obj_grad_map[chunk_id][microbatch_id] = 0
                 engine.optimizer.skip_grad_reduce = origin_skip
-                # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
-                # write_json(jsonpath, json_content)
-                recv_forward_queue_list, recv_backward_queue_list = \
-                    self.recv_all(recv_forward_queue_list,recv_backward_queue_list,after_recv_list)
-                
-            write_debug_file(self.debug_path,f"Step {s}: {steps[s]} ends.\n")
+
+            if s == len(steps)-1:             
+                after_comms = comm_list[s+1]
+                if len(after_comms)>0:
+                    self.do_comms(after_comms)
 
     def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Run interleaved 1F1B schedule (model split into model chunks), with
@@ -1372,6 +1306,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             self._accum_moe_loss = torch.zeros(1, device=get_current_device())
+            self._accum_moe_z_loss = torch.zeros(1, device=get_current_device())
 
         if return_output_label:
             self._return_tensors = []
@@ -1388,19 +1323,23 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
 
         accum_loss = self._accum_loss
         accum_moe_loss = self._accum_moe_loss
+        accum_moe_z_loss = self._accum_moe_z_loss
 
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            dist.all_reduce(self._accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
-            accum_moe_loss = self._accum_moe_loss
+            all_moe_losses = torch.cat([accum_moe_loss.unsqueeze(0), accum_moe_z_loss.unsqueeze(0)])
+            dist.all_reduce(all_moe_losses, group=gpc.get_group(ParallelMode.PIPELINE))
+            accum_moe_loss = all_moe_losses[0]
+            accum_moe_z_loss = all_moe_losses[1]
 
             if accum_loss is not None:
-                accum_loss += self._accum_moe_loss
+                accum_loss += accum_moe_loss
+                accum_loss += accum_moe_z_loss
 
         self._clear_state()
 
         # Compatible for non-moe
         if hasattr(gpc.config.model, "num_experts"):
-            return output, label, accum_loss, accum_moe_loss
+            return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
         else:
             return output, label, accum_loss
 
@@ -1581,10 +1520,6 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
         self._moe_losses[chunk_id].append(moe_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
-            busy_wait_kernel(gpc.config["SLEEP_TIME"])
 
         return output_obj
 
