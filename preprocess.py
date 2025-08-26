@@ -368,7 +368,7 @@ def pre_fetch_w(unified_scheduler):
 def generate_():
     stage_placement = ""
     input_str=""
-    file_path = '/cpfs01/user/matenghui/InternEvo'
+    file_path = './InternEvo'
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
@@ -376,7 +376,7 @@ def generate_():
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = 12
+    num_microbatches = pp_size*2
     unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     send_immediately = True#
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time,send_immediately)

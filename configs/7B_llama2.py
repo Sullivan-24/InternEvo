@@ -1,15 +1,26 @@
+from configs.base_conf import *
+
+dp_size = 1
+tp_size = 1
+pp_size = 8
+
+num_chunks = 2
+pp_mode = "unified"
+
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
 VOCAB_SIZE = 32000
-SEQ_LEN = 2048
+SEQ_LEN = 1024
 HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
 NUM_LAYER = 32
 
+if pp_mode == "unified" and layerwise:
+    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -45,7 +56,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=num_microbatches,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -53,7 +64,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=10,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -90,7 +101,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=False,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -128,7 +139,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=num_chunks,
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -181,9 +192,10 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    zero1=dict(size=dp_size),
+    tensor=dict(size=tp_size, mode="fsp"),
+    #pipeline=dict(size=8, interleaved_overlap=True),
+    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
     weight=dict(size=1, overlap=True),
 )
 

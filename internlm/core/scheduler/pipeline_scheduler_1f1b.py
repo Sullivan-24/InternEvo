@@ -32,8 +32,12 @@ def do_compute():
     a = torch.rand(N, N, device='cuda')
     b = torch.rand(N, N, device='cuda')
     # GPU矩阵乘法
-    for __ in range(50):
+    #cuda_launch_blocking = 1
+    for __ in range(10):
         torch.matmul(a, b)
+    #cuda_launch_blocking = 0
+    # for __ in range(50):
+    #     torch.matmul(a, b)
 
 def get_tensor_shape():
     if hasattr(gpc.config, "TENSOR_SHAPE"):

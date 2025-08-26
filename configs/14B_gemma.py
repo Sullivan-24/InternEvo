@@ -1,98 +1,46 @@
-from preprocess import generate_
-from internlm.core.context import global_context as gpc
-import json
+from configs.base_conf import *
 
 dp_size = 1
 tp_size = 1
-pp_size = 4
-num_microbatches = 12#pp_size*4
-recomp_stages = []
-recomp_microbatches = []
-recomp_layers = []
-open_recomp = False
-num_microbatches, pp_size, stage_placement, placement_strategy, \
-split_backward, unified_scheduler, comm_graph, first_stage, \
-last_stage, Devices_containing_last_stage, recomp_stages, all_pre_fetch_w = generate_() #recomp_layers,recomp_microbatches
+pp_size = 8
 
-if len(recomp_stages) > 0:
-    open_recomp = True
-layerwise = False
-num_chunks = 1
-pp_mode = "unified"
-
-JOB_NAME = "internevo"
-model_type = "LLAMA2"
+JOB_NAME = "14b_gemma_train"
+model_type = "GEMMA"
 DO_ALERT = False
-#dp_micro_num = [5,3] falcon
-VOCAB_SIZE = 32000
-SEQ_LEN = 2048
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 32
 
-#straggler congig
-#slow_comm
-add_president_latency = False
-comm_latency_pair =[(2,3),(3,2)] #pp_rank_pair
-latency_time = 90 #ms
-add_random_latency = False
-latency_step_index = [[] for _ in range(pp_size)]
-latency_step_index[2] = [13]
-latency_step_index[3] = [20]
-#solw_compute
-slow_compute = True
-slow_compute_rank = 1
-slow_microbatch_id = 6
-slow_compute_time = 120#ms
+VOCAB_SIZE = 256000 * 2
+SEQ_LEN = 1024
+HIDDEN_SIZE = 1536 * 2
+NUM_ATTENTION_HEAD = 16
+NUM_KV_ATTENTION_HEAD = 16
+HEAD_DIM = 256
+MLP_RATIO = 8
+NUM_LAYER = 64
 
-#alpa or heter config
-heter = False
-alpa = False
-# layer_placement = [[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14], [15, 16]]
-#metis[[1,6],[7,11],[12,13],[14,16]] [[1, 3], [4, 5], [6, 8], [9, 11], [12, 12], [13, 13], [14, 14], [15, 16]]
-sleep_forward_time = 0
-sleep_backward_time = 0
-sleep_forward_time_perlayer = 12
-sleep_backward_time_perlayer = 24
-# if tp_size == 2:
-#     sleep_forward_time_perlayer = 8
-#     sleep_backward_time_perlayer = 16
-# elif tp_size == 4:
-#     sleep_forward_time_perlayer = 6
-#     sleep_backward_time_perlayer = 12
-# elif tp_size == 8:
-#     sleep_forward_time_perlayer = 4
-#     sleep_backward_time_perlayer = 8
-# if not alpa:
-#     if pp_mode == "zbv":
-#         num_chunks = 2
-#     elif pp_mode == "zbh1":
-#         num_chunks = 1
-#     layers_one_chunk = NUM_LAYER//pp_size//num_chunks
-#     sleep_forward_time = layers_one_chunk*sleep_forward_time_perlayer
-#     sleep_backward_time = layers_one_chunk*sleep_backward_time_perlayer
-#     print(f"sleep_forward_time:{sleep_forward_time}, sleep_backward_time:{sleep_backward_time}")
+num_chunks = 2
+pp_mode = "unified"
 if pp_mode == "unified" and layerwise:
     num_chunks = NUM_LAYER//pp_size #layerwise is only for Interleaved
-#————————————————————————————
-
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
+MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
-LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
+SAVE_CKPT_FOLDER = "local:llm_ckpts_gemma"
 
 # boto3 Ckpt folder format:
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-# LOAD_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm/snapshot/1/"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
+    enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
+    # 'load_ckpt_info' setting guide:
+    # 1. the 'path' indicate ckpt path,
+    # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
+    # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
+    # load function such as "llama"
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -197,6 +145,8 @@ model = dict(
     checkpoint=False,
     num_chunks=num_chunks,
     num_attention_heads=NUM_ATTENTION_HEAD,
+    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    max_position_embeddings=8192,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
@@ -207,9 +157,10 @@ model = dict(
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
+    add_unit_offset=True,
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-5,
-    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    layer_norm_epsilon=1e-6,
+    head_dim=HEAD_DIM,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -219,8 +170,7 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    mlp_layer_fusion=True,
-    enable_qkv_fusion=True,
+    use_swiglu=False,
 )
 
 """
@@ -250,8 +200,7 @@ weight parallel (dict):
 parallel = dict(
     zero1=dict(size=dp_size),
     tensor=dict(size=tp_size, mode="fsp"),
-    #pipeline=dict(size=8, interleaved_overlap=True),
-    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
+    pipeline=dict(size=pp_size, interleaved_overlap=True, mode = pp_mode),
     weight=dict(size=1, overlap=True),
 )
 
@@ -274,3 +223,18 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
+
+generation = dict(
+    ckpt_folder="/path/to/saved/ckpt",
+    output_folder="/path/to/save/generation",
+    batch_size=1,
+    eos_id=[2, 0],
+    bos_id=1,
+    max_length=100,
+    do_sample=True,
+    temperature=1.0,
+    top_k=50,
+    top_p=1.0,
+    repetition_penalty=1,
+    length_penalty=1.0,
+)

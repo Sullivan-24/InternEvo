@@ -3,7 +3,7 @@
 
 import queue
 from typing import Callable, List, Optional, Tuple, Union
-
+import random
 import torch
 import torch.distributed as dist
 from torch.optim.optimizer import Optimizer
@@ -103,7 +103,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.comms = comm_graph[self.local_rank]
         self.steps = unified_scheduler[self.local_rank]
         self.local_pre_fetch_w = gpc.config.all_pre_fetch_w[self.local_rank]
-        gpc.config.done_w = [False for _ in range(num_microbatches)] #TODO not sure if this is global variable
+        self.done_w = [False for _ in range(num_microbatches)] #TODO not sure if this is global variable
         self.input_obj_shape = self.tensor_shape
         self.output_obj_shape = None
         self.recv_backward_buffer = [None for __ in range(self.num_microbatches) ]
@@ -122,13 +122,13 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         for step_index_w in will_do_w:
             step_type, microbatch_id, _, _, _, _ = steps[step_index_w]
             assert step_type == 'w',print("this workload must be weight computation")
-            if gpc.config.done_w[microbatch_id] is False:
+            if self.done_w[microbatch_id] is False:
                 # print(f'rank {self.local_rank}:microbatch_id {microbatch_id} weight has been prefetched from {step_index_w} to {step_id}')
                 with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
                     WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
                 json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
                 #write_json(gpc._config['jsonpath'], json_content)
-                gpc.config.done_w[microbatch_id] = True
+                self.done_w[microbatch_id] = True
                 return True
         return False
 
@@ -210,7 +210,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        #func = self._process_prefetch 
+                #func = self._process_prefetch 
                     )
                 recv_b_buffer.start()
                 self.recv_backward_buffer[source_microbatch_id] = recv_b_buffer
@@ -313,7 +313,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                     self.send_forward_result[microbatch_id] = output_obj
                     #slow down compute
                     if gpc.config.slow_compute and self.local_rank == gpc.config.slow_compute_rank and microbatch_id == gpc.config.slow_microbatch_id:
-                        for i in range(gpc.config.slow_compute_time):
+                        for i in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
                             do_compute()
                 #end_time = time.perf_counter()
                 json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
@@ -377,10 +377,10 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
             elif step_type == Step.WEIGHT.value: # Weight update
                 #start_time = time.perf_counter()
-                if gpc.config.done_w[microbatch_id] is False:
+                if self.done_w[microbatch_id] is False:
                     with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
                         WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
-                    gpc.config.done_w[microbatch_id] = True
+                    self.done_w[microbatch_id] = True
                     #end_time = time.perf_counter()
                     json_content = {"local_rank":local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"compute"}
                     #write_json(jsonpath, json_content)
@@ -396,7 +396,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
         if accum_loss is not None:
             accum_loss += accum_moe_loss
-        gpc.config.done_w = [False for _ in range(self.num_microbatches)]
+        self.done_w = [False for _ in range(self.num_microbatches)]
         return output, label, accum_loss, accum_moe_loss
 
 class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
@@ -438,14 +438,15 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self.split_backward = split_backward
         self.layerwise = layerwise
         self.local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
+        self.local_pre_fetch_w = gpc.config.all_pre_fetch_w[self.local_rank]
         self.num_layers = gpc.config.model.get("num_layers", torch.half)
         self.first_stage = first_stage
         self.last_stage = last_stage
         self.input_obj_shape = self._input_obj_shapes[0]
         self.output_obj_shape = None
+        self.steps = unified_scheduler[self.local_rank]
         file_path = f"InternEvo/jsonResult/het/{placement_strategy}_pp{gpc.pipeline_parallel_size}_layers{self.num_layers}_mb{num_microbatches}"
         os.makedirs(file_path, exist_ok=True)
-
         gpc._config['jsonpath'] = file_path+f"/iter0_rank{self.local_rank}_opeartion_list.json"
         #TODO, num_chunks is different in different rank
         if split_backward:
@@ -459,14 +460,38 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         self.recv_backward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
         self.send_forward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
         self.send_backward_result = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
-
+        self.input_obj_grad_map = [[None for __ in range(self.num_microbatches) ] for _ in range(num_chunks)]
+        self.done_w = [[False for __ in range(self.num_microbatches) ] for _ in range(num_chunks)] #TODO not sure if this is global variable
     def _clear_state(self) -> None:
         super()._clear_state()
         self._special_chunk0_forward = True
         self._chunk1_need_recv_prev_chunk1_grad = True
         local_placement = gpc.config.stage_placement[gpc.get_local_rank(ParallelMode.PIPELINE)]
         self._backward_step_num = [0]*len(local_placement)#self.num_chunks
+        self.done_w = [[False for __ in range(self.num_microbatches) ] for _ in range(self.num_chunks)]
 
+    def _process_prefetch(self, steps, local_pre_fetch_w, step_id):
+        will_do_w = local_pre_fetch_w[step_id]
+        for step_index_w in will_do_w:
+            step_type, microbatch_id, _, chunk_id, _, _ = steps[step_index_w]
+            assert step_type == 'w',print("this workload must be weight computation")
+            if self.done_w[chunk_id][microbatch_id] is False:
+                print(f'rank {self.local_rank}:microbatch_id {microbatch_id} weight has been prefetched from {step_index_w} to {step_id}')
+                # json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"precompute"}
+                with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
+                    WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
+
+                self.done_w[chunk_id][microbatch_id] = True
+                self._call_hooks("after_backward", self.input_obj_grad_map[chunk_id][microbatch_id])
+                self.input_obj_grad_map[chunk_id][microbatch_id] = 0
+                if gpc.config.add_slow_compute and random.random() < 0.1:
+                    for s_time in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
+                        do_compute()
+                    json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"precompute"}
+                    write_json(gpc._config['jsonpath'], json_content)
+                # engine.optimizer.skip_grad_reduce = origin_skip ##TODO
+                return True
+        return False
     def _forward_step(self, engine, chunk_id, input_obj=None, stage_id = None):
         """Forward step for passed-in model. If it is the first stage, the input tensor
         is obtained from data_iterator, otherwise the passed-in input_obj is used.
@@ -493,13 +518,24 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
 
         self._call_hooks("before_forward", data)
-        if hasattr(gpc.config.model, "num_experts"):
-            output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
+        if self.num_chunks == 1:
+            if hasattr(gpc.config.model, "num_experts"):
+                # moe is used
+                output_obj, moe_losses = self._call_engine(engine.model, data)
+            else:
+                output_obj = self._call_engine(engine.model, data)
+            # Convert output_obj to fp32 when last model chunk of last stage
+            if stage_id == self.last_stage and isinstance(engine.model, NaiveAMPModel):
+                output_obj = engine.model.convert_to_fp32(output_obj)
         else:
-            output_obj = self._call_engine(engine.model[chunk_id], data)
-        # Convert output_obj to fp32 when last model chunk of last stage
-        if stage_id == self.last_stage and isinstance(engine.model[chunk_id], NaiveAMPModel):
-            output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
+            if hasattr(gpc.config.model, "num_experts"):
+                
+                output_obj, moe_losses = self._call_engine(engine.model[chunk_id], data)
+            else:
+                output_obj = self._call_engine(engine.model[chunk_id], data)
+            # Convert output_obj to fp32 when last model chunk of last stage
+            if stage_id == self.last_stage and isinstance(engine.model[chunk_id], NaiveAMPModel):
+                output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
         self._call_hooks("after_forward", output_obj)
         if gpc.config.heter:
             if self.local_rank >= gpc.get_world_size(ParallelMode.PIPELINE)/2:
@@ -601,17 +637,20 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,match_device_id)
             if op_type == 'SA':
                 comm.AsynCommunicator_unified(
-                    object_send_next=self.send_forward_result[source_chunk_id][source_microbatch_id],
-                    next_rank=match_global_rank,
-                    dtype=self.dtype,
-                    scatter_gather_tensors=self.scatter_gather_tensors,
-                    # stage_id = stage_id,
-                    # microbatch_id = microbatch_id,
-                    # step_type = step_type,
-                    # chunk_id = chunk_id
-                    local_rank = self.local_rank,
-                    match_rank = match_device_id, 
-                    step_id = self.step_id,
+                        object_send_next=self.send_forward_result[source_chunk_id][source_microbatch_id],
+                        next_rank=match_global_rank,
+                        dtype=self.dtype,
+                        scatter_gather_tensors=self.scatter_gather_tensors,
+                        # stage_id = stage_id,
+                        # microbatch_id = microbatch_id,
+                        # step_type = step_type,
+                        # chunk_id = chunk_id
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id, 
+                        step_id = self.step_id,
+                        local_pre_fetch_w = self.local_pre_fetch_w,
+                        steps = self.steps,
+                        func = self._process_prefetch 
                 ).start()
             elif op_type == 'SG':
                 comm.AsynCommunicator_unified(
@@ -625,22 +664,28 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         # chunk_id = chunk_id
                         local_rank = self.local_rank,
                         match_rank = match_device_id, 
-                        step_id = self.step_id,
+                        step_id = self.step_id,          
+                        local_pre_fetch_w = self.local_pre_fetch_w,
+                        steps = self.steps,
+                        func = self._process_prefetch 
                     ).start()
                 
             elif op_type == 'RA':
                 recv_f_buffer = comm.AsynCommunicator_unified(
-                            recv_prev_shape=self.input_obj_shape,
-                            prev_rank=match_global_rank,
-                            dtype=self.dtype,
-                            scatter_gather_tensors=self.scatter_gather_tensors,
-                            # stage_id = recv_stage_id,
-                            # microbatch_id = recv_microbatch_id,
-                            # step_type = recv_op_type,
-                            # chunk_id = recv_chunk_id,                      
-                            local_rank = self.local_rank,
-                            match_rank = match_device_id,
-                            step_id = self.step_id,  
+                        recv_prev_shape=self.input_obj_shape,
+                        prev_rank=match_global_rank,
+                        dtype=self.dtype,
+                        scatter_gather_tensors=self.scatter_gather_tensors,
+                        # stage_id = recv_stage_id,
+                        # microbatch_id = recv_microbatch_id,
+                        # step_type = recv_op_type,
+                        # chunk_id = recv_chunk_id,                      
+                        local_rank = self.local_rank,
+                        match_rank = match_device_id,
+                        step_id = self.step_id,  
+                        local_pre_fetch_w = self.local_pre_fetch_w,
+                        steps = self.steps,
+                        func = self._process_prefetch 
                         )
                 recv_f_buffer.start()
                 store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id+1,self.stage_placement[self.local_rank])
@@ -657,7 +702,10 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         # chunk_id = recv_chunk_id,
                         local_rank = self.local_rank,
                         match_rank = match_device_id,
-                        step_id = self.step_id,    
+                        step_id = self.step_id,
+                        local_pre_fetch_w = self.local_pre_fetch_w,
+                        steps = self.steps,
+                        func = self._process_prefetch                             
                     )
                 recv_b_buffer.start()
                 store_recv_chunk_id = _get_chunkid_by_stages(source_stage_id-1,self.stage_placement[self.local_rank])
@@ -705,7 +753,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         # Used for tensor meta information communication
         local_rank = self.local_rank
         global_rank = gpc.get_global_rank()
-        steps = self.unified_scheduler[local_rank]
+        steps = self.steps
         stages_in_this_device = self.stage_placement[local_rank]
         chunks = self._num_chunks#??
         chunks = self.num_chunks
@@ -716,11 +764,6 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
         chunk_to_next_local_rank = [None for _ in range(chunks)]
         chunk_to_prev_global_rank = [None for _ in range(chunks)]
         chunk_to_next_global_rank = [None for _ in range(chunks)]
-
-        input_obj_grad_map = [
-        [[] for _ in range(self.num_microbatches)] 
-        for _ in range(chunks)
-        ]
         jsonpath = gpc._config['jsonpath']
 
         for i in range(chunks):
@@ -766,10 +809,14 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # Perform forward computation
                 # start_time  = time.time()
                 # start_time_ = time.perf_counter()
-                output_obj = self._forward_step(engine, chunk_id, input_obj, stage_id)  
+                with torch.profiler.record_function(f"SCH-forward_step-microbatch_id{microbatch_id}-stage_id{stage_id}"):
+                    output_obj = self._forward_step(engine, chunk_id, input_obj, stage_id)
+                    if gpc.config.add_slow_compute and random.random() < 0.1:
+                        for s_time in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
+                            do_compute()
                 # end_time = time.perf_counter()
-                json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
-                write_json(jsonpath, json_content)
+                        # json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
+                        # write_json(jsonpath, json_content)
                 self.send_forward_result[chunk_id][microbatch_id] = output_obj
                 #TODO:add a flag to determine whether to do num_chunks 
                 if stage_id < self.last_stage:
@@ -807,16 +854,20 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                         self.recv_backward_result[chunk_id][microbatch_id] = output_obj_grad
                     self._output_obj_grads[chunk_id].append(output_obj_grad)#TODO, add microbatch_id
 
-                if self.split_backward:
-                    origin_skip = engine.optimizer.skip_grad_reduce
-                    input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id, microbatch_id)
-                    input_obj_grad_map[chunk_id][microbatch_id]=input_obj_grad
-                    self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
-                else:
-                    input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
-                    self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
-                json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
-                write_json(jsonpath, json_content)
+                with torch.profiler.record_function(f"SCH-backward_step-microbatch_id{microbatch_id}-stage_id{stage_id}"):
+                    if self.split_backward:
+                        origin_skip = engine.optimizer.skip_grad_reduce
+                        input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id, microbatch_id)
+                        self.input_obj_grad_map[chunk_id][microbatch_id]=input_obj_grad
+                        self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
+                    else:
+                        input_obj_grad = InterleavedPipelineScheduler._backward_step_(self, engine, chunk_id, microbatch_id, stage_id)
+                        self.send_backward_result[chunk_id][microbatch_id] = input_obj_grad
+                    if gpc.config.add_slow_compute and random.random() < 0.1:
+                        for s_time in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
+                            do_compute()
+                        # json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
+                        # write_json(jsonpath, json_content)
                 for chunk in range (chunks):
                     for microbatch in range(self.num_microbatches):
                         if self.recv_forward_buffer[chunk][microbatch] is not None and self.recv_forward_result[chunk][microbatch] is None:
@@ -831,17 +882,24 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                     self.recv_backward_result[store_send_chunk_id][microbatch_id] = input_obj_grad
 
             elif step_type == Step.WEIGHT.value: #Weight update
-                WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
-                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
-                input_obj_grad_map[chunk_id][microbatch_id] = 0
-                engine.optimizer.skip_grad_reduce = origin_skip
-                json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
-                write_json(jsonpath, json_content)
+                if not self.done_w[chunk_id][microbatch_id]:
+                    with torch.profiler.record_function(f"SCH-weight_step-microbatch_id{microbatch_id}-stage_id{stage_id}"):
+                        WeightGradStore.pop(chunk_id=chunk_id, microbatch_id=microbatch_id)
+                        self.done_w[chunk_id][microbatch_id] = True
+                        self._call_hooks("after_backward",self.input_obj_grad_map[chunk_id][microbatch_id])
+                        self.input_obj_grad_map[chunk_id][microbatch_id] = 0
+                        engine.optimizer.skip_grad_reduce = origin_skip
+                        if gpc.config.add_slow_compute and random.random() < 0.1:
+                            for s_time in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
+                                do_compute()
+                            # json_content = {"step_type":step_type, "local_rank":local_rank, "step_id":self.step_id, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id,"operation":"compute"}
+                            # write_json(jsonpath, json_content)
 
             if s == len(steps)-1:             
                 after_comms = comm_list[s+1]
                 if len(after_comms)>0:
                     self.do_comms(after_comms)
+        # self.done_w = [[False for __ in range(self.num_microbatches) ] for _ in range(self.num_chunks)]
 
     def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Run interleaved 1F1B schedule (model split into model chunks), with
