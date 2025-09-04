@@ -1207,7 +1207,9 @@ def generate_comm_graph(comp_graph, stage_alignment, max_end_time):
                                 send_end_index = search_by_time(stage_ops, recv_op_start_time)+1
 
                                 # print(f"send_location:{send_location}, send_end_index:{send_end_index}, recv_start_index:{recv_start_index}, recv_end_index:{recv_end_index}")
-                                for s_index in range(current_op_index, send_end_index):
+                                if current_op_index + 1 > send_end_index:
+                                    send_end_index = current_op_index + 1
+                                for s_index in range(current_op_index, min(send_end_index, len(stage_ops))):
                                     if s_index < len(stage_ops)-1:
                                         send_interval = (stage_ops[s_index][-1],stage_ops[s_index+1][-2])
                                     else:
@@ -1298,4 +1300,4 @@ def generate_(num_microbatches=None):
             last_stage, Devices_containing_last_stage, recomp_stages
 
 if __name__ == '__main__':
-    generate_()
+    generate_(256)
