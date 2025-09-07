@@ -152,7 +152,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        #func = self._process_prefetch 
+                        # func = self._process_prefetch 
                 ).start()
             elif op_type == 'SG':
                 comm.AsynCommunicator_unified(
@@ -169,7 +169,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        #func = self._process_prefetch 
+                        # func = self._process_prefetch 
                     ).start()
                 
             elif op_type == 'RA':
@@ -187,7 +187,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                        #func = self._process_prefetch
+                        # func = self._process_prefetch
                         )
                 recv_f_buffer.start()
                 self.recv_forward_buffer[source_microbatch_id] = recv_f_buffer
@@ -210,7 +210,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         steps = self.steps,
                         step_id = self.step_id,
                         local_pre_fetch_w = self.local_pre_fetch_w,
-                #func = self._process_prefetch 
+                # func = self._process_prefetch 
                     )
                 recv_b_buffer.start()
                 self.recv_backward_buffer[source_microbatch_id] = recv_b_buffer
@@ -473,12 +473,12 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
     def _process_prefetch(self, steps, local_pre_fetch_w, step_id):
         will_do_w = local_pre_fetch_w[step_id]
         for step_index_w in will_do_w:
-            step_type, microbatch_id, _, chunk_id, _, _ = steps[step_index_w]
+            step_type, microbatch_id, stage_id, chunk_id, _, _ = steps[step_index_w]
             assert step_type == 'w',print("this workload must be weight computation")
             if self.done_w[chunk_id][microbatch_id] is False:
-                print(f'rank {self.local_rank}:microbatch_id {microbatch_id} weight has been prefetched from {step_index_w} to {step_id}')
+                print(f'rank {self.local_rank}:microbatch_id{microbatch_id}-stage_id{stage_id} weight has been prefetched from {step_index_w} to {step_id}')
                 # json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"precompute"}
-                with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}-0"):
+                with torch.profiler.record_function(f"SCH-pre_weight_step-microbatch_id{microbatch_id}-stage_id{stage_id}"):
                     WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
 
                 self.done_w[chunk_id][microbatch_id] = True
@@ -487,9 +487,9 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 if gpc.config.add_slow_compute and random.random() < 0.1:
                     for s_time in range(random.randint(gpc.config.slow_compute_time[0],gpc.config.slow_compute_time[1])):
                         do_compute()
-                    json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"precompute"}
-                    write_json(gpc._config['jsonpath'], json_content)
-                # engine.optimizer.skip_grad_reduce = origin_skip ##TODO
+                # json_content = {"local_rank":self.local_rank, "chunk_id":0, "microbatch_id":microbatch_id, "step_type":step_type, "operation":"precompute"}
+                # write_json(gpc._config['jsonpath'], json_content)
+                # engine.optimizer.skip_grad_reduce = origin_skip #TODO
                 return True
         return False
     def _forward_step(self, engine, chunk_id, input_obj=None, stage_id = None):

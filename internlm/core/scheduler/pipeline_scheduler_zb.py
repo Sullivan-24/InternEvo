@@ -546,15 +546,16 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
             assert output_obj_grad is not None
         if not gpc.is_pipeline_first_stage():
             assert input_obj is not None
-
-        input_obj_grad = self._backward_step(engine, input_obj, output_obj, output_obj_grad, skip_grad_sync, moe_loss)
+        with torch.profiler.record_function(f"SCH-backward_step-microbatch_id{microbatch_id}-stage_id{chunk_id}"):
+            input_obj_grad = self._backward_step(engine, input_obj, output_obj, output_obj_grad, skip_grad_sync, moe_loss)
 
         WeightGradStore.flush(chunk_id=chunk_id,microbatch_id=microbatch_id)
 
         return input_obj_grad
 
     def _schedule_1f1b_F(self, engine, chunk_id):
-        output_obj = self._forward_step(engine, chunk_id)
+        with torch.profiler.record_function(f"SCH-forward_step-microbatch_id-stage_id{chunk_id}"):
+            output_obj = self._forward_step(engine, chunk_id)
 
         object_send_next = None
         object_send_prev = None
@@ -651,7 +652,8 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
         async_communicator.start()
 
         # 1W
-        WeightGradStore.pop()
+        with torch.profiler.record_function(f"SCH-weight_step-microbatch_id-stage_id{chunk_id}"):
+            WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
         if gpc.config.heter:
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
@@ -718,8 +720,8 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
             scatter_gather_tensors=self.scatter_gather_tensors,
         )
         async_communicator.start()
-
-        WeightGradStore.pop()
+        with torch.profiler.record_function(f"SCH-weight_step-microbatch_id-stage_id{chunk_id}"):
+            WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
         if gpc.config.heter:
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
@@ -734,7 +736,8 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
         self._schedule_1f1b_B_W(engine, 1 - chunk_id, chunk_id, need_recv_chunk0_output=False)
 
     def _schedule_warmup_F(self, engine, chunk_id, input_obj=None, forward_only=False):
-        output_obj = self._forward_step(engine, chunk_id, input_obj)
+        with torch.profiler.record_function(f"SCH-forward_step-microbatch_id-stage_id{chunk_id}"):
+            output_obj = self._forward_step(engine, chunk_id, input_obj)
 
         if forward_only:
             # when forward-only, no need to save tensors for a backward pass
@@ -959,8 +962,8 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
             scatter_gather_tensors=self.scatter_gather_tensors,
         )
         async_communicator.start()
-
-        WeightGradStore.pop()
+        with torch.profiler.record_function(f"SCH-weight_step-microbatch_id-stage_id{chunk_id}"):
+            WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
         if gpc.config.heter:
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
@@ -1045,7 +1048,8 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
             async_communicator.start()
 
             # 1W
-            WeightGradStore.pop()
+            with torch.profiler.record_function(f"SCH-weight_step-microbatch_id-stage_id{chunk_id}"):
+                WeightGradStore.pop()
             self._call_hooks("after_backward", input_obj_grad)
             if gpc.config.heter:
                 pp_size = gpc.get_world_size(ParallelMode.PIPELINE)

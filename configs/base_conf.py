@@ -25,7 +25,7 @@ latency_step_index[3] = [20]
 add_slow_compute = True
 slow_compute_rank = None
 slow_microbatch_id = None
-slow_compute_time = [10,20]#ms
+slow_compute_time = [2,5]#ms
 #alpa or heter config
 heter = False
 alpa = False

@@ -336,45 +336,46 @@ def _communicate_async(
             func: 超时处理函数
             func_params: 函数参数
         """
-        # # GPU 计时器
-        # start_event = torch.cuda.Event(enable_timing=True)
-        # end_event = torch.cuda.Event(enable_timing=True)
-        # start_event.record()
+        # GPU 计时器
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
         
         # CPU 计时器
-        cpu_start = time.perf_counter()
+        # cpu_start = time.perf_counter()
         
         while not req.is_completed():
             # GPU 时间检查
-            # end_event.record()
-            # end_event.synchronize()
-            # gpu_elapsed = start_event.elapsed_time(end_event) * 1e-3  # 转换为秒
+            end_event.record()
+            end_event.synchronize()
+            gpu_elapsed = start_event.elapsed_time(end_event)
+            print(f"gpu_elapsed:{gpu_elapsed}")
             
             # CPU 时间检查
-            cpu_elapsed = time.perf_counter() - cpu_start
+            # cpu_elapsed = time.perf_counter() - cpu_start
             
-            # # 使用两者的最大值作为实际经过时间
+            # 使用两者的最大值作为实际经过时间
             # elapsed = max(gpu_elapsed, cpu_elapsed)
             
-            if cpu_elapsed > timeout:
-                print(f"Timeout detected! CPU time: {cpu_elapsed:.3f}s") #GPU time: {gpu_elapsed:.3f}s,
+            if gpu_elapsed > timeout:
+                #print(f"Timeout detected! CPU time: {cpu_elapsed:.3f}s") #GPU time: {gpu_elapsed:.3f}s,
                 if func(**func_params):
                     # 重置计时器
-                    # start_event = torch.cuda.Event(enable_timing=True)
-                    # end_event = torch.cuda.Event(enable_timing=True)
-                    # start_event.record()
-                    cpu_start = time.perf_counter()
+                    start_event = torch.cuda.Event(enable_timing=True)
+                    end_event = torch.cuda.Event(enable_timing=True)
+                    start_event.record()
+                    # cpu_start = time.perf_counter()
                 else:
                     break
             
             # 适当的睡眠
-            # torch.cuda.current_stream().sleep(1)  # GPU 睡眠
-            time.sleep(0.001)  # CPU 睡眠
+            torch.cuda.current_stream().sleep(1)  # GPU 睡眠
+            # time.sleep(0.001)  # CPU 睡眠
         req.wait()
 
 
     if func is None:
-        print("func is None")
+        #print("func is None")
         if len(ops) > 0:
             if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
                 for req in reqs:
@@ -385,8 +386,9 @@ def _communicate_async(
                 for req in ops:
                     req.wait()
     else:
+        #print("func is not None")
         TIMEOUT = 0.003
-        # # 在原代码中替换原有的超时检测逻辑
+        # 在原代码中替换原有的超时检测逻辑
         # if len(ops) > 0:
         #     if getattr(gpc.config.parallel.pipeline, "batch_p2p_comm", False) is True:
         #         for req in reqs:
@@ -414,33 +416,37 @@ def _communicate_async(
                 for req in reqs:
                     start = time.perf_counter()
                     while not req.is_completed():
-                        print("p2p_wating")
+                        #print("p2p_wating1")
                         if time.perf_counter() - start > TIMEOUT:
-                            print("p2p_wating > TIMEOUT")
+                            #print("p2p_wating > TIMEOUT1")
                             if func(steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w):
                                 start = time.perf_counter()
-                                print("prefetch successful")
+                                #print("prefetch successful1")
                             else:
                                 break
                         else:
-                            print("p2p_wating sleep")
+                            #print("p2p_wating sleep1")
                             time.sleep(0.001)
                     req.wait()
-                    print("wait success")
+                    # #print("wait success1")
                 internlm_accelerator.synchronize()
             else:
                 for req in ops:
                     start = time.perf_counter()
                     while not req.is_completed():
+                        #print("p2p_wating2")
                         if time.perf_counter() - start > TIMEOUT:
+                            #print("p2p_wating > TIMEOUT2")
                             if func(steps=steps,step_id=step_id,local_pre_fetch_w=local_pre_fetch_w):
                                 start = time.perf_counter()
+                                #print("prefetch successful2")
                             else:
                                 break
                         else:
+                            #print("p2p_wating sleep2")
                             time.sleep(0.001)
                     req.wait()
-
+                    #print("wait success2")
     if recv_prev and recv_prev_split:
         if isinstance(tensor_recv_prev, torch.Tensor):
             tensor_recv_prev = gather_split_1d_tensor(tensor_recv_prev).view(recv_prev_shape).requires_grad_()

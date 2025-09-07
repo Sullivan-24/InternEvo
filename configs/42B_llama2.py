@@ -1,14 +1,8 @@
+from configs.base_conf import *
 
-from preprocess import generate_
-
-import json
 dp_size = 1
-tp_size = 4
+tp_size = 1
 pp_size = 8
-num_microbatches = pp_size*4
-num_microbatches, pp_size, stage_placement, placement_strategy ,\
-split_backward, unified_scheduler, comm_graph, first_stage ,\
-last_stage, Devices_containing_last_stage = generate_()
 
 layerwise = False
 num_chunks = 2
@@ -17,39 +11,13 @@ JOB_NAME = "42b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
-VOCAB_SIZE = 128256
-SEQ_LEN = 4096
+VOCAB_SIZE = 10000
+SEQ_LEN = 1024
 HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
 NUM_LAYER = 48
-
-heter = True
-alpa = False
-layer_placement = [[1, 8], [9, 16], [17, 24], [25, 31], [32, 35], [36, 39], [40, 43], [44, 48]]
-sleep_forward_time = 0
-sleep_backward_time = 0
-sleep_forward_time_perlayer = 12
-sleep_backward_time_perlayer = 24
-if tp_size == 2:
-    sleep_forward_time_perlayer = 8
-    sleep_backward_time_perlayer = 16
-elif tp_size == 4:
-    sleep_forward_time_perlayer = 6
-    sleep_backward_time_perlayer = 12
-elif tp_size == 8:
-    sleep_forward_time_perlayer = 4
-    sleep_backward_time_perlayer = 8
-if not alpa:
-    if pp_mode == "zbv":
-        num_chunks = 2
-    elif pp_mode == "zbh1":
-        num_chunks = 1
-    layers_one_chunk = NUM_LAYER//pp_size//num_chunks
-    sleep_forward_time = layers_one_chunk*sleep_forward_time_perlayer
-    sleep_backward_time = layers_one_chunk*sleep_backward_time_perlayer
-    print(f"sleep_forward_time:{sleep_forward_time}, sleep_backward_time:{sleep_backward_time}")
 
 if pp_mode == "unified" and layerwise:
     num_chunks = NUM_LAYER//pp_size #layerwise is only for Interle

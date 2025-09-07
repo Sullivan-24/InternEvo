@@ -285,7 +285,9 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                                 #print(f"device_id:{device_id}, stage_id:{stage_id}, chunk_id:{chunk_id}, microbatch_id:{microbatch_id}, op:{op}, end_time:{end_time}")
                                 # print(f"send_location:{send_location}, send_end_index:{send_end_index}, recv_start_index:{recv_start_index}, recv_end_index:{recv_end_index}")
                                 #做完就发
-                                for s_index in range(current_op_index, send_end_index):
+                                if current_op_index+1 > send_end_index:
+                                    send_end_index = current_op_index+1
+                                for s_index in range(current_op_index, min(send_end_index,len(stage_ops))):
                                     if s_index < len(stage_ops)-1:
                                         send_interval = (stage_ops[s_index][-1],stage_ops[s_index+1][-2])
                                     else:
@@ -369,14 +371,14 @@ def generate_():
     stage_placement = ""
     input_str=""
     file_path = './InternEvo'
-    with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
+    with open(file_path+'/placement_llama2_32layers.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
-    with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
+    with open(file_path+'/result_llama2_32layers.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
 
     pp_size = len(stage_placement)
-    num_microbatches = pp_size*2
+    num_microbatches = pp_size*4
     unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str,stage_placement,num_microbatches)
     send_immediately = True#
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time,send_immediately)
