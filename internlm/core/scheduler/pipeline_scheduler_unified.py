@@ -689,7 +689,7 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
                     input_obj_grad = self._schedule_backward(engine, chunk_id, microbatch_id)
-                    input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id] = input_obj_grad
+                    input_obj_grad_map[chunk_id][microbatch_id] = input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_workload(self, engine, chunk_id, microbatch_id)
                 # end_time = time.perf_counter()
@@ -777,11 +777,11 @@ class UnifiedMultipleChunksPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
                 # start_time = time.time()
                 # start_time_ = time.perf_counter()
                 WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
-                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id])
-                input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id]=0
+                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][microbatch_id])
+                input_obj_grad_map[chunk_id][microbatch_id]=0
                 engine.optimizer.skip_grad_reduce = origin_skip
                 # end_time = time.perf_counter()
-                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "workload_type":workload_type, "input_obj_grad.shape":input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id].shape if input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id] is not None else 0}#"operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
+                # json_content = {"local_rank":local_rank, "chunk_id":chunk_id, "stage_id": stage_id, "microbatch_id":microbatch_id, "workload_type":workload_type, "input_obj_grad.shape":input_obj_grad_map[source_dp_rank][chunk_id][microbatch_id].shape if input_obj_grad_map[source_dp_rank][chunk_id][microbatch_id] is not None else 0}#"operation":"compute", "start_time":start_time, "timespan":(end_time - start_time_)}
                 # write_json(jsonpath, json_content)
                 recv_forward_queue_list, recv_backward_queue_list = \
                     self.recv_all(recv_forward_queue_list,recv_backward_queue_list,after_recv_list)
@@ -1184,7 +1184,7 @@ class UnifiedHetPipelineScheduler(InterleavedPipelineScheduler):
                 chunk_to_next_global_rank[chunk_id] = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE,chunk_to_next_local_rank[chunk_id])
 
         for s in range(len(workloads)):
-            workload_type, microbatch_id, stage_id, chunk_id, startTime, end_time = workloads[s]
+            workload_type, microbatch_id, stage_id, chunk_id, startTime, end_time, source_dp_rank = workloads[s]
             prev_stage = chunk_to_prev_stage_id[chunk_id]
             next_stage = chunk_to_next_stage_id[chunk_id]
             prev_local_rank = chunk_to_prev_local_rank[chunk_id]
@@ -1200,13 +1200,13 @@ class UnifiedHetPipelineScheduler(InterleavedPipelineScheduler):
             if workload_type == workload.FORWARD.value:# Forward pass
                 input_obj = None
                 if stage_id>self.first_stage:
-                    if self.recv_forward_result[chunk_id][source_dp_rank][microbatch_id] is not None:
-                        input_obj = self.recv_forward_result[chunk_id][source_dp_rank][microbatch_id]
+                    if self.recv_forward_result[source_dp_rank][chunk_id][microbatch_id] is not None:
+                        input_obj = self.recv_forward_result[source_dp_rank][chunk_id][microbatch_id]
                     else:
-                        assert self.recv_forward_buffer[chunk_id][source_dp_rank][microbatch_id] is not None, f"local_rank:{local_rank}, recv_forward_buffer[{chunk_id}][{microbatch_id}] is None"
-                        input_obj,_ = self.recv_forward_buffer[chunk_id][source_dp_rank][microbatch_id].wait_and_receive()
+                        assert self.recv_forward_buffer[source_dp_rank][chunk_id][microbatch_id] is not None, f"local_rank:{local_rank}, recv_forward_buffer[{chunk_id}][{microbatch_id}] is None"
+                        input_obj,_ = self.recv_forward_buffer[source_dp_rank][chunk_id][microbatch_id].wait_and_receive()
                         assert input_obj is not None
-                        self.recv_forward_result[chunk_id][source_dp_rank][microbatch_id] = input_obj
+                        self.recv_forward_result[source_dp_rank][chunk_id][microbatch_id] = input_obj
                     self._input_objs[chunk_id].append(input_obj)#TODO, add microbatch_id
 
                 # Perform forward computation
@@ -1215,7 +1215,7 @@ class UnifiedHetPipelineScheduler(InterleavedPipelineScheduler):
                 output_obj = self._forward_workload(engine, chunk_id=chunk_id, input_obj=input_obj, stage_id=stage_id)  
                 # end_time = time.perf_counter()
 
-                self.send_forward_result[chunk_id][source_dp_rank][microbatch_id] = output_obj
+                self.send_forward_result[source_dp_rank][chunk_id][microbatch_id] = output_obj
                 #TODO:add a flag to determine whether to do num_chunks 
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
@@ -1227,57 +1227,57 @@ class UnifiedHetPipelineScheduler(InterleavedPipelineScheduler):
 
                 for chunk in range (chunks):
                     for microbatch in range(self.num_microbatches):
-                        if self.recv_forward_buffer[chunk][dp_rank][microbatch] is not None and self.recv_forward_result[chunk][dp_rank][microbatch] is None:
-                            recv_f_tensor, _ = self.recv_forward_buffer[chunk][dp_rank][microbatch].wait_and_receive()
-                            self.recv_forward_result[chunk][dp_rank][microbatch] = recv_f_tensor
-                        if self.recv_backward_buffer[chunk][dp_rank][microbatch] is not None and self.recv_backward_result[chunk][dp_rank][microbatch] is None:
-                            _, recv_b_tensor = self.recv_backward_buffer[chunk][dp_rank][microbatch].wait_and_receive()
-                            self.recv_backward_result[chunk][dp_rank][microbatch] = recv_b_tensor
+                        if self.recv_forward_buffer[dp_rank][chunk][microbatch] is not None and self.recv_forward_result[dp_rank][chunk][microbatch] is None:
+                            recv_f_tensor, _ = self.recv_forward_buffer[dp_rank][chunk][microbatch].wait_and_receive()
+                            self.recv_forward_result[dp_rank][chunk][microbatch] = recv_f_tensor
+                        if self.recv_backward_buffer[dp_rank][chunk][microbatch] is not None and self.recv_backward_result[dp_rank][chunk][microbatch] is None:
+                            _, recv_b_tensor = self.recv_backward_buffer[dp_rank][chunk][microbatch].wait_and_receive()
+                            self.recv_backward_result[dp_rank][chunk][microbatch] = recv_b_tensor
 
                 if global_rank == next_global_rank:
                     #recv_forward_result[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
                     store_send_chunk_id = _get_chunkid_by_stages(stage_id+1,self.stage_placement[self.pp_local_rank])
-                    self.recv_forward_result[store_send_chunk_id][source_dp_rank][microbatch_id] = output_obj.clone().detach().requires_grad_()
+                    self.recv_forward_result[source_dp_rank][store_send_chunk_id][microbatch_id] = output_obj.clone().detach().requires_grad_()
                     #recv_forward_buffer[chunk_id+1].put(output_obj.clone().detach().requires_grad_())
 
             elif workload_type == workload.BACKWARD.value:# Backward pass
 
                 if stage_id<self.last_stage:
-                    if self.recv_backward_result[chunk_id][source_dp_rank][microbatch_id] is not None:
-                        output_obj_grad = self.recv_backward_result[chunk_id][source_dp_rank][microbatch_id]
+                    if self.recv_backward_result[source_dp_rank][chunk_id][microbatch_id] is not None:
+                        output_obj_grad = self.recv_backward_result[source_dp_rank][chunk_id][microbatch_id]
                     else:
-                        assert self.recv_backward_buffer[chunk_id][source_dp_rank][microbatch_id] is not None, f"local_rank:{local_rank}, recv_backward_buffer[{chunk_id}][{microbatch_id}] is None"
-                        _, output_obj_grad = self.recv_backward_buffer[chunk_id][source_dp_rank][microbatch_id].wait_and_receive()
+                        assert self.recv_backward_buffer[source_dp_rank][chunk_id][microbatch_id] is not None, f"local_rank:{local_rank}, recv_backward_buffer[{chunk_id}][{microbatch_id}] is None"
+                        _, output_obj_grad = self.recv_backward_buffer[source_dp_rank][chunk_id][microbatch_id].wait_and_receive()
                         assert output_obj_grad is not None
-                        self.recv_backward_result[chunk_id][source_dp_rank][microbatch_id] = output_obj_grad
+                        self.recv_backward_result[source_dp_rank][chunk_id][microbatch_id] = output_obj_grad
                     self._output_obj_grads[chunk_id].append(output_obj_grad)#TODO, add microbatch_id
 
                 if self.split_backward:
                     origin_skip = engine.optimizer.skip_grad_reduce
                     input_obj_grad = self._schedule_backward(engine, chunk_id, stage_id, microbatch_id)
-                    input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id]=input_obj_grad
-                    self.send_backward_result[chunk_id][source_dp_rank][microbatch_id] = input_obj_grad
+                    input_obj_grad_map[source_dp_rank][chunk_id][microbatch_id]=input_obj_grad
+                    self.send_backward_result[source_dp_rank][chunk_id][microbatch_id] = input_obj_grad
                 else:
                     input_obj_grad = InterleavedPipelineScheduler._backward_workload_(self, engine, chunk_id, microbatch_id, stage_id)
-                    self.send_backward_result[chunk_id][source_dp_rank][microbatch_id] = input_obj_grad
-
-                for chunk in range (chunks):
-                    for microbatch in range(self.num_microbatches):
-                        if self.recv_forward_buffer[chunk][dp_rank][microbatch] is not None and self.recv_forward_result[chunk][dp_rank][microbatch] is None:
-                            recv_f_tensor, _ = self.recv_forward_buffer[chunk][dp_rank][microbatch].wait_and_receive()
-                            self.recv_forward_result[chunk][dp_rank][microbatch] = recv_f_tensor
-                        if self.recv_backward_buffer[chunk][dp_rank][microbatch] is not None and self.recv_backward_result[chunk][dp_rank][microbatch] is None:
-                            _, recv_b_tensor = self.recv_backward_buffer[chunk][dp_rank][microbatch].wait_and_receive()
-                            self.recv_backward_result[chunk][dp_rank][microbatch] = recv_b_tensor
+                    self.send_backward_result[source_dp_rank][chunk_id][microbatch_id] = input_obj_grad
+                for dp_rank in range(self.dp_size):
+                    for chunk in range (chunks):
+                        for microbatch in range(self.num_microbatches):
+                            if self.recv_forward_buffer[dp_rank][chunk][microbatch] is not None and self.recv_forward_result[dp_rank][chunk][microbatch] is None:
+                                recv_f_tensor, _ = self.recv_forward_buffer[dp_rank][chunk][microbatch].wait_and_receive()
+                                self.recv_forward_result[dp_rank][chunk][microbatch] = recv_f_tensor
+                            if self.recv_backward_buffer[dp_rank][chunk][microbatch] is not None and self.recv_backward_result[dp_rank][chunk][microbatch] is None:
+                                _, recv_b_tensor = self.recv_backward_buffer[dp_rank][chunk][microbatch].wait_and_receive()
+                                self.recv_backward_result[dp_rank][chunk][microbatch] = recv_b_tensor
 
                 if global_rank == prev_global_rank:
                     store_send_chunk_id = _get_chunkid_by_stages(stage_id-1,self.stage_placement[self.pp_local_rank])
-                    self.recv_backward_result[store_send_chunk_id][source_dp_rank][microbatch_id] = input_obj_grad
+                    self.recv_backward_result[source_dp_rank][store_send_chunk_id][microbatch_id] = input_obj_grad
 
             elif workload_type == workload.WEIGHT.value: #Weight update
                 WeightGradStore.pop(chunk_id=chunk_id,microbatch_id=microbatch_id)
-                self._call_hooks("after_backward",input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id])
-                input_obj_grad_map[chunk_id][source_dp_rank][microbatch_id] = 0
+                self._call_hooks("after_backward",input_obj_grad_map[source_dp_rank][chunk_id][microbatch_id])
+                input_obj_grad_map[source_dp_rank][chunk_id][microbatch_id] = 0
                 engine.optimizer.skip_grad_reduce = origin_skip
 
             if s == len(workloads)-1:             
