@@ -13,7 +13,7 @@ NUM_LAYER = 64
 PP_SIZE = 8
 TP_SIZE = 2
 MICRO_NUM = PP_SIZE * 4
-PP_MODE = "1f1b"
+PP_MODE = "unified"
 CHUNK_NUM = 1
 
 if SCHEDULE == 0:

@@ -9,7 +9,7 @@ HETER = True
 SLEEP_TIME = 0
 layerwise = False
 profile_fwd_bwd = True
-SEQ_LEN = 1024*1*4
+SEQ_LEN = 1024*1*2
 SCHEDULE = eval(os.getenv("PP_MODE"))
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
