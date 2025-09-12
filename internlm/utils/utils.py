@@ -66,7 +66,7 @@ class DataType(Enum):
     megatron = 3
     mocked = 4
 
-class Step(Enum):
+class WorkloadType(Enum):
     FORWARD = 'f'
     BACKWARD = 'b'
     WEIGHT = 'w'
