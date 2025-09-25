@@ -694,8 +694,8 @@ def load_new_batch(train_dl: DataLoader, train_iter: Iterable, train_state: Trai
 
 def initialize_llm_profile(profiling: bool = False, start_time: str = None):
     """Initialize and return the profiler context manager instance."""
-
-    if profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+    if profiling and ((gpc.config.HETER) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0)):
+    # if profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
         schedule_config = {"wait": 1, "warmup": 1, "active": 1, "repeat": 1, "skip_first": 3}
         file_name = (
             f"seq{gpc._config['data']['seq_len']}-hid{gpc._config['model']['hidden_size']}-layer{gpc._config['model']['num_layers']}"
@@ -769,7 +769,10 @@ def record_current_batch_training_metrics(
 
     timer.store_last_timers()
     if success_update in (0, True):
-        train_state.num_consumed_tokens += batch[1].nelement() * gpc.get_world_size(ParallelMode.DATA)
+        if gpc.config.DP_Transfer:
+            train_state.num_consumed_tokens += batch[1].nelement()
+        else:
+            train_state.num_consumed_tokens += batch[1].nelement() * gpc.get_world_size(ParallelMode.DATA)
     if gpc.is_no_pp_or_last_stage():
         acc_perplex = metric.get_metric()
 
@@ -791,6 +794,11 @@ def record_current_batch_training_metrics(
             num_tokens_in_batch * gpc.get_world_size(ParallelMode.DATA) / gpc.get_world_size(ParallelMode.GLOBAL),
             4,
         )
+        if gpc.config.DP_Transfer:
+            tk_per_gpu = round(
+                num_tokens_in_batch/ gpc.get_world_size(ParallelMode.GLOBAL),
+                4,
+            )
         tgs_statistic = train_state.tgs_statistic
         tgs_statistic["sum_step"] += 1
         tgs_statistic["sum_tg"] += tk_per_gpu
@@ -838,6 +846,13 @@ def record_current_batch_training_metrics(
             / time_cost,
             2,
         )
+        if gpc.config.DP_Transfer:
+            tgs_origin = round(
+                num_tokens_in_batch
+                / gpc.get_world_size(ParallelMode.GLOBAL)
+                / time_cost,
+                2,
+            )
 
         real_tgs = round(
             real_num_tokens / time_cost,

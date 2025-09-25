@@ -22,8 +22,10 @@ internlm_accelerator=get_accelerator()
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
     # initialize model
-    if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        internlm_accelerator.memory._record_memory_history()
+    # assert gpc.config.HETER is not None
+    # if args.profiling:
+    #     if (gpc.config.HETER) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0):
+    #         internlm_accelerator.memory._record_memory_history()
     model = create_model(model_type=gpc.config.model_type)
 
     # print(model)
@@ -40,16 +42,17 @@ def main(args):
     
     trainer.fit()
 
-    if args.profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        end_time = time.strftime("%Y-%m-%d-%H:%M",time.localtime(time.time()))
-        snapshot_dir_path = f"./Memory traces/{end_time}/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
-        snapshot_file_name = (
-            f"snapshot{gpc.get_global_rank()}_recomp{gpc._config['model']['checkpoint']}_mb{gpc.micro_num}_"
-            + f"tp{gpc.expert_tensor_parallel_size}_pp{gpc.pipeline_parallel_size}_{gpc._config['parallel']['pipeline']['mode']}_chunks{gpc._config['model']['num_chunks']}_"
-            + f"seq{gpc._config['data']['seq_len']}_hidden{gpc._config['model']['hidden_size']}.pickle"
-        )
-        os.makedirs(snapshot_dir_path, exist_ok=True)
-        internlm_accelerator.memory._dump_snapshot(os.path.join(snapshot_dir_path, snapshot_file_name))
+    # if args.profiling:
+    #     if (gpc.config.HETER) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0):
+    #         end_time = time.strftime("%Y-%m-%d-%H:%M",time.localtime(time.time()))
+    #         snapshot_dir_path = f"./Memory traces/{end_time}/pp_rank{gpc.get_local_rank(ParallelMode.PIPELINE)}"
+    #         snapshot_file_name = (
+    #             f"snapshot{gpc.get_global_rank()}_recomp{gpc._config['model']['checkpoint']}_mb{gpc.micro_num}_"
+    #             + f"tp{gpc.expert_tensor_parallel_size}_pp{gpc.pipeline_parallel_size}_{gpc._config['parallel']['pipeline']['mode']}_chunks{gpc._config['model']['num_chunks']}_"
+    #             + f"seq{gpc._config['data']['seq_len']}_hidden{gpc._config['model']['hidden_size']}.pickle"
+    #         )
+    #         os.makedirs(snapshot_dir_path, exist_ok=True)
+    #         internlm_accelerator.memory._dump_snapshot(os.path.join(snapshot_dir_path, snapshot_file_name))
 
 if __name__ == "__main__":
     args = parse_args()

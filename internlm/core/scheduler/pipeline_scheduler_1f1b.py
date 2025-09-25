@@ -23,7 +23,7 @@ from internlm.utils.common import (
 )
 from internlm.utils.logger import get_logger
 from internlm.utils.timeout import llm_timeout
-
+import json
 from .base_scheduler import BaseScheduler
 
 logger = get_logger(__file__)
@@ -33,6 +33,13 @@ def safe_detach(x):
 
 def to_float(x):
     return x.item() if isinstance(x, torch.Tensor) else x
+
+def write_json(jsonpath, content):
+    if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+    #if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        with open(jsonpath, 'a',encoding='utf-8') as f:
+            json.dump(content, f)
+            f.write('\n')
 
 def get_tensor_shape():
     if hasattr(gpc.config, "TENSOR_SHAPE"):
@@ -279,6 +286,8 @@ class PipelineScheduler(BaseScheduler):
         accum_loss=None,
         accum_moe_loss=None,
         accum_moe_z_loss=None,
+        dp_size = 1,
+        # source_DP_rank=0,
     ):
         """
         Forward step for passed-in model. If it is the first stage, the input tensor
@@ -299,7 +308,9 @@ class PipelineScheduler(BaseScheduler):
         """
         micro_batch_data = self.load_micro_batch()
         data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
-
+        # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
+        if gpc.config.DP_Transfer:
+            self.num_microbatches = gpc.config.num_microbatches_per_dp
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
             # moe is used
@@ -353,12 +364,11 @@ class PipelineScheduler(BaseScheduler):
             moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
             moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
-            busy_wait_kernel(gpc.config["SLEEP_TIME"])
+        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            busy_wait_kernel(gpc.config["SLEEP_TIME"][0])
         return output_obj, moe_loss, moe_z_loss
 
-    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None):
+    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None, dp_size=1):
         """
         Backward step through the passed-in output tensor. If it is the last stage, the
         output_obj_grad is None, otherwise it is the gradients with respect to stage's output tensor.
@@ -388,6 +398,8 @@ class PipelineScheduler(BaseScheduler):
         # Backward pass.
 
         # Only the last microbatch does syncing grad.
+        if gpc.config.DP_Transfer:
+            self.num_microbatches = gpc.config.num_microbatches_per_dp
         skip_grad_sync = self._get_current_microbatch_id(step_id) != self.num_microbatches - 1
 
         self._call_hooks("before_backward", output_obj, output_obj_grad)
@@ -429,9 +441,8 @@ class PipelineScheduler(BaseScheduler):
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
         self._call_hooks("after_backward", input_obj_grad)
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
-            busy_wait_kernel(gpc.config["SLEEP_TIME"])
+        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            busy_wait_kernel(gpc.config["SLEEP_TIME"][1])
         return input_obj_grad
 
     def _forward_only_step(self, engine, return_loss=True, return_output_label=True):
@@ -1031,8 +1042,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         self._moe_z_losses[chunk_id].append(moe_z_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
+        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return output_obj
 
@@ -1064,8 +1074,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         input_obj_grad = super()._backward_step(
             engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
         )
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
+        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad
     #This is spcial method for hetpipe

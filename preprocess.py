@@ -3,6 +3,7 @@ import json
 import os
 from enum import Enum, IntEnum
 import os
+import torch
 
 class WorkloadType(Enum):
     FORWARD = 'f'
@@ -18,6 +19,13 @@ class ModuleType(Enum):
     HET = 'Het'
     
 def busy_wait_kernel(time):
+    for _ in range(time):
+        N = 1024
+        a = torch.rand(N, N, device='cuda')
+        b = torch.rand(N, N, device='cuda')
+        # GPU矩阵乘法
+        for __ in range(25):
+            torch.matmul(a, b)
     return
 
 def interval_distance(a, b):
@@ -158,7 +166,7 @@ def order_result_mutichunk(input: str, stage_placement: list, num_microbatches:i
         pp_rank = _get_pp_rank_by_placement(stage_id, stage_placement)
         chunk_id = _get_chunk_by_stage(stage_id, stage_placement)
         workload_infor = {"workload_type":workload_type, "microbatch_id":microbatch_id%num_microbatches, "stage_id":stage_id, "chunk_id":chunk_id, \
-                               "start_time":start_time, "end_time":end_time, "source_dp_rank":int(microbatch_id/num_microbatches)}
+                               "start_time":start_time, "end_time":end_time, "source_dp_rank":int(microbatch_id/num_microbatches), "source_microbatch_id": microbatch_id}
         # pp_rank_workloads[dp_rank][pp_rank].append((workload_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
         all_rank_workloads[dp_rank][pp_rank].append(workload_infor)
     
@@ -244,7 +252,7 @@ def generate_comm_martix_(comm_graph, comp_graph, dp_size, pp_size):
             # jsonpath = dir+"pp"+str(pp_rank)+"_ops.json"
             for workload_index, comms in enumerate(ops):
                 for comm in comms:
-                    op_type, _, match_dp_rank, match_pp_rank, stage_id, chunk_id, microbatch_id, source_dp_rank, match_workload_index = comm
+                    op_type, _, match_dp_rank, match_pp_rank, stage_id, chunk_id, microbatch_id, source_dp_rank, match_workload_index,source_microbatch_id  = comm
                     match_device_id = match_dp_rank*pp_size+match_pp_rank
                     comm_graph_martix[source_device_id][match_device_id].append((op_type)) 
             #     write_json(jsonpath,{"operation":op_type, "local_rank":pp_rank, "workload_index":workload_index, "match_rank":match_pp_rank,"match_workload_index":match_workload_index, "source_stage_id":stage_id,"microbatch_id":microbatch_id}) 
@@ -269,8 +277,8 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
             for pp_rank, workloads in enumerate(comp_graph_):
                 for current_workload_index, current_workload in enumerate(workloads):
                     if not processed_comp_graph[dp_rank][pp_rank][current_workload_index]:
-                        workload_type, microbatch_id, stage_id, chunk_id, end_time, source_dp_rank = current_workload["workload_type"], current_workload["microbatch_id"], \
-                            current_workload["stage_id"], current_workload["chunk_id"], current_workload["end_time"], current_workload["source_dp_rank"]
+                        workload_type, microbatch_id, stage_id, chunk_id, end_time, source_dp_rank, source_microbatch_id = current_workload["workload_type"], current_workload["microbatch_id"], \
+                            current_workload["stage_id"], current_workload["chunk_id"], current_workload["end_time"], current_workload["source_dp_rank"], current_workload["source_microbatch_id"]
                         if time >= end_time:
                             processed_comp_graph[dp_rank][pp_rank][current_workload_index] = True
                             dst_pp_rank = None
@@ -318,11 +326,12 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
 
                                 if recv_dp_rank is not None and dst_pp_rank is not None:
                                     recv_workloads=comp_graph[recv_dp_rank][dst_pp_rank]
-
                                     if workload_type == WorkloadType.FORWARD.value:
-                                        recv_end_index = search_by_infor(recv_workloads,workload_type,microbatch_id,stage_id+1,source_dp_rank)+1
+                                        recv_end_index = search_by_infor(recv_workloads,workload_type,microbatch_id,stage_id+1,source_dp_rank)
                                     elif workload_type == WorkloadType.BACKWARD.value:
-                                        recv_end_index = search_by_infor(recv_workloads,workload_type,microbatch_id,stage_id-1,source_dp_rank)+1
+                                        recv_end_index = search_by_infor(recv_workloads,workload_type,microbatch_id,stage_id-1,source_dp_rank)
+                                    assert recv_end_index is not None , print(current_workload)
+                                    recv_end_index += 1
                                     #确定接收的pp_rank有哪些接收区间
                                     recv_start_index = search_by_time(recv_workloads, end_time) #因为是要检索comp 前的区间
                                     #确定发送的pp_rank有哪些
@@ -363,12 +372,12 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                                     # comm_graph[dst_pp_rank][recv_location]['R'].append((op, _, pp_rank, stage_id, chunk_id, microbatch_id,_))               
                                     # comm_graph[dst_pp_rank][recv_location][WorkloadType.BACKWARD.value].append((op, _, pp_rank, stage_id, chunk_id, microbatch_id,_))
                                     if workload_type == WorkloadType.FORWARD.value:
-                                        comm_graph[recv_dp_rank][dst_pp_rank][recv_location].append(('RA', end_time, dp_rank, pp_rank, stage_id, chunk_id, microbatch_id, source_dp_rank, send_location+1))
-                                        comm_graph[dp_rank][pp_rank][send_location+1].append(('SA', end_time,recv_dp_rank, dst_pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank, recv_location))   
+                                        comm_graph[recv_dp_rank][dst_pp_rank][recv_location].append(('RA', end_time, dp_rank, pp_rank, stage_id, chunk_id, microbatch_id, source_dp_rank, source_microbatch_id, send_location+1))
+                                        comm_graph[dp_rank][pp_rank][send_location+1].append(('SA', end_time,recv_dp_rank, dst_pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank, source_microbatch_id, recv_location))   
                                     # comm_graph[pp_rank][send_location]['S'].append((op, _, dst_pp_rank, stage_id, chunk_id, microbatch_id,_))
                                     elif workload_type == WorkloadType.BACKWARD.value:
-                                        comm_graph[recv_dp_rank][dst_pp_rank][recv_location].append(('RG', end_time, dp_rank, pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank, send_location+1))
-                                        comm_graph[dp_rank][pp_rank][send_location+1].append(('SG', end_time, recv_dp_rank, dst_pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank, recv_location)) 
+                                        comm_graph[recv_dp_rank][dst_pp_rank][recv_location].append(('RG', end_time, dp_rank, pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank,source_microbatch_id, send_location+1))
+                                        comm_graph[dp_rank][pp_rank][send_location+1].append(('SG', end_time, recv_dp_rank, dst_pp_rank, stage_id, chunk_id, microbatch_id,source_dp_rank,source_microbatch_id, recv_location)) 
                         break
                             # recv_info = {}
                             # recv_info['recv_op'] = op
@@ -403,8 +412,8 @@ def generate_(num_microbatches=None):
     transfer_info = [[]for _ in range(dp_size)]
     source_dp_rank = 0 #straggler
     dst_dp_rank = 1 #normal
-    transfer_info[source_dp_rank].append({"microbatch_ids":[3,4,5], "stage_id":2, "dst_dp_rank":dst_dp_rank})
-
+    # transfer_info[source_dp_rank].append({"microbatch_ids":[3,4,5], "stage_id":2, "dst_dp_rank":dst_dp_rank})
+    transfer_info[source_dp_rank].append({"microbatch_ids":[2,4,7], "stage_id":2, "dst_dp_rank":dst_dp_rank})
     if not num_microbatches:
         num_microbatches = pp_size*2
     send_immediately = False
@@ -422,11 +431,19 @@ def generate_(num_microbatches=None):
     #            'unified_scheduler':unified_scheduler, 'comm_graph':comm_graph, 'recomp_stages':recomp_stages}
     # with open(file_path+'/runtime.json',WorkloadType.WEIGHT.value) as file:
     #     json.dump(result,file)
-    # print(f'num_microbatches:{num_microbatches}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
+    # print(f'num_microbatches:{num_microbatches*dp_size}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
     #       recomp_stages:{recomp_stages}')
-    return num_microbatches, pp_size, stage_placement, scheduler_type ,\
-            split_backward, unified_scheduler, comm_graph, first_stage ,\
-            last_stage, pp_ranks_containing_last_stage, recomp_stages, dp_size
+    DP_Transfer = True
+    if DP_Transfer:
+        return num_microbatches*dp_size, pp_size, stage_placement, scheduler_type ,\
+                split_backward, unified_scheduler, comm_graph, first_stage ,\
+                last_stage, pp_ranks_containing_last_stage, recomp_stages, dp_size, \
+                DP_Transfer, num_microbatches
+    else:
+        return num_microbatches, pp_size, stage_placement, scheduler_type ,\
+                split_backward, unified_scheduler, comm_graph, first_stage ,\
+                last_stage, pp_ranks_containing_last_stage, recomp_stages, dp_size, \
+                DP_Transfer, num_microbatches
 
 if __name__ == '__main__':
     generate_()

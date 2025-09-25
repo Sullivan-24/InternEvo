@@ -57,7 +57,9 @@ def initialize_trainer(
     Returns:
         Tuple (engine, scheduler)
     """
-
+    assert gpc.config.FALCON is not None
+    if gpc.config.FALCON:
+        gpc.config.data.micro_num = gpc.config.num_microbatches_all_dp[gpc.get_local_rank(parallel_mode=ParallelMode.DATA)]
     if isinstance(model, nn.Module):
         # first sync model across dp ranks
         model.to(get_current_device())

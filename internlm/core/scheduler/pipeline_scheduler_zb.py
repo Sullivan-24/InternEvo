@@ -42,10 +42,10 @@ class WeightGradStore:
     temp = []
 
     @classmethod
-    def set_weight_grad_queue(cls, dp_size, num_chunks, num_microbatches):
-        cls._weight_grad_queue = [[
+    def set_weight_grad_queue(cls, num_chunks, num_microbatches):
+        cls._weight_grad_queue = [
         [[] for _ in range(num_microbatches)] 
-        for _ in range(num_chunks)] for _ in range(dp_size)]
+        for _ in range(num_chunks)] 
 
     @classmethod
     def set_pp_mode(cls, mode):
@@ -67,26 +67,26 @@ class WeightGradStore:
         cls._cache.append((weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args))
 
     @classmethod
-    def flush(cls, dp_rank=0, chunk_id=0, microbatch_id=0):
+    def flush(cls, chunk_id=0, microbatch_id=0):
         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
             return
         # Collect all stored computations during backward as a W for each micro batch.
         if isinstance(cls._weight_grad_queue, queue.Queue):
             cls._weight_grad_queue.put(cls._cache)
         else:
-            cls._weight_grad_queue[dp_rank][chunk_id][microbatch_id].append(cls._cache)
+            cls._weight_grad_queue[chunk_id][microbatch_id].append(cls._cache)
         cls._cache = []
 
     @classmethod
-    def pop(cls, dp_rank=0, chunk_id=0, microbatch_id=0):
+    def pop(cls, chunk_id=0, microbatch_id=0):
         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
             return
         if isinstance(cls._weight_grad_queue, queue.Queue):
             assert cls._weight_grad_queue.qsize() > 0
             stored_w_grad_computation = cls._weight_grad_queue.get()
         else:
-            assert len(cls._weight_grad_queue[dp_rank][chunk_id][microbatch_id]) > 0
-            stored_w_grad_computation = cls._weight_grad_queue[dp_rank][chunk_id][microbatch_id].pop(0)
+            assert len(cls._weight_grad_queue[chunk_id][microbatch_id]) > 0
+            stored_w_grad_computation = cls._weight_grad_queue[chunk_id][microbatch_id].pop(0)
         # Run computation for a single W.
         for weight, bias, input_tensor, grad_output, has_d_bias, grad_compute_func, *args in stored_w_grad_computation:
             assert weight.requires_grad
@@ -591,9 +591,9 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
                 input_obj_grad = []
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
-            busy_wait_kernel(gpc.config["SLEEP_TIME"])
+        # if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+        #     import time
+        #     busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad
 
     def _schedule_backward(self, engine, chunk_id, microbatch_id=0):

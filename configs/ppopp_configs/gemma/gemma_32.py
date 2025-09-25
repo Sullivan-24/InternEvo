@@ -17,12 +17,24 @@ MICRO_NUM = PP_SIZE * 2
 PP_MODE = "unified"
 CHUNK_NUM = 1
 
+FALCON = False
+num_microbatches_all_dp = [6,10]
+
+HETER=True
+HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
+HETER_DEVICE[0][2] = True
+#2k: 1f1b [30,50,0] , zbh1 [30,42,8], upp onechunk
+SLEEP_TIME = [30,50,0]#f\b\w ms
+
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages, dp_size = generate_()
+    last_stage, Devices_containing_last_stage, recomp_stages, dp_size, \
+    DP_Transfer,num_microbatches_per_dp = generate_()
     assert dp_size == DP_SIZE
     assert pp_size == PP_SIZE
+    MICRO_NUM = num_microbatches
+
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
