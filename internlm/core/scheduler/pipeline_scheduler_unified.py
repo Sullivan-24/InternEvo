@@ -48,7 +48,6 @@ def write_debug_file(file_path, content, new_line=True):
             f.flush()
             os.fsync(f.fileno())
 
-
 def write_json(jsonpath, content):
     if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
     #if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -87,6 +86,7 @@ def debug_print(input_rank, msg: str) -> None:
         return
     if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0 and gpc.get_local_rank(ParallelMode.PIPELINE) in (input_rank):
         print(f"# rank {rank}: {msg}, flush=True")
+
 class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
     """
     A helper schedule class for pipeline parallelism running environment.
@@ -161,7 +161,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
     def do_comms(self,comm_list):
         for ops in comm_list:
-            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, new_microbatch_id, source_dp_rank, microbatch_id, _ = ops
+            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, microbatch_id, source_dp_rank, _ = ops
             match_global_rank = None
             if match_dp_rank == self.local_dp_rank:
                 match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)
@@ -259,8 +259,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
         for s in range(num_workloads):
             workload = workloads[s]
-            workload_type, new_microbatch_id, stage_id, source_dp_rank, microbatch_id = workload["workload_type"], \
-                workload["microbatch_id"], workload["stage_id"], workload["source_dp_rank"], workload["source_microbatch_id"]
+            workload_type, microbatch_id, stage_id, source_dp_rank,  = workload["workload_type"], \
+                workload["microbatch_id"], workload["stage_id"], workload["source_dp_rank"]
             before_comms = comm_list[s]
             self.workload_id = s
             if len(before_comms)>0:

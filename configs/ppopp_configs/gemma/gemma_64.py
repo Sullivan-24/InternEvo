@@ -10,19 +10,20 @@ NUM_KV_ATTENTION_HEAD = 16
 HEAD_DIM = 256
 MLP_RATIO = 8
 NUM_LAYER = 64
-PP_SIZE = 8
-TP_SIZE = 2
-MICRO_NUM = PP_SIZE * 4
-PP_MODE = "unified"
+
 CHUNK_NUM = 1
 
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages = generate_()
+    last_stage, Devices_containing_last_stage, recomp_stages, dp_size, \
+    DP_Transfer,num_microbatches_per_dp = generate_()
+    assert dp_size == DP_SIZE
+    assert pp_size == PP_SIZE
+    MICRO_NUM = num_microbatches
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER}")
 MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -200,7 +201,7 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=-1),
+    zero1=dict(size=DP_SIZE),
     tensor=dict(size=TP_SIZE, mode="fsp"),
     pipeline=dict(size=PP_SIZE, interleaved_overlap=True, mode=PP_MODE),
     weight=dict(size=1, overlap=True),

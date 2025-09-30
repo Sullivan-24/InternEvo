@@ -694,7 +694,7 @@ def load_new_batch(train_dl: DataLoader, train_iter: Iterable, train_state: Trai
 
 def initialize_llm_profile(profiling: bool = False, start_time: str = None):
     """Initialize and return the profiler context manager instance."""
-    if profiling and ((gpc.config.HETER) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0)):
+    if profiling and ((gpc.config.profile_all_rank) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0)):
     # if profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
         schedule_config = {"wait": 1, "warmup": 1, "active": 1, "repeat": 1, "skip_first": 3}
         file_name = (

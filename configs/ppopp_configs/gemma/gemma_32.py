@@ -20,7 +20,7 @@ CHUNK_NUM = 1
 FALCON = False
 num_microbatches_all_dp = [6,10]
 
-HETER=True
+HETER=False
 HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
 HETER_DEVICE[0][2] = True
 #2k: 1f1b [30,50,0] , zbh1 [30,42,8], upp onechunk

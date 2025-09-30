@@ -400,7 +400,7 @@ class PipelineScheduler(BaseScheduler):
         # Only the last microbatch does syncing grad.
         if gpc.config.DP_Transfer:
             self.num_microbatches = gpc.config.num_microbatches_per_dp
-        skip_grad_sync = self._get_current_microbatch_id(step_id) != self.num_microbatches - 1
+        skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
 
         self._call_hooks("before_backward", output_obj, output_obj_grad)
         with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
