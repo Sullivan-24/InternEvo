@@ -1,5 +1,5 @@
 from configs.ppopp_configs.base import *
-JOB_NAME = "7b_llama2_train"
+JOB_NAME = "14b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -8,7 +8,7 @@ HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
-NUM_LAYER = 32
+NUM_LAYER = 64
 CHUNK_NUM = 1
 
 if SCHEDULE == 0:

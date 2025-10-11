@@ -403,28 +403,32 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
     # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     return comm_graph
 
-def generate_(num_microbatches=None):
+def generate_():
     stage_placement = ""
     input_str=""
-    file_path = 'InternEvo'
+    file_path = 'InternEvo/executor_config'
+    os.makedirs(file_path,exist_ok=True)
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    dp_size=2 
+    dp_size=2
     pp_size = len(stage_placement)
 
     transfer_info = None 
     with open(file_path+'/transfer_info.txt', 'r', encoding='utf-8') as file:
         transfer_info = file.read()
     transfer_info = ast.literal_eval(transfer_info)
-
-    if not num_microbatches:
-        num_microbatches = pp_size*2
+    DP_Transfer = False
+    for index,info in enumerate(transfer_info):
+        if len(info) > 0:
+            DP_Transfer = True
+            break
+    num_microbatches = pp_size*2
     send_immediately = False
     unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
-    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size,transfer_info)
+    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info)
     scheduler_type = judge_scheduler_type(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
@@ -439,7 +443,6 @@ def generate_(num_microbatches=None):
     #     json.dump(result,file)
     # print(f'num_microbatches:{num_microbatches*dp_size}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
     #       recomp_stages:{recomp_stages}')
-    DP_Transfer = True
     if DP_Transfer:
         return num_microbatches*dp_size, pp_size, stage_placement, scheduler_type ,\
                 split_backward, unified_scheduler, comm_graph, first_stage ,\

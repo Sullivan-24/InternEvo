@@ -2,12 +2,45 @@ from configs.ppopp_configs.base import *
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
-
-VOCAB_SIZE = 32000
+# {
+#   "architectures": [
+#     "LlamaForCausalLM"
+#   ],
+#   "attention_bias": false,
+#   "attention_dropout": 0.0,
+#   "bos_token_id": 128000,
+#   "eos_token_id": 128001,
+#   "hidden_act": "silu",
+#   "hidden_size": 4096,
+#   "initializer_range": 0.02,
+#   "intermediate_size": 14336,
+#   "max_position_embeddings": 131072,
+#   "mlp_bias": false,
+#   "model_type": "llama",
+#   "num_attention_heads": 32,
+#   "num_hidden_layers": 32,
+#   "num_key_value_heads": 8,
+#   "pretraining_tp": 1,
+#   "rms_norm_eps": 1e-05,
+#   "rope_scaling": {
+#     "factor": 8.0,
+#     "low_freq_factor": 1.0,
+#     "high_freq_factor": 4.0,
+#     "original_max_position_embeddings": 8192,
+#     "rope_type": "llama3"
+#   },
+#   "rope_theta": 500000.0,
+#   "tie_word_embeddings": false,
+#   "torch_dtype": "bfloat16",
+#   "transformers_version": "4.43.0.dev0",
+#   "use_cache": true,
+#   "vocab_size": 128256
+# }
+VOCAB_SIZE = 128256
 HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 14336/HIDDEN_SIZE
 NUM_LAYER = 32
 CHUNK_NUM = 1
 
@@ -102,7 +135,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=False,
+    overlap_sync_grad=OVERLAP_SYNC_GRAD,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,

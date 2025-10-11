@@ -114,7 +114,8 @@ class WeightGradStore:
                 if has_d_bias:
                     for hook in cls._hooks[bias]:
                         hook()
-
+        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            busy_wait_kernel(gpc.config["SLEEP_TIME"][2])       
     @classmethod
     def register_hook(cls, param, hooks):
         cls._hooks[param] = hooks

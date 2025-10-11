@@ -11,26 +11,31 @@ profile_fwd_bwd = True
 DP_Transfer = False
 layerwise = False
 
-SEQ_LEN = 1024*2
+SEQ_LEN = 2048
 SCHEDULE = 0
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 
 DP_SIZE = 2
-PP_SIZE = 8
+PP_SIZE = 4
 TP_SIZE = 1
 
 MICRO_NUM = PP_SIZE * 2
-HETER=True
+HETER= True
 HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
 HETER_DEVICE[0][2] = True
-HETER_DEVICE[1][5] = True
+# HETER_DEVICE[1][2] = True
 #2k: 1f1b [30,50,0] , zbh1 [30,42,8], upp onechunk
-SLEEP_TIME = [30,50,0]#[40,80,0]#f\b\w ms
+SLEEP_TIME = [30,48,12]#[30,60,0]#[40,80,0]#f\b\w ms
+
+# FAILURE = True
+# FAILURE_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
+# FAILURE_DEVICE[1][1] = 
+DP_Transfer = False
 
 FALCON = False
-num_microbatches_all_dp = [16,16]
+num_microbatches_all_dp = [8,8]
 
 HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble

@@ -144,8 +144,12 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.first_stage = first_stage
         self.unified_scheduler = unified_scheduler
         self.comm_graph = comm_graph
-        self.comms = comm_graph[self.local_dp_rank][self.local_pp_rank]
-        self.workloads = unified_scheduler[self.local_dp_rank][self.local_pp_rank]
+        if gpc.config.DP_Transfer:
+            self.comms = comm_graph[self.local_dp_rank][self.local_pp_rank]
+            self.workloads = unified_scheduler[self.local_dp_rank][self.local_pp_rank]
+        else:
+            self.comms = comm_graph[0][self.local_pp_rank]
+            self.workloads = unified_scheduler[0][self.local_pp_rank]
         self.input_obj_shape = self.tensor_shape
         self.output_obj_shape = None
         self.recv_backward_buffer = [None for __ in range(self.num_microbatches)]
@@ -296,9 +300,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 self.send_forward_result[microbatch_id] = output_obj
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
+                write_json(jsonpath, json_content)
                 #end_time = time.perf_counter()
-
                 
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
@@ -347,7 +350,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
+                write_json(jsonpath, json_content)
                 for microbatch in range(self.num_microbatches):
                     if self.recv_forward_buffer[microbatch] is not None and self.recv_forward_result[microbatch] is None:
                         recv_f_tensor, _ = self.recv_forward_buffer[microbatch].wait_and_receive()
@@ -364,7 +367,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
+                write_json(jsonpath, json_content)
             if s == len(workloads)-1:             
                 after_comms = comm_list[s+1]
                 if len(after_comms)>0:

@@ -1,27 +1,28 @@
-
-from preprocess import generate_
-
-import json
-num_microbatches, pp_size, stage_placement, scheduler_type ,\
-split_backward, unified_scheduler, comm_graph, first_stage ,\
-last_stage, Devices_containing_last_stage = generate_()
-layerwise = False
-num_chunks = 2
-pp_mode = "unified"
-
+from configs.ppopp_configs.base import *
 JOB_NAME = "70b_llama3_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
 VOCAB_SIZE = 128256
-SEQ_LEN = 4096
 HIDDEN_SIZE = 8192
 NUM_ATTENTION_HEAD = 64
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 48
-if pp_mode == "unified" and layerwise:
-    num_chunks = NUM_LAYER//pp_size #layerwise is only for Interle
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 3.5
+NUM_LAYER = 80
+CHUNK_NUM = 1
+
+if SCHEDULE == 0:
+    num_microbatches, pp_size, stage_placement, scheduler_type, \
+    split_backward, unified_scheduler, comm_graph, first_stage, \
+    last_stage, Devices_containing_last_stage, recomp_stages, dp_size, \
+    DP_Transfer,num_microbatches_per_dp = generate_()
+    assert dp_size == DP_SIZE
+    assert pp_size == PP_SIZE
+    MICRO_NUM = num_microbatches
+
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER}")
+
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -56,7 +57,7 @@ VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=num_microbatches,
+    micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -83,11 +84,11 @@ data = dict(
 grad_scaler = dict(
     fp16=dict(
         # the initial loss scale, defaults to 2**16
-        initial_scale=2**16,
+        initial_scale=2**14,
         # the minimum loss scale, defaults to None
         min_scale=1,
         # the number of steps to increase loss scale when no overflow occurs
-        growth_interval=1000,
+        growth_interval=2000,
     ),
     # the multiplication factor for increasing loss scale, defaults to 2
     growth_factor=2,
@@ -106,7 +107,7 @@ hybrid_zero_optimizer = dict(
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
     # grad clipping
-    clip_grad_norm=1.0,
+    clip_grad_norm=2.0,
 )
 
 loss = dict(
@@ -139,7 +140,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=num_chunks,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -152,7 +153,7 @@ model = dict(
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-5,
+    layer_norm_epsilon=1e-4,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
@@ -192,10 +193,9 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=1),
-    tensor=dict(size=2, mode="fsp"),
-    #pipeline=dict(size=8, interleaved_overlap=True),
-    pipeline=dict(size=pp_size, interleaved_overlap=True, mode=pp_mode),
+    zero1=dict(size=DP_SIZE),
+    tensor=dict(size=TP_SIZE, mode="mtp"),
+    pipeline=dict(size=PP_SIZE, mode=PP_MODE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 
@@ -218,4 +218,3 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
-

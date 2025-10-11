@@ -239,7 +239,7 @@ def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num
         assert len(parts[0]) == len(stage_placement[0])
     elif num_chunks == 1:
         partition = []
-        with open("InternEvo/partition.txt", "r") as f:
+        with open("InternEvo/executor_config/partition.txt", "r") as f:
             content = f.read().strip()
             partition = eval(content)
         assert partition is not None, "Partition not set."
