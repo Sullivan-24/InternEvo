@@ -901,10 +901,12 @@ class HybridZeroOptimizer(BaseOptimizer):
             # grank = gpc.get_ranks_in_group(group_type)[rank]  # need to convert to the global rank
             # assert grank == rank, f"{grank} == {rank}"
             g_rank = gpc.get_ranks_in_group(self._broadcast_parallel_mode[group_id])[rank]
+            if g_rank in gpc.config.FAILURE_GLOBAL_RANKS:
+                continue
             handle = dist.broadcast(
                 fp16_param,
                 src=g_rank,
-                group=gpc.get_group(self._broadcast_parallel_mode[group_id]),
+                group=gpc.get_sub_group(self._broadcast_parallel_mode[group_id]),
                 async_op=True,
             )
 

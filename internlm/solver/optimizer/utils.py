@@ -116,7 +116,7 @@ def reduce_tensor(
 
     # world_size = gpc.get_world_size(parallel_mode)
     # tensor.div_(world_size)
-    group = gpc.get_group(parallel_mode)
+    group = gpc.get_sub_group(parallel_mode)
 
     # if rank is None, all reduce will be used
     # else, reduce is used
@@ -294,20 +294,20 @@ def compute_norm(gradients, parameters, norm_type=2, zero_mode=ParallelMode.ZERO
         # Take max across all model-parallel GPUs.
         if is_tensor_zero_parallel_parameter(parameters[0]):
             if gpc.is_using_parallel_mode(ParallelMode.TENSOR):
-                dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.TENSOR))
+                dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=gpc.get_sub_group(ParallelMode.TENSOR))
         else:
             if gpc.is_using_parallel_mode(weight_parallel_mode):
                 dist.all_reduce(
                     total_norm_cuda,
                     op=dist.ReduceOp.MAX,
-                    group=gpc.get_group(weight_parallel_mode),
+                    group=gpc.get_sub_group(weight_parallel_mode),
                 )
 
         if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
             dist.all_reduce(
                 total_norm_cuda,
                 op=dist.ReduceOp.MAX,
-                group=gpc.get_group(ParallelMode.PIPELINE),
+                group=gpc.get_sub_group(ParallelMode.PIPELINE),
             )
 
         total_norm = total_norm_cuda[0].item()
@@ -335,25 +335,25 @@ def compute_norm(gradients, parameters, norm_type=2, zero_mode=ParallelMode.ZERO
         """
         if is_tensor_zero_parallel_parameter(parameters[0]):
             if gpc.is_using_parallel_mode(ParallelMode.TENSOR):
-                dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_sub_group(ParallelMode.TENSOR))
         else:
             if gpc.is_using_parallel_mode(weight_parallel_mode):
                 dist.all_reduce(
                     total_norm,
                     op=dist.ReduceOp.SUM,
-                    group=gpc.get_group(weight_parallel_mode),
+                    group=gpc.get_sub_group(weight_parallel_mode),
                 )
 
         if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
             dist.all_reduce(
                 total_norm,
                 op=dist.ReduceOp.SUM,
-                group=gpc.get_group(ParallelMode.PIPELINE),
+                group=gpc.get_sub_group(ParallelMode.PIPELINE),
             )
 
         # This is because we use zero1, so we need to use this reduction.
         if gpc.is_using_parallel_mode(zero_mode):
-            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(zero_mode))
+            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_sub_group(zero_mode))
 
         if torch.is_tensor(total_norm):
             total_norm = total_norm.item()
@@ -361,7 +361,7 @@ def compute_norm(gradients, parameters, norm_type=2, zero_mode=ParallelMode.ZERO
     # Need to allreduce(avg) the norms across different ranks because moe params will not be synced during allreduce
     # model and zero have been reduced!!!
     if zero_mode == ParallelMode.EXPERT_DATA:
-        pg = gpc.get_group(ParallelMode.EXPERT)
+        pg = gpc.get_sub_group(ParallelMode.EXPERT)
         scaled_norm = total_norm * 1.0 / float(gpc.get_world_size(ParallelMode.EXPERT))
         scaled_norm_tensor = torch.tensor(scaled_norm, device=get_current_device(), dtype=torch.float)
         dist.all_reduce(scaled_norm_tensor, group=pg)

@@ -2,6 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 # adopted from https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context
+import os
+import json
 
 import inspect
 import random
@@ -192,6 +194,13 @@ class ParallelContext(metaclass=SingletonMeta):
     @property
     def expert_parallel_group_names(self):
         return self._expert_parallel_group_names
+    
+    def write_debug_print(self, debug_path, content):
+        debug_path = os.path.join(debug_path, f"global_rank_{self.get_global_rank()}.json")
+        #if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        with open(debug_path, 'a',encoding='utf-8') as f:
+            json.dump(content, f,indent=4)
+            f.write('\n')
 
     def load_config(self, config: Union[dict, str]):
         """Loads the configuration from either a dict or a file.
@@ -409,6 +418,17 @@ class ParallelContext(metaclass=SingletonMeta):
         self._check_parallel_mode(parallel_mode)
         return self._world_sizes.get(parallel_mode, 1)
 
+    def get_sub_group(self, parallel_mode: ParallelMode):
+        self._check_parallel_mode(parallel_mode)
+        # return self._groups[parallel_mode]
+        sub_parallel_mode_value = f"{parallel_mode.value}_sub"
+        if ParallelMode(sub_parallel_mode_value) in self._groups.keys():
+            # print(f"global_rank:{self.get_global_rank()}, ranks_in_sub_group:{self._ranks_in_group[ParallelMode(sub_parallel_mode_value)]}, mode:{sub_parallel_mode_value}")
+            return self._groups[ParallelMode(f"{parallel_mode.value}_sub")]
+        else:
+            # print(f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
+            return self._groups[parallel_mode]
+
     def get_group(self, parallel_mode: ParallelMode):
         """Returns the group of the current device for `parallel_mode`.
 
@@ -420,6 +440,24 @@ class ParallelContext(metaclass=SingletonMeta):
         """
         self._check_parallel_mode(parallel_mode)
         return self._groups[parallel_mode]
+
+    def get_ranks_in_sub_group(self, parallel_mode: ParallelMode):
+        """Returns the rank of the current device for `parallel_mode` in the group.
+
+        Args:
+            parallel_mode: The chosen parallel mode.
+
+        Returns:
+            int: The rank of the current device for `parallel_mode` in the group.
+        """
+        self._check_parallel_mode(parallel_mode)
+        sub_parallel_mode_value = f"{parallel_mode.value}_sub"
+        if ParallelMode(sub_parallel_mode_value) in self._groups.keys():
+            # print(f"global_rank:{self.get_global_rank()}, ranks_in_sub_group:{self._ranks_in_group[ParallelMode(sub_parallel_mode_value)]}, mode:{sub_parallel_mode_value}")
+            return self._ranks_in_group[ParallelMode(f"{parallel_mode.value}_sub")]
+        else:
+            # print(f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
+            return self._ranks_in_group[parallel_mode]
 
     def get_ranks_in_group(self, parallel_mode: ParallelMode):
         """Returns the rank of the current device for `parallel_mode` in the group.
@@ -726,7 +764,8 @@ class ParallelContext(metaclass=SingletonMeta):
         is_fsdp = False if isinstance(parallel_config.zero1, int) else parallel_config.zero1.get("fsdp", False)
         parallel_strategy = "fsdp" if is_fsdp else tp_mode
         group_configs = generate_parallel_group_configs(parallel_strategy, parallel_sizes, enable_moe)
-        group_results = create_parallel_process_groups(world_size, rank, group_configs, with_cpu_group=False)
+        group_results = create_parallel_process_groups(world_size, rank, group_configs, with_cpu_group=False, \
+                                                       failure_global_ranks=self.config.get("FAILURE_GLOBAL_RANKS", []))
 
         # process group for network test.
         group_results.append(
@@ -746,6 +785,18 @@ class ParallelContext(metaclass=SingletonMeta):
         # register process groups
         for result in group_results:
             self._register_dist(*result)
+
+        debuge_path = f"debug/"
+        os.makedirs(debuge_path, exist_ok=True)
+        debug_list = []
+        for parallel_mode in self._groups.keys():
+            parallel_mode_infor = dict()
+            parallel_mode_infor["global_rank"] = self.get_global_rank()
+            parallel_mode_infor["ranks_in_group"] = self._ranks_in_group[parallel_mode]
+            parallel_mode_infor["mode"] = parallel_mode.value
+            debug_list.append(parallel_mode_infor)
+            # self.write_debug_print(debug_path=f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
+        self.write_debug_print(debug_path=debuge_path,content=debug_list)
 
     def is_initialized(self, parallel_mode: ParallelMode):
         """Returns a boolean value indicating whether `parallel_mode` is initialized

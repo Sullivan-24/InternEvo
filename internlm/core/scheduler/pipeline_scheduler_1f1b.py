@@ -286,8 +286,7 @@ class PipelineScheduler(BaseScheduler):
         accum_loss=None,
         accum_moe_loss=None,
         accum_moe_z_loss=None,
-        dp_size = 1,
-        # source_DP_rank=0,
+        microbatch_id = None,
     ):
         """
         Forward step for passed-in model. If it is the first stage, the input tensor
@@ -306,66 +305,70 @@ class PipelineScheduler(BaseScheduler):
             Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: output or the loss value of the current
                 pipeline stage.
         """
-        micro_batch_data = self.load_micro_batch()
-        data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
-        # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
-        if gpc.config.DP_Transfer:
-            self.num_microbatches = gpc.config.num_microbatches_per_dp
-        self._call_hooks("before_forward", data)
-        if hasattr(gpc.config.model, "num_experts"):
-            # moe is used
-            output_obj, moe_losses, moe_z_losses = self._call_engine(engine.model, data)
-        else:
-            output_obj = self._call_engine(engine.model, data)
-        self._call_hooks("after_forward", output_obj)
-
-        if gpc.is_last_rank(ParallelMode.PIPELINE):
-            self._call_hooks("post_helper_func", output_obj, label)
-            if return_output_label:
-                return_tensors.append((output_obj, label))
-
-            if accum_loss is not None:
-                self._call_hooks("before_criterion", output_obj, label)
-                loss = self._call_engine_criterion(engine, output_obj, label)
-                self._call_hooks("after_criterion", loss)
-
-                loss_reduced = loss / self.num_microbatches
-                accum_loss.add_(loss_reduced.detach())
-                output_obj = loss_reduced
-
-        if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
-            if len(moe_z_losses) > 0:
-                moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+        with torch.profiler.record_function(f"SCH-forward_step-{microbatch_id}"):
+            micro_batch_data = self.load_micro_batch()
+            data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
+            # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
+            if gpc.config.DP_Transfer:
+                self.num_microbatches = gpc.config.num_microbatches_per_dp
+            self._call_hooks("before_forward", data)
+            if hasattr(gpc.config.model, "num_experts"):
+                # moe is used
+                output_obj, moe_losses, moe_z_losses = self._call_engine(engine.model, data)
             else:
+                output_obj = self._call_engine(engine.model, data)
+            self._call_hooks("after_forward", output_obj)
+
+            if gpc.is_last_rank(ParallelMode.PIPELINE):
+                self._call_hooks("post_helper_func", output_obj, label)
+                if return_output_label:
+                    if getattr(gpc.config.parallel["pipeline"], "mode", "1F1B").upper() == 'UNIFIED':
+                        return_tensors[microbatch_id] = (output_obj, label)
+                    else:
+                        return_tensors.append((output_obj, label))
+
+                if accum_loss is not None:
+                    self._call_hooks("before_criterion", output_obj, label)
+                    loss = self._call_engine_criterion(engine, output_obj, label)
+                    self._call_hooks("after_criterion", loss)
+
+                    loss_reduced = loss / self.num_microbatches
+                    accum_loss.add_(loss_reduced.detach())
+                    output_obj = loss_reduced
+
+            if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
+                moe_loss = sum(moe_losses) * gpc.config.loss.moe_loss_coeff
+                if len(moe_z_losses) > 0:
+                    moe_z_loss = sum(moe_z_losses) * gpc.config.loss.moe_z_loss_coeff
+                else:
+                    moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
+                # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
+                # so we need to do allreduce
+                if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+                    all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
+                    dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+                    all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                    moe_loss = all_moe_losses[0]
+                    moe_z_loss = all_moe_losses[1]
+
+                moe_loss /= self.num_microbatches
+                moe_z_loss /= self.num_microbatches
+                if accum_moe_loss is None:
+                    accum_moe_loss = safe_detach(moe_loss)
+                else:
+                    accum_moe_loss.add_(safe_detach(moe_loss))
+
+                if accum_moe_z_loss is None:
+                    accum_moe_z_loss = safe_detach(moe_z_loss)
+                else:
+                    accum_moe_z_loss.add_(safe_detach(moe_z_loss))
+
+            else:
+                moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
                 moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
-            # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
-            # so we need to do allreduce
-            if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
-                all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
-                dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
-                all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
-                moe_loss = all_moe_losses[0]
-                moe_z_loss = all_moe_losses[1]
 
-            moe_loss /= self.num_microbatches
-            moe_z_loss /= self.num_microbatches
-            if accum_moe_loss is None:
-                accum_moe_loss = safe_detach(moe_loss)
-            else:
-                accum_moe_loss.add_(safe_detach(moe_loss))
-
-            if accum_moe_z_loss is None:
-                accum_moe_z_loss = safe_detach(moe_z_loss)
-            else:
-                accum_moe_z_loss.add_(safe_detach(moe_z_loss))
-
-        else:
-            moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
-            moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
-
-        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
-            busy_wait_kernel(gpc.config["SLEEP_TIME"][0])
+            if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+                busy_wait_kernel(gpc.config["SLEEP_TIME"][0])
         return output_obj, moe_loss, moe_z_loss
 
     def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None, dp_size=1):
@@ -385,64 +388,64 @@ class PipelineScheduler(BaseScheduler):
         Returns:
             Union[torch.Tensor, List[torch.Tensor]]: Gradient of input tensor.
         """
-
-        # Retain the grad on the input_obj.
-        if input_obj is not None:
-            if isinstance(input_obj, torch.Tensor):
-                input_obj.retain_grad()
-            else:
-                for in_tensor in input_obj:
-                    if in_tensor is not None:
-                        in_tensor.retain_grad()
-
-        # Backward pass.
-
-        # Only the last microbatch does syncing grad.
-        if gpc.config.DP_Transfer:
-            self.num_microbatches = gpc.config.num_microbatches_per_dp
-        skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
-
-        self._call_hooks("before_backward", output_obj, output_obj_grad)
-        with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
-            if moe_loss is None or to_float(moe_loss) == 0.0:
-                if output_obj_grad is None:
-                    engine.backward(output_obj)
+        with torch.profiler.record_function(f"SCH-backward_step-{step_id}"):
+            # Retain the grad on the input_obj.
+            if input_obj is not None:
+                if isinstance(input_obj, torch.Tensor):
+                    input_obj.retain_grad()
                 else:
-                    engine.backward_by_grad(output_obj, output_obj_grad)
-            elif moe_z_loss is None or to_float(moe_z_loss) == 0.0:
-                if output_obj_grad is None:
-                    engine.backward(output_obj + moe_loss)
-                else:
-                    # scale the latent loss
-                    moe_loss = moe_loss * engine.optimizer.loss_scale
-                    # we perform chain rule here by projecting the grad to the direction of
-                    # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
-                    # layer, we set it to None (will be ragarded as 1).
-                    engine.backward_by_grad([output_obj, moe_loss], [output_obj_grad, None])
-            else:
-                if output_obj_grad is None:
-                    engine.backward(output_obj + moe_loss + moe_z_loss)
-                else:
-                    # scale the latent loss
-                    moe_loss = moe_loss * engine.optimizer.loss_scale
-                    moe_z_loss = moe_z_loss * engine.optimizer.loss_scale
-                    # we perform chain rule here by projecting the grad to the direction of
-                    # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
-                    # layer, we set it to None (will be ragarded as 1).
-                    engine.backward_by_grad([output_obj, moe_loss, moe_z_loss], [output_obj_grad, None, None])
+                    for in_tensor in input_obj:
+                        if in_tensor is not None:
+                            in_tensor.retain_grad()
 
-        # Collect the grad of the input_obj.
-        input_obj_grad = None
-        if input_obj is not None:
-            if isinstance(input_obj, torch.Tensor):
-                input_obj_grad = input_obj.grad
-            else:
-                input_obj_grad = []
-                for in_tensor in input_obj:
-                    input_obj_grad.append(in_tensor.grad)
-        self._call_hooks("after_backward", input_obj_grad)
-        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
-            busy_wait_kernel(gpc.config["SLEEP_TIME"][1])
+            # Backward pass.
+
+            # Only the last microbatch does syncing grad.
+            if gpc.config.DP_Transfer:
+                self.num_microbatches = gpc.config.num_microbatches_per_dp
+            skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
+
+            self._call_hooks("before_backward", output_obj, output_obj_grad)
+            with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
+                if moe_loss is None or to_float(moe_loss) == 0.0:
+                    if output_obj_grad is None:
+                        engine.backward(output_obj)
+                    else:
+                        engine.backward_by_grad(output_obj, output_obj_grad)
+                elif moe_z_loss is None or to_float(moe_z_loss) == 0.0:
+                    if output_obj_grad is None:
+                        engine.backward(output_obj + moe_loss)
+                    else:
+                        # scale the latent loss
+                        moe_loss = moe_loss * engine.optimizer.loss_scale
+                        # we perform chain rule here by projecting the grad to the direction of
+                        # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
+                        # layer, we set it to None (will be ragarded as 1).
+                        engine.backward_by_grad([output_obj, moe_loss], [output_obj_grad, None])
+                else:
+                    if output_obj_grad is None:
+                        engine.backward(output_obj + moe_loss + moe_z_loss)
+                    else:
+                        # scale the latent loss
+                        moe_loss = moe_loss * engine.optimizer.loss_scale
+                        moe_z_loss = moe_z_loss * engine.optimizer.loss_scale
+                        # we perform chain rule here by projecting the grad to the direction of
+                        # [output_obj_grad, 1], Because moe_loss have no relation with subsequent
+                        # layer, we set it to None (will be ragarded as 1).
+                        engine.backward_by_grad([output_obj, moe_loss, moe_z_loss], [output_obj_grad, None, None])
+
+            # Collect the grad of the input_obj.
+            input_obj_grad = None
+            if input_obj is not None:
+                if isinstance(input_obj, torch.Tensor):
+                    input_obj_grad = input_obj.grad
+                else:
+                    input_obj_grad = []
+                    for in_tensor in input_obj:
+                        input_obj_grad.append(in_tensor.grad)
+            self._call_hooks("after_backward", input_obj_grad)
+            if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+                busy_wait_kernel(gpc.config["SLEEP_TIME"][1])
         return input_obj_grad
 
     def _forward_only_step(self, engine, return_loss=True, return_output_label=True):

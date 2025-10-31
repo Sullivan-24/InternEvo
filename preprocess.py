@@ -306,7 +306,7 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                                                 if transfer_info_["stage_id"] == stage_id+1 and microbatch_id in transfer_info_["microbatch_ids"]:
                                                     recv_dp_rank = transfer_info_["dst_dp_rank"]
 
-                                        elif source_dp_rank!=dp_rank: #代算的workload算完后 发送到原始dp
+                                        elif source_dp_rank!=dp_rank: #代算的workload算完后 发送到原始dp #TODO，有可能传到的设备为坏设备，也需要代算
                                             for transfer_info_ in transfer_info[source_dp_rank]:
                                                 if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
                                                     recv_dp_rank = source_dp_rank
@@ -316,14 +316,14 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                                     if dst_pp_rank is not None:
                                         if dst_pp_rank != pp_rank:
                                             recv_dp_rank = dp_rank
-                                        if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp
+                                        if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp #TODO，有可能传到的设备为坏设备，也需要代算
                                             for transfer_info_ in transfer_info[dp_rank]:
                                                 if transfer_info_["stage_id"] == stage_id-1 and microbatch_id in transfer_info_["microbatch_ids"]:
                                                     recv_dp_rank = transfer_info_["dst_dp_rank"]
                                         elif source_dp_rank!=dp_rank:#代算的workload算完后 发送到原始dp
                                             for transfer_info_ in transfer_info[source_dp_rank]:
                                                 if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
-                                                    recv_dp_rank = source_dp_rank                                  
+                                                    recv_dp_rank = source_dp_rank
 
                                 if recv_dp_rank is not None and dst_pp_rank is not None:
                                     recv_workloads=comp_graph[recv_dp_rank][dst_pp_rank]
@@ -399,8 +399,8 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                             # send_info['send_chunk_id'] = chunk_id
                             # send_info['send_microbatch_id'] = microbatch_id
                             # comm_graph[pp_rank][send_location]['S'].append(recv_info)
-    # comm_matrix = generate_comm_martix_(comm_graph,comp_graph,dp_size,pp_size)
-    # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
+    comm_matrix = generate_comm_martix_(comm_graph,comp_graph,dp_size,pp_size)
+    print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     return comm_graph
 
 def generate_():

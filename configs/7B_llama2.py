@@ -11,17 +11,8 @@ MLP_RATIO = 2.6875
 NUM_LAYER = 32
 CHUNK_NUM = 1
 
-if SCHEDULE == 0:
-    num_microbatches, pp_size, stage_placement, scheduler_type, \
-    split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages, dp_size, \
-    DP_Transfer,num_microbatches_per_dp = generate_()
-    assert dp_size == DP_SIZE
-    assert pp_size == PP_SIZE
-    MICRO_NUM = num_microbatches
-
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-print(f"PP_MODE:{PP_MODE}, HETER:{HETER}")
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:

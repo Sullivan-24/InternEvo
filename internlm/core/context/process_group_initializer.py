@@ -15,73 +15,100 @@ from internlm.utils.logger import get_logger
 from internlm.utils.timeout import LLM_NCCL_TIMEOUT
 
 logger = get_logger(__file__)
-
+import copy
 
 # parallel modes
 class ParallelMode(Enum):
     """This is an enumeration class containing all possible parallel modes."""
 
     GLOBAL = "global"
+    GLOBAL_SUB = "global_sub"
 
     # common parallel
     DATA = "data"
+    DATA_SUB = "data_sub"  # 已定义的原始值
 
     # model parallel - containing tensor and pipeline parallel groups
     # this is added to facilitate amp and grad clipping in hybrid parallel
     MODEL = "model"
+    MODEL_SUB = "model_sub"
 
     # pipeline parallel
     PIPELINE = "pipe"
+    PIPELINE_SUB = "pipe_sub"
 
     # containing all ranks in tensor parallel
     TENSOR = "tensor"
+    TENSOR_SUB = "tensor_sub"
 
     # zero1 parallel
     ZERO1 = "zero1"
+    ZERO1_SUB = "zero1_sub"
 
-    # runntime network test
+    # runtime network test
     NETTEST = "nettest"
+    NETTEST_SUB = "nettest_sub"
 
     # zero3-dp parallel
     # if fsdp is activated and size of fsdp-parallel-size is less than dp-parallel-size
     # then manual communication only happens between inter-fsdp-modules, while intra-modules reduction is done by fsdp
     ZERO3_DP = "zero3_dp"
+    ZERO3_DP_SUB = "zero3_dp_sub"
 
     # expert parallel
     EXPERT = "expert"
+    EXPERT_SUB = "expert_sub"
 
     # expert data parallel
     EXPERT_DATA = "expert_data"
+    EXPERT_DATA_SUB = "expert_data_sub"
 
     # expert tensor parallel
     EXPERT_TENSOR = "expert_tensor"
+    EXPERT_TENSOR_SUB = "expert_tensor_sub"
 
     # expert weight parallel
     EXPERT_WEIGHT = "expert_weight"
+    EXPERT_WEIGHT_SUB = "expert_weight_sub"
 
     # dummy mode, only used during mode construction
     DUMMY = "dummy"
+    DUMMY_SUB = "dummy_sub"
 
     # weight parallel
     WEIGHT = "weight"
+    WEIGHT_SUB = "weight_sub"
 
     # weight data parallel
     WEIGHT_DATA = "weight_data"
+    WEIGHT_DATA_SUB = "weight_data_sub"
 
     # sequence parallel
     SEQUENCE = "sequence"
+    SEQUENCE_SUB = "sequence_sub"
 
     # real data parallel for isp
     ISP_DATA = "isp_data"
+    ISP_DATA_SUB = "isp_data_sub"
 
     # sequence 2D parallel
     HEAD = "head"
+    HEAD_SUB = "head_sub"
+    
     CONTEXT = "context"
+    CONTEXT_SUB = "context_sub"
+    
     INTER_WINDOW = "inter_window"
+    INTER_WINDOW_SUB = "inter_window_sub"
+    
     INTRA_WINDOW = "intra_window"
+    INTRA_WINDOW_SUB = "intra_window_sub"
+    
     DKV_INTER_WINDOW = "dkv_inter_window"
+    DKV_INTER_WINDOW_SUB = "dkv_inter_window_sub"
+    
     DKV_INTRA_WINDOW = "dkv_intra_window"
-
+    DKV_INTRA_WINDOW_SUB = "dkv_intra_window_sub"
 
 class GroupConfig:
     """config for initialze a process group"""
@@ -168,6 +195,7 @@ def _create_parallel_process_groups(
     pre_group_size: int,
     group_configs: List[GroupConfig],
     with_cpu_group: bool = False,
+    failure_global_ranks: List = [],
 ):
     group_results = []
 
@@ -178,6 +206,7 @@ def _create_parallel_process_groups(
 
         group_ranks, accelerator_group = None, None
         all_group_ranks = get_group_ranks(global_ranks_or_sizes, group.size, pre_group_size, group.allow_partial_group)
+        sub_group_ranks, sub_accelerator_group = None, None
 
         for idx, ranks in enumerate(all_group_ranks):
             _pg = dist.new_group(ranks, timeout=LLM_NCCL_TIMEOUT)
@@ -185,6 +214,17 @@ def _create_parallel_process_groups(
                 group_ranks, accelerator_group = all_group_ranks[idx], _pg
             else:
                 dist.destroy_process_group(_pg)
+
+            sub_ranks = copy.deepcopy(ranks)
+            for failure_global_rank in failure_global_ranks:
+                if failure_global_rank in sub_ranks:
+                    sub_ranks.remove(failure_global_rank)
+            if len(sub_ranks)>0:
+                sub_pg = dist.new_group(sub_ranks, timeout=LLM_NCCL_TIMEOUT)
+                if self_rank in sub_ranks or ((self_rank in failure_global_ranks) and (self_rank in ranks)):
+                    sub_group_ranks, sub_accelerator_group = sub_ranks, sub_pg
+                else:
+                    dist.destroy_process_group(sub_pg)
 
         if group_ranks is None:
             pre_group_size = pre_group_size * group.size
@@ -195,10 +235,20 @@ def _create_parallel_process_groups(
         group_results.append(
             (group_ranks.index(self_rank), len(group_ranks), accelerator_group, cpu_group, group_ranks, group.mode)
         )
-
+        if sub_group_ranks is not None:
+            sub_mode_value = f"{group.mode.value}_sub"
+            sub_mode = ParallelMode(sub_mode_value)
+            sub_cpu_group = init_cpu_group(sub_accelerator_group, sub_group_ranks, with_cpu_group)
+            self_rank_index_sub = None
+            if self_rank in sub_group_ranks:
+                self_rank_index_sub = sub_group_ranks.index(self_rank)
+            group_results.append(
+            (self_rank_index_sub, len(sub_group_ranks), sub_accelerator_group, sub_cpu_group, sub_group_ranks, sub_mode))
+            #print(f"global_rank:{self_rank}, sub_group_ranks{sub_group_ranks}, sub_mode:{sub_mode.value} create but not add group_results")
+            
         if len(group.subgroups) > 0:
             subgroup_results = _create_parallel_process_groups(
-                global_ranks_or_sizes, self_rank, pre_group_size, group.subgroups, with_cpu_group
+                global_ranks_or_sizes, self_rank, pre_group_size, group.subgroups, with_cpu_group, failure_global_ranks
             )
             group_results.extend(subgroup_results)
 
@@ -208,7 +258,7 @@ def _create_parallel_process_groups(
 
 
 def create_parallel_process_groups(
-    world_size: int, self_rank: int, group_configs: List[List[GroupConfig]], with_cpu_group: bool = False
+    world_size: int, self_rank: int, group_configs: List[List[GroupConfig]], with_cpu_group: bool = False, failure_global_ranks = []
 ):
     group_results = []
     already_allocated_group = {}
@@ -246,6 +296,7 @@ def create_parallel_process_groups(
             pre_group_size,
             group_config,
             with_cpu_group,
+            failure_global_ranks,
         )
 
         for result in results:

@@ -262,20 +262,26 @@ class TrainerBuilder(Trainer):
         """
         Run InternEvo training loop.
         """
-        self.train()
-        train_iter = iter(self.train_dl)
+        do_next = True
+        if gpc.config.FAILURE:
+            if gpc.get_global_rank() in gpc.config.FAILURE_GLOBAL_RANKS:
+                do_next = False
+        if do_next:
+            self.train()
+            train_iter = iter(self.train_dl)
 
-        with initialize_llm_profile(profiling=self.profiling, start_time=self.current_time) as prof:
-            gc.disable()
-            for batch_count in range(self.train_state.batch_count, gpc.config.data.total_steps):
-                if self._process_batch(batch_count, train_iter, prof):
-                    break
+            with initialize_llm_profile(profiling=self.profiling, start_time=self.current_time) as prof:
+                gc.disable()
+                for batch_count in range(self.train_state.batch_count, gpc.config.data.total_steps):
+                    if self._process_batch(batch_count, train_iter, prof):
+                        break
 
         self.ckpt_manager.wait_async_upload_finish()
 
     def _process_batch(self, batch_count: int, train_iter, prof) -> bool:
         empty_cache_and_diag(batch_count, interval=gpc.config.data.empty_cache_and_diag_interval)
         start_time = time.time()
+        start_time_ = time.perf_counter()
         timer("one-batch").start()
 
         batch, train_iter = self._load_and_prepare_batch(batch_count, train_iter)
@@ -290,6 +296,8 @@ class TrainerBuilder(Trainer):
         loss, moe_loss = self._forward_backward(batch)
         timer("fwd-bwd").stop()
         #TODO, how chimera do this
+        if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE):
+            print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time:{time.perf_counter() - start_time_}")
         success_update, grad_norm_groups = self._update_parameters()
         self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
         timer("one-batch").stop()
