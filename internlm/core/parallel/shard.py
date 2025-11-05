@@ -321,7 +321,8 @@ def pipeline_parallel_sharding_wrapper(
     """
     pipeline_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    if gpc.config.alpa:
+
+    if gpc.config.get("alpa",False):
         all_parts = partition_uniform_alpa(num_layers, pipeline_size, num_chunks, gpc.config.layer_placement)
     else:
         all_parts = partition_uniform(num_layers, pipeline_size, num_chunks)

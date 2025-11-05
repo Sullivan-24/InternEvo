@@ -723,7 +723,7 @@ class ZeroBubblePipelineVShapeScheduler(InterleavedPipelineScheduler):
         with torch.profiler.record_function(f"SCH-weight_step-microbatch_id-stage_id{chunk_id}"):
             WeightGradStore.pop()
         self._call_hooks("after_backward", input_obj_grad)
-        if gpc.config.heter:
+        if gpc.config.get("heter",False):
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
             local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
             if local_rank >= pp_size/2:

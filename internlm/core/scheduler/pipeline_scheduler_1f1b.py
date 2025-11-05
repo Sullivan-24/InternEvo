@@ -310,7 +310,7 @@ class PipelineScheduler(BaseScheduler):
         else:
             output_obj = self._call_engine(engine.model, data)
         self._call_hooks("after_forward", output_obj)
-        if gpc.config.heter:
+        if gpc.config.get("heter",False):
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
             local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
             if local_rank >= pp_size/2:
@@ -416,7 +416,7 @@ class PipelineScheduler(BaseScheduler):
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
         self._call_hooks("after_backward", input_obj_grad)
-        if gpc.config.heter:
+        if gpc.config.get("heter",False):
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
             local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
             if local_rank >= pp_size/2:
@@ -930,7 +930,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         if gpc.is_pipeline_last_stage(ignore_virtual=False) and isinstance(engine.model[chunk_id], NaiveAMPModel):
             output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
         self._call_hooks("after_forward", output_obj)
-        if gpc.config.heter:
+        if gpc.config.get("heter",False):
             pp_size = gpc.get_world_size(ParallelMode.PIPELINE)
             local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
             if local_rank >= pp_size/2:

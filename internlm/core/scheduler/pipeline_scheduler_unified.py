@@ -537,7 +537,7 @@ class UnifiedHetPipelineScheduler(ZeroBubblePipelineVShapeScheduler):
             if stage_id == self.last_stage and isinstance(engine.model[chunk_id], NaiveAMPModel):
                 output_obj = engine.model[chunk_id].convert_to_fp32(output_obj)
         self._call_hooks("after_forward", output_obj)
-        if gpc.config.heter:
+        if gpc.config.get("heter",False):
             if self.local_rank >= gpc.get_world_size(ParallelMode.PIPELINE)/2:
                 if gpc.config.alpa:
                     layers_id = gpc.config.layer_placement[self.local_rank]
