@@ -13,34 +13,32 @@ layerwise = False
 split_backward = False
 
 SEQ_LEN = 4096
-SCHEDULE = 0
+SCHEDULE = 1
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 
-DP_SIZE = 4
-PP_SIZE = 8
-TP_SIZE = 2
+DP_SIZE = 2
+PP_SIZE = 4
+TP_SIZE = 1
 
 # MICRO_BSZ = int(8/DP_SIZE) # maintain the same global bsz, global_batch_size=gpc.config.data.micro_bsz* gpc.config.data.micro_num* gpc.get_world_size(ParallelMode.DATA)
-MICRO_NUM = PP_SIZE*2
+MICRO_NUM = PP_SIZE*4
 
-HETER= True
+HETER= False
 HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
-HETER_DEVICE[1][3] = True
-HETER_DEVICE[3][7] = True
-# HETER_DEVICE[1][1] = True
-# HETER_DEVICE[2][3] = True
+HETER_DEVICE[0][2] = True
+
 
 FALCON = False
 
 HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
-FAILURE= True
-FAILURE_TP_ID = [0,0]
-FAILURE_DP_ID = [0,2]
-FAILURE_PP_ID = [1,5]
+FAILURE= False
+FAILURE_TP_ID = [0]
+FAILURE_DP_ID = [0]
+FAILURE_PP_ID = [1]
 FAILURE_GLOBAL_RANKS = []
 if FAILURE:
     for failure_index in range(len(FAILURE_DP_ID)):
@@ -88,8 +86,8 @@ if FALCON:
     DP_Transfer = True
     MICRO_NUM = num_microbatches_per_dp*DP_SIZE
 
-slow_ratio = 1
-SLEEP_TIME_Profiles = [[100,200],[100,145,55]]#[32,64,0]
+slow_ratio = 1#*0.625
+SLEEP_TIME_Profiles = [[50,100],[50,80,20]]#[32,64,0]
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]

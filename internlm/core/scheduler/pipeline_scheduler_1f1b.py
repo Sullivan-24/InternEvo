@@ -367,7 +367,7 @@ class PipelineScheduler(BaseScheduler):
                 moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
                 moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
-            if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            if gpc.config["HETER"] and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
                 busy_wait_kernel(gpc.config["SLEEP_TIME"][0])
         return output_obj, moe_loss, moe_z_loss
 
@@ -444,7 +444,7 @@ class PipelineScheduler(BaseScheduler):
                     for in_tensor in input_obj:
                         input_obj_grad.append(in_tensor.grad)
             self._call_hooks("after_backward", input_obj_grad)
-            if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            if gpc.config["HETER"] and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
                 busy_wait_kernel(gpc.config["SLEEP_TIME"][1])
         return input_obj_grad
 
@@ -1045,7 +1045,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         self._moe_z_losses[chunk_id].append(moe_z_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+        if gpc.config["HETER"] and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return output_obj
 
@@ -1077,7 +1077,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         input_obj_grad = super()._backward_step(
             engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
         )
-        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+        if gpc.config["HETER"] and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad
     #This is spcial method for hetpipe

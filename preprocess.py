@@ -149,6 +149,7 @@ def order_result_mutichunk(input: str, stage_placement: list, num_microbatches:i
     all_rank_workloads = [[[] for _ in range(pp_size)] for _ in range(dp_size)]
     all_workload = input.split('\n')
     ##print(all_workload)
+    microbatch_id_infor = [[[] for _ in range(pp_size)] for _ in range(dp_size)]
     max_end_time = 0
     for workload in all_workload:
         if workload == '':
@@ -170,7 +171,7 @@ def order_result_mutichunk(input: str, stage_placement: list, num_microbatches:i
                                "start_time":start_time, "end_time":end_time, "source_dp_rank":int(microbatch_id/num_microbatches)}
         # pp_rank_workloads[dp_rank][pp_rank].append((workload_type, microbatch_id, stage_id, chunk_id, start_time, end_time))
         all_rank_workloads[dp_rank][pp_rank].append(workload_infor)
-    
+        microbatch_id_infor[dp_rank][pp_rank].append(microbatch_id)
     recomp_stages = set()
     if dp_size == 1 :
         for d in range(pp_size):
@@ -185,7 +186,7 @@ def order_result_mutichunk(input: str, stage_placement: list, num_microbatches:i
     #elif dp_size>1:#TODO,sum by stage id 
     recomp_stages = list(recomp_stages)
     # print(all_rank_workloads)
-    return all_rank_workloads,recomp_stages, max_end_time
+    return all_rank_workloads,recomp_stages, max_end_time, microbatch_id_infor
 
 def find_mismatch(matrix):
 
@@ -263,7 +264,7 @@ def generate_comm_martix_(comm_graph, comp_graph, dp_size, pp_size):
             #     write_json(jsonpath,json_content)
     return comm_graph_martix
 
-def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediately, dp_size, pp_size, transfer_info):
+def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediately, dp_size, pp_size, transfer_info, microbatch_id_infor):
     #comp_graph 是之前生成的计算图
     # 初始化通信图,comm_graph[pp_rank][workload]表示计算操作前需要进行的通信操作list
     comm_graph = [[[[] for _ in range(len(comp_graph[i][j])+1)]for j in range(pp_size)] for i in range(dp_size)]
@@ -299,32 +300,38 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                                 if workload_type == WorkloadType.FORWARD.value:
                                     dst_pp_rank = _get_pp_rank_by_placement(stage_id+1,stage_placement)
                                     if dst_pp_rank is not None:
-                                        if dst_pp_rank != pp_rank:
-                                            recv_dp_rank = dp_rank
-                                        if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp
-                                            for transfer_info_ in transfer_info[dp_rank]:
-                                                if transfer_info_["stage_id"] == stage_id+1 and microbatch_id in transfer_info_["microbatch_ids"]:
-                                                    recv_dp_rank = transfer_info_["dst_dp_rank"]
+                                        # if dst_pp_rank != pp_rank:
+                                            # recv_dp_rank = dp_rank
+                                        # if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp
+                                        #     for transfer_info_ in transfer_info[dp_rank]:
+                                        #         if transfer_info_["stage_id"] == stage_id+1 and microbatch_id in transfer_info_["microbatch_ids"]:
+                                        #             recv_dp_rank = transfer_info_["dst_dp_rank"]
 
-                                        elif source_dp_rank!=dp_rank: #代算的workload算完后 发送到原始dp #TODO，有可能传到的设备为坏设备，也需要代算
-                                            for transfer_info_ in transfer_info[source_dp_rank]:
-                                                if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
-                                                    recv_dp_rank = source_dp_rank
+                                        # elif source_dp_rank!=dp_rank: #代算的workload算完后 发送到原始dp #TODO，有可能传到的设备为坏设备，也需要代算
+                                        #     for transfer_info_ in transfer_info[source_dp_rank]:
+                                        #         if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
+                                        #             recv_dp_rank = source_dp_rank
+                                        for dp_rank_,microbatch_ids_per_dp in enumerate(microbatch_id_infor):
+                                            if microbatch_id in microbatch_ids_per_dp[dst_pp_rank]:
+                                                recv_dp_rank = dp_rank_
+                                            
 
                                 elif workload_type == WorkloadType.BACKWARD.value:
                                     dst_pp_rank = _get_pp_rank_by_placement(stage_id-1,stage_placement)
                                     if dst_pp_rank is not None:
-                                        if dst_pp_rank != pp_rank:
-                                            recv_dp_rank = dp_rank
-                                        if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp #TODO，有可能传到的设备为坏设备，也需要代算
-                                            for transfer_info_ in transfer_info[dp_rank]:
-                                                if transfer_info_["stage_id"] == stage_id-1 and microbatch_id in transfer_info_["microbatch_ids"]:
-                                                    recv_dp_rank = transfer_info_["dst_dp_rank"]
-                                        elif source_dp_rank!=dp_rank:#代算的workload算完后 发送到原始dp
-                                            for transfer_info_ in transfer_info[source_dp_rank]:
-                                                if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
-                                                    recv_dp_rank = source_dp_rank
-
+                                        # if dst_pp_rank != pp_rank:
+                                        #     recv_dp_rank = dp_rank
+                                        # if source_dp_rank==dp_rank and len(transfer_info[dp_rank])>0:#发送到代算的dp #TODO，有可能传到的设备为坏设备，也需要代算
+                                        #     for transfer_info_ in transfer_info[dp_rank]:
+                                        #         if transfer_info_["stage_id"] == stage_id-1 and microbatch_id in transfer_info_["microbatch_ids"]:
+                                        #             recv_dp_rank = transfer_info_["dst_dp_rank"]
+                                        # elif source_dp_rank!=dp_rank:#代算的workload算完后 发送到原始dp
+                                        #     for transfer_info_ in transfer_info[source_dp_rank]:
+                                        #         if transfer_info_["dst_dp_rank"] == dp_rank and transfer_info_["stage_id"] == stage_id and microbatch_id in transfer_info_["microbatch_ids"]:
+                                        #             recv_dp_rank = source_dp_rank
+                                        for dp_rank_,microbatch_ids_per_dp in enumerate(microbatch_id_infor):
+                                            if microbatch_id in microbatch_ids_per_dp[dst_pp_rank]:
+                                                recv_dp_rank = dp_rank_
                                 if recv_dp_rank is not None and dst_pp_rank is not None:
                                     recv_workloads=comp_graph[recv_dp_rank][dst_pp_rank]
                                     if workload_type == WorkloadType.FORWARD.value:
@@ -399,8 +406,8 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
                             # send_info['send_chunk_id'] = chunk_id
                             # send_info['send_microbatch_id'] = microbatch_id
                             # comm_graph[pp_rank][send_location]['S'].append(recv_info)
-    comm_matrix = generate_comm_martix_(comm_graph,comp_graph,dp_size,pp_size)
-    print(f"wrong comm order:{find_mismatch(comm_matrix)}")
+    # comm_matrix = generate_comm_martix_(comm_graph,comp_graph,dp_size,pp_size)
+    # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     return comm_graph
 
 def generate_():
@@ -413,7 +420,7 @@ def generate_():
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    dp_size=2
+    dp_size=4
     pp_size = len(stage_placement)
 
     transfer_info = None 
@@ -427,8 +434,8 @@ def generate_():
             break
     num_microbatches = pp_size*2
     send_immediately = False
-    unified_scheduler, recomp_stages, max_end_time = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
-    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info)
+    unified_scheduler, recomp_stages, max_end_time, microbatch_id_infor = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
+    comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info, microbatch_id_infor)
     scheduler_type = judge_scheduler_type(stage_placement)
     split_backward = judge_split_backward(unified_scheduler)
     last_stage = max(max(row) for row in stage_placement)
