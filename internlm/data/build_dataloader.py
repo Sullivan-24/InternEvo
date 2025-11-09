@@ -52,7 +52,7 @@ def get_tokenized_train_loader_items(data_cfg):
         if data_cfg.get("is_multimodal", False):
             image_token_size = int(data_cfg.image_size // data_cfg.patch_size) ** 2
             train_ds = RandomDatasetMultimodal(
-                num_samples=gpc.get_world_size(ParallelMode.DATA) * 500,
+                num_samples=gpc.get_world_size(ParallelMode.DATA) * 1000,
                 max_len=data_cfg.seq_len,
                 image_size=data_cfg.image_size,
                 image_token_size=image_token_size,
@@ -62,7 +62,7 @@ def get_tokenized_train_loader_items(data_cfg):
             )
         else:
             train_ds = RandomDataset(
-                num_samples=gpc.get_world_size(ParallelMode.DATA) * 500,
+                num_samples=gpc.get_world_size(ParallelMode.DATA) * 1000,
                 max_len=data_cfg.seq_len,
                 fixed_seqlen=data_cfg.fixed_random_dataset_seqlen,
             )

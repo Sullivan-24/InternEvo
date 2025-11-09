@@ -1,48 +1,48 @@
 from configs.ppopp_configs.base import *
-# Scaling exps, seq 4K, nemotronH medium model nmb=64, pp=8
-JOB_NAME = "7b_nemotronh_train"
-model_type = "NEMOTRON_H"
-NEMOTRON_H = True
 
-ATTN_FREQ = 12
-VOCAB_SIZE = 128*1024*2
-HIDDEN_SIZE = 1024
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 4
-MLP_RATIO = 5.25
-NUM_LAYER = 56
-PP_SIZE = 8
-TP_SIZE = 4
-ZERO_SZIE = -1
-MICRO_NUM = 512
-MICRO_NUM = 64
-MICRO_BATCH_SIZE = 1
+JOB_NAME = "7b_gemma_train"
+model_type = "GEMMA"
+
+VOCAB_SIZE = 256000 * 4
+HIDDEN_SIZE = 1536
+NUM_ATTENTION_HEAD = 16
+NUM_KV_ATTENTION_HEAD = 16
+HEAD_DIM = 256
+MLP_RATIO = 8
+NUM_LAYER = 32
+PP_SIZE = 4
+TP_SIZE = 2
+MICRO_NUM = PP_SIZE * 4
 PP_MODE = "1f1b"
 CHUNK_NUM = 1
 
 if SCHEDULE == 0:
     num_microbatches, pp_size, stage_placement, scheduler_type, \
     split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages = generate_(MICRO_NUM)
+    last_stage, Devices_containing_last_stage, recomp_stages = generate_()
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 
-
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
+MODEL_ONLY_FOLDER = "local:llm_ckpts_gemma/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
-LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
+SAVE_CKPT_FOLDER = "local:llm_ckpts_gemma"
 
 # boto3 Ckpt folder format:
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-# LOAD_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm/snapshot/1/"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
+    enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
+    # 'load_ckpt_info' setting guide:
+    # 1. the 'path' indicate ckpt path,
+    # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
+    # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
+    # load function such as "llama"
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -64,7 +64,7 @@ data = dict(
     # micro_num means the number of micro_batch contained in one gradient update
     micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
-    micro_bsz=MICRO_BATCH_SIZE,
+    micro_bsz=1,
     # defaults to the value of micro_num
     valid_micro_num=4,
     # defaults to 0, means disable evaluate
@@ -107,7 +107,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=False,
+    overlap_sync_grad=OVERLAP_SYNC_GRAD,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -147,6 +147,8 @@ model = dict(
     checkpoint=False,
     num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
+    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    max_position_embeddings=8192,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
@@ -157,9 +159,10 @@ model = dict(
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
+    add_unit_offset=True,
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-5,
-    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    layer_norm_epsilon=1e-6,
+    head_dim=HEAD_DIM,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -169,8 +172,7 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    mlp_layer_fusion=False,
-    enable_qkv_fusion=True,
+    use_swiglu=False,
 )
 
 """
@@ -198,7 +200,7 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=ZERO_SZIE),
+    zero1=dict(size=-1),
     tensor=dict(size=TP_SIZE, mode="fsp"),
     pipeline=dict(size=PP_SIZE, interleaved_overlap=True, mode=PP_MODE),
     weight=dict(size=1, overlap=True),
@@ -223,3 +225,18 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
+
+generation = dict(
+    ckpt_folder="/path/to/saved/ckpt",
+    output_folder="/path/to/save/generation",
+    batch_size=1,
+    eos_id=[2, 0],
+    bos_id=1,
+    max_length=100,
+    do_sample=True,
+    temperature=1.0,
+    top_k=50,
+    top_p=1.0,
+    repetition_penalty=1,
+    length_penalty=1.0,
+)
