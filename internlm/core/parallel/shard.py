@@ -202,7 +202,7 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
                 base_idx += chunk_size + (p >= left)
                 parts[p].append((st, base_idx))
 
-    if gpc.config.ALPA:
+    if gpc.config.get("ALPA",False):
         parts = []
         partition = []
         with open("InternEvo/mist_partition.txt", "r") as f:
@@ -226,7 +226,7 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
 def partition_uniform_unifiedPP(num_items: int, pipeline_parallel_size: int, num_chunks: int , stage_placement, scheduler_type):
     assert len(stage_placement) == pipeline_parallel_size,f"len(stage_placement): {len(stage_placement)}, pipeline_parallel_size: {pipeline_parallel_size}"
     parts = []
-    if gpc.config.layerwise:#!only for Interleaved-base-type
+    if gpc.config.get("layerwise",False):#!only for Interleaved-base-type
         chunk_size = num_items // (pipeline_parallel_size*num_chunks)
         for d in range(pipeline_parallel_size):
             part = []
@@ -294,7 +294,7 @@ def pipeline_parallel_sharding_wrapper_unifiedPP(
         kwargs["num_layers"] = end - start
         kwargs["first"] = start == 0 #TODO,and start == end
         # If there is no content in the final layer, assign the last layer.
-        if gpc.config.layerwise:
+        if gpc.config.get("layerwise",False):
             kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0 and start == end
         else:
             kwargs["last"] = end == num_layers and len(all_parts[-1]) != 0
