@@ -15,7 +15,7 @@ from internlm.model.modeling_qwen2 import Qwen2
 from internlm.model.modeling_qwen2_moe import Qwen2Moe
 from internlm.model.modeling_deepseek2_moe import DeepSeek2MoE
 # from internlm.model.modeling_nemotron_h import NemotronH
-from internlm.model.modeling_mamba import InternevoNemotronH
+# from InternEvo.internlm.model.modeling_mamba import InternevoNemotronH
 from internlm.utils.common import SingletonMeta
 from internlm.utils.utils import ModelType
 
@@ -97,7 +97,7 @@ def register_model_initializer() -> None:
     model_initializer.register_module(ModelType.QWEN2MOE.name, Qwen2Moe)
     model_initializer.register_module(ModelType.MIXTRALMOE.name, MixtralMoE)
     model_initializer.register_module(ModelType.DEEPSEEK2_MoE.name, DeepSeek2MoE)
-    model_initializer.register_module(ModelType.NEMOTRON_H.name, InternevoNemotronH)
+    # model_initializer.register_module(ModelType.NEMOTRON_H.name, InternevoNemotronH)
 
 
 register_model_initializer()

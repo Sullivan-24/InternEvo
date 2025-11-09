@@ -5,7 +5,7 @@ from functools import partial
 from typing import Optional
 
 import torch
-from mamba_ssm.modules.mamba_simple import Mamba
+# from mamba_ssm.modules.mamba_simple import Mamba
 from torch import nn
 from internlm.initialize.initialize_tensor import (
     normal_,
@@ -62,9 +62,9 @@ class MambaLayer(nn.Module):
         self.dropout_selective_checkpoint = dropout_selective_checkpoint is True and checkpoint is False
         self.layer_idx = layer_idx
 
-        self.mixer = Mamba(
-            d_model=hidden_size, layer_idx=layer_idx, dtype=dtype, **(ssm_cfg if ssm_cfg is not None else {})
-        )
+        # self.mixer = Mamba(
+        #     d_model=hidden_size, layer_idx=layer_idx, dtype=dtype, **(ssm_cfg if ssm_cfg is not None else {})
+        # )
         self.dropout = nn.Dropout(drop_rate)
         self.norm = new_layer_norm(norm_type, hidden_size, eps=layer_norm_epsilon)
 

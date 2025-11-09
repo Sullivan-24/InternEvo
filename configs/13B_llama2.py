@@ -1,27 +1,45 @@
-from configs.ppopp_configs.base import *
-JOB_NAME = "14b_llama2_train"
+from configs.ppopp_configs.base_copy import *
+JOB_NAME = "13b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
+# {
+#   "_name_or_path": "meta-llama/Llama-2-13b-hf",
+#   "architectures": [
+#     "LlamaForCausalLM"
+#   ],
+#   "bos_token_id": 1,
+#   "eos_token_id": 2,
+#   "hidden_act": "silu",
+#   "hidden_size": 5120,
+#   "initializer_range": 0.02,
+#   "intermediate_size": 13824,
+#   "max_position_embeddings": 4096,
+#   "model_type": "llama",
+#   "num_attention_heads": 40,
+#   "num_hidden_layers": 40,
+#   "num_key_value_heads": 40,
+#   "pretraining_tp": 1,
+#   "rms_norm_eps": 1e-05,
+#   "rope_scaling": null,
+#   "tie_word_embeddings": false,
+#   "torch_dtype": "float16",
+#   "transformers_version": "4.32.0.dev0",
+#   "use_cache": true,
+#   "vocab_size": 32000
+# }
+
+
 VOCAB_SIZE = 32000
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 64
+HIDDEN_SIZE = 5120
+NUM_ATTENTION_HEAD = 40
+NUM_KV_ATTENTION_HEAD = 40
+MLP_RATIO = 2.7
+NUM_LAYER = 40
 CHUNK_NUM = 1
 
-if SCHEDULE == 0:
-    num_microbatches, pp_size, stage_placement, scheduler_type, \
-    split_backward, unified_scheduler, comm_graph, first_stage, \
-    last_stage, Devices_containing_last_stage, recomp_stages, dp_size, \
-    DP_Transfer,num_microbatches_per_dp = generate_()
-    assert dp_size == DP_SIZE
-    assert pp_size == PP_SIZE
-    MICRO_NUM = num_microbatches
-
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-print(f"PP_MODE:{PP_MODE}, HETER:{HETER}")
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -52,9 +70,11 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = None
+TRAIN_FOLDER = "/mnt/shared-storage-user/lusitian/data/data_jsonl/wiki/full_data/tokenized"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
+    # type="streaming",
+    # tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-internlm2-tokenizer",
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
     micro_num=MICRO_NUM,
@@ -65,7 +85,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=10000,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between

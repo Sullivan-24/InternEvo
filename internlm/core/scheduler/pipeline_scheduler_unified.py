@@ -131,7 +131,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             scheduler_hooks=scheduler_hooks,
         )
 
-        self.split_backward = gpc.config.split_backward
+        self.split_backward = gpc.config.get("split_backward",False)
         if self.split_backward:
             WeightGradStore.set_pp_mode("ZBV")
             WeightGradStore.set_optim(optimizer)
@@ -144,7 +144,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.first_stage = first_stage
         self.unified_scheduler = unified_scheduler
         self.comm_graph = comm_graph
-        if gpc.config.DP_Transfer:
+        if gpc.config.get("DP_Transfer",False):
             self.comms = comm_graph[self.local_dp_rank][self.local_pp_rank]
             self.workloads = unified_scheduler[self.local_dp_rank][self.local_pp_rank]
         else:
@@ -160,17 +160,17 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.send_backward_result = [None for __ in range(self.num_microbatches)]
 
         file_path = f"InternEvo/jsonResult/async/pp{gpc.pipeline_parallel_size}_mb{self.num_microbatches}/DP{self.local_dp_rank}"
-        os.makedirs(file_path, exist_ok=True)
+        # os.makedirs(file_path, exist_ok=True)
         gpc._config['jsonpath'] = file_path+f"/PP{self.local_pp_rank}_workloads.json"
 
     def do_comms(self,comm_list):
         for ops in comm_list:
-            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, microbatch_id, source_dp_rank, _ = ops
-            match_global_rank = None
-            if match_dp_rank == self.local_dp_rank:
-                match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)
-            else:
-                match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)+match_dp_rank-self.local_dp_rank
+            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, microbatch_id, source_dp_rank, _ , match_global_rank = ops
+            # match_global_rank = None
+            # if match_dp_rank == self.local_dp_rank:
+            #     match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)
+            # else:
+            #     match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)+match_dp_rank-self.local_dp_rank
             assert match_global_rank is not None
             if op_type == 'SA':
                 comm.AsynCommunicator(
@@ -260,7 +260,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         workloads = self.workloads
         num_workloads = len(workloads)
         jsonpath = gpc._config['jsonpath']
-
+        # print(gpc.get_global_rank(), "start _forward_backward_step with num_workloads:", num_workloads)
         for s in range(num_workloads):
             workload = workloads[s]
             workload_type, microbatch_id, stage_id, source_dp_rank,  = workload["workload_type"], \
@@ -269,6 +269,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             self.workload_id = s
             if len(before_comms)>0:
                 self.do_comms(before_comms)
+            json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"before_comms"}
+            # write_json(jsonpath, json_content)
 
             if workload_type == WorkloadType.FORWARD.value:# Forward pass
                 # Receive the input from the previous stage 
@@ -372,15 +374,17 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 after_comms = comm_list[s+1]
                 if len(after_comms)>0:
                     self.do_comms(after_comms)
+                json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"after_comms"}
+                # write_json(jsonpath, json_content)
         return_tensors_ = []
         for tensor in return_tensors:
             if tensor is  not None:
                 return_tensors_.append(tensor)
         return_tensors = return_tensors_
         output, label = pack_return_tensors(return_tensors) if len(return_tensors)> 0 else (None, None)
-
+        # print(gpc.get_global_rank(), "finish _forward_backward_step with num_workloads:", num_workloads)
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
-            dist.all_reduce(accum_moe_loss, group=gpc.get_group(ParallelMode.PIPELINE))
+            dist.all_reduce(accum_moe_loss, group=gpc.get_sub_group(ParallelMode.PIPELINE))
 
         if accum_loss is not None:
             accum_loss += accum_moe_loss
@@ -1399,7 +1403,7 @@ class UnifiedMultipleStreamsPipelineScheduler(ZeroBubblePipelineVShapeScheduler)
         #self.last_stage = max(max(row) for row in stage_placement)
         self.first_stage = min(min(row) for row in stage_placement)
         self.scheduler_type = gpc.config.scheduler_type
-        self.split_backward = gpc.config.split_backward
+        self.split_backward = gpc.config.get("split_backward",False)
         assert self.scheduler_type == ModuleType.CHIMERA.value
         file_path = f"./jsonResult/async/{self.scheduler_type}_pp{gpc.pipeline_parallel_size}_chunk{num_chunks}_mb{num_microbatches}"
         os.makedirs(file_path, exist_ok=True)

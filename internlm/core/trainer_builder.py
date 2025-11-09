@@ -263,7 +263,7 @@ class TrainerBuilder(Trainer):
         Run InternEvo training loop.
         """
         do_next = True
-        if gpc.config.FAILURE:
+        if gpc.config.get("FAILURE",False):
             if gpc.get_global_rank() in gpc.config.FAILURE_GLOBAL_RANKS:
                 do_next = False
         if do_next:
@@ -296,13 +296,13 @@ class TrainerBuilder(Trainer):
         loss, moe_loss = self._forward_backward(batch)
         timer("fwd-bwd").stop()
         #TODO, how chimera do this
-        if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time_before_update_paramterts:{time.perf_counter() - start_time_}")
+        # if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        #     print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time_before_update_paramterts:{time.perf_counter() - start_time_}")
         success_update, grad_norm_groups = self._update_parameters()
         self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
         timer("one-batch").stop()
-        if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time:{time.perf_counter() - start_time_}")
+        # if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        #     print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time:{time.perf_counter() - start_time_}")
         if self._should_evaluate():
             self._evaluate()
 

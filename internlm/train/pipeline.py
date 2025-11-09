@@ -93,7 +93,7 @@ from internlm.utils.parallel import (
 )
 from internlm.utils.timeout import llm_timeout
 from internlm.utils.utils import TensorParallelMode
-from internlm.model.modeling_nemotron_h import NemotronHMamba2Mixer, NemotronHRMSNorm, NemotronHAttention
+# from internlm.model.modeling_nemotron_h import NemotronHMamba2Mixer, NemotronHRMSNorm, NemotronHAttention
 try:
     import torch_npu
 except (ImportError, ModuleNotFoundError):
@@ -212,7 +212,7 @@ def set_parallel_attr_for_param_groups(model: Union[nn.Module, nn.ModuleList]):
 
     def _check_module(name, module):
         # layer_norm
-        if isinstance(module, (RMSNorm, nn.LayerNorm, NemotronHRMSNorm)):
+        if isinstance(module, (RMSNorm, nn.LayerNorm)):
             for param in module.parameters():
                 setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
@@ -249,7 +249,7 @@ def set_parallel_attr_for_param_groups(model: Union[nn.Module, nn.ModuleList]):
                 elif gpc.is_initialized(ParallelMode.WEIGHT) and is_using_isp():
                     setattr(param, IS_WEIGHT_EXPERT_DATA_PARALLEL, True)
         # for non-moe linear module
-        elif isinstance(module, (ParallelLinearWithCommExt, NemotronHMamba2Mixer)):
+        elif isinstance(module, (ParallelLinearWithCommExt)):
             for param in module.parameters():
                 if gpc.is_initialized(ParallelMode.TENSOR) and not is_using_isp():
                     setattr(param, IS_TENSOR_ZERO_PARALLEL, True)

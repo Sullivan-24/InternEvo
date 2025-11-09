@@ -13,7 +13,7 @@ layerwise = False
 split_backward = False
 
 SEQ_LEN = 4096
-SCHEDULE = 1
+SCHEDULE = 3
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
@@ -27,7 +27,8 @@ MICRO_NUM = PP_SIZE*4
 
 HETER= False
 HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
-HETER_DEVICE[0][2] = True
+HETER_DEVICE[0][1] = True
+HETER_DEVICE[1][2] = True
 
 
 FALCON = False
@@ -36,9 +37,9 @@ HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
 FAILURE= False
-FAILURE_TP_ID = [0]
-FAILURE_DP_ID = [0]
-FAILURE_PP_ID = [1]
+FAILURE_TP_ID = [0,0,0,0]
+FAILURE_DP_ID = [3,2,1,0]
+FAILURE_PP_ID = [0,1,2,3]
 FAILURE_GLOBAL_RANKS = []
 if FAILURE:
     for failure_index in range(len(FAILURE_DP_ID)):
@@ -86,8 +87,8 @@ if FALCON:
     DP_Transfer = True
     MICRO_NUM = num_microbatches_per_dp*DP_SIZE
 
-slow_ratio = 1#*0.625
-SLEEP_TIME_Profiles = [[50,100],[50,80,20]]#[32,64,0]
+slow_ratio = 1#0.825#*0.625
+SLEEP_TIME_Profiles =[[40,60],[40,60,0]]#[[50,100],[50,80,20]]#[32,64,0]
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]

@@ -786,17 +786,17 @@ class ParallelContext(metaclass=SingletonMeta):
         for result in group_results:
             self._register_dist(*result)
 
-        debuge_path = f"debug/"
-        os.makedirs(debuge_path, exist_ok=True)
-        debug_list = []
-        for parallel_mode in self._groups.keys():
-            parallel_mode_infor = dict()
-            parallel_mode_infor["global_rank"] = self.get_global_rank()
-            parallel_mode_infor["ranks_in_group"] = self._ranks_in_group[parallel_mode]
-            parallel_mode_infor["mode"] = parallel_mode.value
-            debug_list.append(parallel_mode_infor)
-            # self.write_debug_print(debug_path=f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
-        self.write_debug_print(debug_path=debuge_path,content=debug_list)
+        # debuge_path = f"debug/"
+        # os.makedirs(debuge_path, exist_ok=True)
+        # debug_list = []
+        # for parallel_mode in self._groups.keys():
+        #     parallel_mode_infor = dict()
+        #     parallel_mode_infor["global_rank"] = self.get_global_rank()
+        #     parallel_mode_infor["ranks_in_group"] = self._ranks_in_group[parallel_mode]
+        #     parallel_mode_infor["mode"] = parallel_mode.value
+        #     debug_list.append(parallel_mode_infor)
+        #     # self.write_debug_print(debug_path=f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
+        # self.write_debug_print(debug_path=debuge_path,content=debug_list)
 
     def is_initialized(self, parallel_mode: ParallelMode):
         """Returns a boolean value indicating whether `parallel_mode` is initialized
