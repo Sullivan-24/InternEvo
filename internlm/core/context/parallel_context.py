@@ -425,9 +425,17 @@ class ParallelContext(metaclass=SingletonMeta):
         if ParallelMode(sub_parallel_mode_value) in self._groups.keys():
             # print(f"global_rank:{self.get_global_rank()}, ranks_in_sub_group:{self._ranks_in_group[ParallelMode(sub_parallel_mode_value)]}, mode:{sub_parallel_mode_value}")
             return self._groups[ParallelMode(f"{parallel_mode.value}_sub")]
-        else:
+        elif parallel_mode in self._groups:
             # print(f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
             return self._groups[parallel_mode]
+        else:
+            # Return None if the parallel mode is not initialized
+            logger.warning(
+                f"Parallel mode {parallel_mode} is not initialized. "
+                f"Available modes: {list(self._groups.keys())}. "
+                f"Returning None for process group."
+            )
+            return None
 
     def get_group(self, parallel_mode: ParallelMode):
         """Returns the group of the current device for `parallel_mode`.
@@ -439,6 +447,13 @@ class ParallelContext(metaclass=SingletonMeta):
             torch.distributed.ProcessGroup: The group of the current device for `parallel_mode`.
         """
         self._check_parallel_mode(parallel_mode)
+        if parallel_mode not in self._groups:
+            logger.warning(
+                f"Parallel mode {parallel_mode} is not initialized. "
+                f"Available modes: {list(self._groups.keys())}. "
+                f"Returning None for process group."
+            )
+            return None
         return self._groups[parallel_mode]
 
     def get_ranks_in_sub_group(self, parallel_mode: ParallelMode):
@@ -473,6 +488,13 @@ class ParallelContext(metaclass=SingletonMeta):
 
     def get_cpu_group(self, parallel_mode: ParallelMode):
         self._check_parallel_mode(parallel_mode)
+        if parallel_mode not in self._cpu_groups:
+            logger.warning(
+                f"CPU process group for parallel_mode {parallel_mode} is not initialized. "
+                f"Available modes: {list(self._cpu_groups.keys())}. "
+                f"Returning None for CPU process group."
+            )
+            return None
         return self._cpu_groups[parallel_mode]
 
     def init_global_dist(self, rank: int, world_size: int, backend: str, host: str, port: int, use_cpu: bool = False):

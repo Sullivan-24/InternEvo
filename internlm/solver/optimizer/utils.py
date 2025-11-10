@@ -118,6 +118,14 @@ def reduce_tensor(
     # tensor.div_(world_size)
     group = gpc.get_sub_group(parallel_mode)
 
+    # Check if group is None (parallel mode not initialized)
+    if group is None:
+        logger.warning(
+            f"Process group for parallel_mode {parallel_mode} is None. "
+            f"Skipping reduce operation. This may happen when the parallel mode is not initialized."
+        )
+        return None
+
     # if rank is None, all reduce will be used
     # else, reduce is used
     use_all_reduce = dst_rank is None

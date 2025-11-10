@@ -108,6 +108,17 @@ def _gather(input_, parallel_mode, dim=-1):
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     tensor_list[rank] = input_
     group = gpc.get_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_group(parallel_mode)
+    
+    # Check if group is None (parallel mode not initialized)
+    if group is None:
+        from internlm.utils.logger import get_logger
+        logger = get_logger(__file__)
+        logger.warning(
+            f"Process group for parallel_mode {parallel_mode} is None. "
+            f"Skipping all_gather operation. This may happen when the parallel mode is not initialized."
+        )
+        return input_
+    
     dist.all_gather(tensor_list, input_, group=group)
 
     # concat
@@ -122,6 +133,17 @@ def _reduce(input_, parallel_mode):
         return input_
 
     group = gpc.get_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_group(parallel_mode)
+    
+    # Check if group is None (parallel mode not initialized)
+    if group is None:
+        from internlm.utils.logger import get_logger
+        logger = get_logger(__file__)
+        logger.warning(
+            f"Process group for parallel_mode {parallel_mode} is None. "
+            f"Skipping all_reduce operation. This may happen when the parallel mode is not initialized."
+        )
+        return input_
+    
     dist.all_reduce(input_, group=group)
 
     return input_
