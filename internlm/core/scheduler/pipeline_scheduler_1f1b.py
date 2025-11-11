@@ -309,8 +309,8 @@ class PipelineScheduler(BaseScheduler):
             micro_batch_data = self.load_micro_batch()
             data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
             # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
-            if gpc.config.DP_Transfer:
-                self.num_microbatches = gpc.config.num_microbatches_per_dp
+            # DP_Transfer: 不再临时修改self.num_microbatches，保持其为实际处理的microbatch总数
+            # 这样loss归一化才能正确
             self._call_hooks("before_forward", data)
             if hasattr(gpc.config.model, "num_experts"):
                 # moe is used
@@ -332,7 +332,13 @@ class PipelineScheduler(BaseScheduler):
                     loss = self._call_engine_criterion(engine, output_obj, label)
                     self._call_hooks("after_criterion", loss)
 
-                    loss_reduced = loss / self.num_microbatches
+                    # DP_Transfer修复：使用实际的microbatch总数进行归一化
+                    # 对于接收了额外workload的rank，actual_num_microbatches会大于num_microbatches_per_dp
+                    actual_num_microbatches = self.num_microbatches
+                    if gpc.config.DP_Transfer and hasattr(gpc.config, 'actual_num_forward_microbatches'):
+                        actual_num_microbatches = gpc.config.actual_num_forward_microbatches
+                    
+                    loss_reduced = loss / actual_num_microbatches
                     accum_loss.add_(loss_reduced.detach())
                     output_obj = loss_reduced
 
@@ -401,9 +407,12 @@ class PipelineScheduler(BaseScheduler):
             # Backward pass.
 
             # Only the last microbatch does syncing grad.
-            if gpc.config.DP_Transfer:
-                self.num_microbatches = gpc.config.num_microbatches_per_dp
-            skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
+            # DP_Transfer修复：正确判断是否是最后一个microbatch
+            if gpc.config.DP_Transfer and hasattr(gpc.config, 'is_last_microbatch_func'):
+                # 使用自定义函数判断是否是最后一个microbatch
+                skip_grad_sync = not gpc.config.is_last_microbatch_func(step_id)
+            else:
+                skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
 
             self._call_hooks("before_backward", output_obj, output_obj_grad)
             with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):

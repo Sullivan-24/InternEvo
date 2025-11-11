@@ -147,6 +147,21 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         if gpc.config.get("DP_Transfer",False):
             self.comms = comm_graph[self.local_dp_rank][self.local_pp_rank]
             self.workloads = unified_scheduler[self.local_dp_rank][self.local_pp_rank]
+            
+            # DP_Transfer修复：统计当前rank实际需要处理的forward microbatch数量
+            from internlm.utils.utils import WorkloadType
+            actual_forward_count = sum(1 for w in self.workloads if w["workload_type"] == WorkloadType.FORWARD.value)
+            gpc.config.actual_num_forward_microbatches = actual_forward_count
+            
+            # 创建一个函数来判断是否是最后一个backward microbatch
+            backward_workload_indices = [i for i, w in enumerate(self.workloads) if w["workload_type"] == WorkloadType.BACKWARD.value]
+            last_backward_index = backward_workload_indices[-1] if backward_workload_indices else -1
+            
+            def is_last_microbatch_func(workload_step_id):
+                return workload_step_id == last_backward_index
+            
+            gpc.config.is_last_microbatch_func = is_last_microbatch_func
+            
         else:
             self.comms = comm_graph[0][self.local_pp_rank]
             self.workloads = unified_scheduler[0][self.local_pp_rank]
@@ -346,8 +361,9 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             
                 #start_time = time.perf_counter()
                 # with torch.profiler.record_function(f"SCH-backward_workload-{microbatch_id}-0"):
+                # DP_Transfer修复：传递workload索引s而不是microbatch_id，用于正确判断梯度同步时机
                 input_obj_grad = self._backward_step(
-                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
+                    engine, s, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
                 )
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()
