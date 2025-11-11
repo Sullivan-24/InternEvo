@@ -148,19 +148,35 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             self.comms = comm_graph[self.local_dp_rank][self.local_pp_rank]
             self.workloads = unified_scheduler[self.local_dp_rank][self.local_pp_rank]
             
-            # DP_Transfer修复：统计当前rank实际需要处理的forward microbatch数量
+            # DP_Transfer修复：按source_dp_rank分组统计workload
             from internlm.utils.utils import WorkloadType
-            actual_forward_count = sum(1 for w in self.workloads if w["workload_type"] == WorkloadType.FORWARD.value)
-            gpc.config.actual_num_forward_microbatches = actual_forward_count
             
-            # 创建一个函数来判断是否是最后一个backward microbatch
-            backward_workload_indices = [i for i, w in enumerate(self.workloads) if w["workload_type"] == WorkloadType.BACKWARD.value]
-            last_backward_index = backward_workload_indices[-1] if backward_workload_indices else -1
+            # 统计每个source_dp的forward数量（用于loss归一化）
+            self.num_forwards_by_source_dp = {}
+            for source_dp in range(self.dp_size):
+                count = sum(1 for w in self.workloads 
+                           if w["workload_type"] == WorkloadType.FORWARD.value 
+                           and w["source_dp_rank"] == source_dp)
+                if count > 0:
+                    self.num_forwards_by_source_dp[source_dp] = count
             
-            def is_last_microbatch_func(workload_step_id):
-                return workload_step_id == last_backward_index
+            # 找出每个source_dp的最后一个backward的索引（用于梯度同步时机判断）
+            self.last_backward_index_by_source_dp = {}
+            for source_dp in range(self.dp_size):
+                backward_indices = [i for i, w in enumerate(self.workloads)
+                                   if w["workload_type"] == WorkloadType.BACKWARD.value
+                                   and w["source_dp_rank"] == source_dp]
+                if backward_indices:
+                    self.last_backward_index_by_source_dp[source_dp] = backward_indices[-1]
             
-            gpc.config.is_last_microbatch_func = is_last_microbatch_func
+            # 为每个source_dp创建独立的loss累积器
+            self.accum_loss_by_source_dp = {
+                source_dp: torch.zeros(1, device=get_current_device())
+                for source_dp in self.num_forwards_by_source_dp.keys()
+            }
+            
+            logger.info(f"Rank {gpc.get_global_rank()}: Processing workloads from source_dp: {list(self.num_forwards_by_source_dp.keys())}")
+            logger.info(f"Forward counts by source_dp: {self.num_forwards_by_source_dp}")
             
         else:
             self.comms = comm_graph[0][self.local_pp_rank]
@@ -263,11 +279,17 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         moe_losses = [None for __ in range(self.num_microbatches)]
         return_tensors = [None for __ in range(self.num_microbatches)]#TODO
         moe_z_losses = [None for __ in range(self.num_microbatches)]
-        accum_loss = (
-            torch.zeros(1, device=get_current_device())
-            if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
-            else None
-        )
+        
+        # DP_Transfer修复：使用按source_dp分组的loss累积器
+        if gpc.config.get("DP_Transfer", False) and hasattr(self, 'accum_loss_by_source_dp'):
+            # 已经在__init__中创建了按source_dp分组的累积器
+            accum_loss = None  # 不使用单一的累积器
+        else:
+            accum_loss = (
+                torch.zeros(1, device=get_current_device())
+                if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
+                else None
+            )
         accum_moe_loss = torch.zeros(1, device=get_current_device())
         accum_moe_z_loss = torch.zeros(1, device=get_current_device())
         #rank_info
@@ -304,12 +326,21 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 # Perform forward computation
                 #start_time = time.perf_counter()
                 # with torch.profiler.record_function(f"SCH-forward_workload-{microbatch_id}-0"):
+                
+                # DP_Transfer修复：选择正确的loss累积器并设置归一化参数
+                if gpc.config.get("DP_Transfer", False) and hasattr(self, 'accum_loss_by_source_dp'):
+                    current_accum_loss = self.accum_loss_by_source_dp.get(source_dp_rank, None)
+                    # 告诉_forward_step该source_dp应该使用多少个microbatch来归一化
+                    gpc.config.current_source_dp_microbatch_count = self.num_forwards_by_source_dp.get(source_dp_rank, self.num_microbatches)
+                else:
+                    current_accum_loss = accum_loss
+                
                 output_obj, moe_loss, moe_z_loss = self._forward_step(
                     engine,
                     input_obj,
                     return_tensors,
                     return_output_label=return_output_label,
-                    accum_loss=accum_loss,
+                    accum_loss=current_accum_loss,
                     accum_moe_loss=accum_moe_loss,
                     accum_moe_z_loss=accum_moe_z_loss,
                     microbatch_id=microbatch_id
@@ -361,7 +392,13 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             
                 #start_time = time.perf_counter()
                 # with torch.profiler.record_function(f"SCH-backward_workload-{microbatch_id}-0"):
-                # DP_Transfer修复：传递workload索引s而不是microbatch_id，用于正确判断梯度同步时机
+                
+                # DP_Transfer修复：判断是否是该source_dp的最后一个backward
+                if gpc.config.get("DP_Transfer", False) and hasattr(self, 'last_backward_index_by_source_dp'):
+                    is_last_backward_for_source_dp = (s == self.last_backward_index_by_source_dp.get(source_dp_rank, -1))
+                    # 将判断结果传递给_backward_step
+                    gpc.config.is_last_backward_for_current_source_dp = is_last_backward_for_source_dp
+                
                 input_obj_grad = self._backward_step(
                     engine, s, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
                 )
@@ -402,6 +439,16 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         if hasattr(gpc.config.model, "num_experts") and gpc.config.model.num_experts > 1:
             dist.all_reduce(accum_moe_loss, group=gpc.get_sub_group(ParallelMode.PIPELINE))
 
+        # DP_Transfer修复：合并所有source_dp的loss
+        if gpc.config.get("DP_Transfer", False) and hasattr(self, 'accum_loss_by_source_dp'):
+            # 将所有source_dp的loss加起来作为最终loss
+            # 注意：每个source_dp的loss已经正确归一化了
+            accum_loss = torch.zeros(1, device=get_current_device())
+            for source_dp, loss_val in self.accum_loss_by_source_dp.items():
+                accum_loss += loss_val
+                if gpc.is_rank_for_log():
+                    logger.info(f"Rank {gpc.get_global_rank()}: source_dp {source_dp} accumulated loss = {loss_val.item():.6f}")
+        
         if accum_loss is not None:
             accum_loss += accum_moe_loss
         return output, label, accum_loss, accum_moe_loss, accum_moe_z_loss
