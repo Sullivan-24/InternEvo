@@ -2,14 +2,19 @@ JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
+HETER = True
+SLEEP_TIME = 0
+layerwise = False
+profile_fwd_bwd = False
+
 VOCAB_SIZE = 32000
-SEQ_LEN = 2048
 HIDDEN_SIZE = 4096
 NUM_ATTENTION_HEAD = 32
 NUM_KV_ATTENTION_HEAD = 32
 MLP_RATIO = 2.6875
 NUM_LAYER = 32
-
+ALPA = False
+PP_SIZE = 4
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -42,17 +47,20 @@ ckpt = dict(
 
 TRAIN_FOLDER = None
 VALID_FOLDER = None  # "/path/to/dataset"
+N = 32
+SEQ_LEN = N * 1024
+PACK = True
 data = dict(
-    seq_len=SEQ_LEN,
+    seq_len=1024 * 4 if PACK else SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
-    # packed_length = micro_bsz * SEQ_LEN
+    micro_num=16,
     micro_bsz=1,
     # defaults to the value of micro_num
-    valid_micro_num=4,
+    valid_micro_num=16,
     # defaults to 0, means disable evaluate
     valid_every=0,
-    pack_sample_into_one=False,
+    pack_sample_into_one=PACK,
+    packed_length = SEQ_LEN,
     total_steps=20,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
@@ -182,8 +190,8 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    tensor=dict(size=2, mode="fsp"),
+    pipeline=dict(size=PP_SIZE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 

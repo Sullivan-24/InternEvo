@@ -151,3 +151,4 @@ RUN*/
 debug/
 *.txt
 configs/ppopp_configs/*/*.txt
+configs/osdi_configs/*/*.txt

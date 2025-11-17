@@ -876,6 +876,15 @@ def record_current_batch_training_metrics(
         infos["fwd_bwd_time"] = fwd_bwd_time
         bwd_time = round(timer("bwd").elapsed(), 2)
         infos["bwd_time"] = bwd_time
+        infos["fwd_time"] = fwd_bwd_time - bwd_time
+        
+        transformer_block_time = round(timer("transformer_block_time").elapsed(), 2)
+        infos["transformer_block_time"] = transformer_block_time
+        attn_time = round(timer("attn_time").elapsed(), 2)
+        infos["attn_time"] = attn_time
+        mlp_time = round(timer("mlp_time").elapsed(), 2)
+        infos["mlp_time"] = mlp_time
+        infos["other_time"] = round(transformer_block_time - attn_time - mlp_time, 2)
 
         for key, value in acc_perplex.items():
             infos[key] = value

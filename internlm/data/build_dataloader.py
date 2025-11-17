@@ -62,7 +62,7 @@ def get_tokenized_train_loader_items(data_cfg):
             )
         else:
             train_ds = RandomDataset(
-                num_samples=gpc.get_world_size(ParallelMode.DATA) * 1000,
+                num_samples=gpc.get_world_size(ParallelMode.DATA) * 1024 * 32,
                 max_len=data_cfg.seq_len,
                 fixed_seqlen=data_cfg.fixed_random_dataset_seqlen,
             )

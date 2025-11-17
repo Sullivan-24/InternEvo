@@ -28,6 +28,18 @@ from .base_scheduler import BaseScheduler
 
 logger = get_logger(__file__)
 
+from torch.profiler import record_function
+from functools import wraps
+
+def profiled(name):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with record_function(name):
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 def safe_detach(x):
     return x.detach() if isinstance(x, torch.Tensor) else x
 
@@ -270,6 +282,7 @@ class PipelineScheduler(BaseScheduler):
         """
         return step_id
 
+    @profiled("1F1B-Fwd")
     def _forward_step(
         self,
         engine,
@@ -353,11 +366,13 @@ class PipelineScheduler(BaseScheduler):
             moe_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
             moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
 
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+        
+        if getattr(gpc.config, 'HETER', False) and gpc.get_local_rank(ParallelMode.PIPELINE) >= len(gpc.get_ranks_in_group(ParallelMode.PIPELINE)) // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return output_obj, moe_loss, moe_z_loss
-
+    
+    @profiled("1F1B-Bwd")
     def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None):
         """
         Backward step through the passed-in output tensor. If it is the last stage, the
@@ -429,7 +444,7 @@ class PipelineScheduler(BaseScheduler):
                 for in_tensor in input_obj:
                     input_obj_grad.append(in_tensor.grad)
         self._call_hooks("after_backward", input_obj_grad)
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+        if getattr(gpc.config, 'HETER', False) and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.get_world_size(ParallelMode.PIPELINE) // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad
@@ -704,7 +719,7 @@ class PipelineScheduler(BaseScheduler):
                         scatter_gather_tensors=self.scatter_gather_tensors,
                     )
 
-        if gpc.config.profile_fwd_bwd and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        if getattr(gpc.config, "profile_fwd_bwd", False) and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
             output_dir = os.path.join("./results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
@@ -952,6 +967,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         result = move_to_device(micro_batch_data)
         return result
 
+    @profiled("I1F1B-Fwd")
     def _forward_step(self, engine, chunk_id, input_obj=None):
         """Forward step for passed-in model. If it is the first stage, the input tensor
         is obtained from data_iterator, otherwise the passed-in input_obj is used.
@@ -1031,11 +1047,12 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         self._moe_z_losses[chunk_id].append(moe_z_loss)
 
         assert output_obj is not None, f"{gpc.get_global_rank()} chunk{chunk_id} output is None"
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+        if getattr(gpc.config, 'HETER', False) and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.get_world_size(ParallelMode.PIPELINE) // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return output_obj
 
+    @profiled("I1F1B-Bwd")
     def _backward_step(self, engine, chunk_id, step_id):
         """
         Backward step for passed-in model. If it is the last stage, the input tensor
@@ -1064,7 +1081,7 @@ class InterleavedPipelineScheduler(PipelineScheduler):
         input_obj_grad = super()._backward_step(
             engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
         )
-        if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
+        if getattr(gpc.config, 'HETER', False) and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.get_world_size(ParallelMode.PIPELINE) // 2:
             import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad

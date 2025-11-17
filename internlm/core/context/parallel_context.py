@@ -31,6 +31,16 @@ from .process_group_initializer import (
 )
 from .random import add_seed, get_seeds, set_mode
 
+from contextlib import contextmanager
+import time
+@contextmanager
+def timer(description="code"):
+    start = time.time()
+    yield
+    end = time.time()
+    if getattr(global_context.config, "profile_operator_time", False):
+        print(f"{description} Time: {end - start:.2f} s")
+
 # for layernorm
 IS_REPLICA_ZERO_PARALLEL = "is_replica_zero_parallel"
 # for mtp/msp/fsp with tensor parallel, and optimizer split in zero1 group

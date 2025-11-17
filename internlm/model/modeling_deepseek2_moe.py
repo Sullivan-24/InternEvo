@@ -28,6 +28,7 @@ from internlm.model.utils import (
 )
 from internlm.solver.activation_checkpoint import activation_checkpoint
 from internlm.utils.logger import get_logger
+from internlm.utils.megatron_timers import megatron_timer as timer
 
 HAS_DLBLAS = False
 if torch.cuda.is_available():
@@ -716,7 +717,7 @@ class DeepSeek2MoEDecoder(nn.Module):
         """
         final_hidden_states = None
         if self.prenorm:
-
+            timer("transformer_block_time").start()
             def _dropout_and_norm_attn(_residual, _hidden_states):
                 _dropped = self.dropout1(_hidden_states)
                 _residual = (_dropped + _residual) if _residual is not None else _dropped
@@ -733,7 +734,9 @@ class DeepSeek2MoEDecoder(nn.Module):
                 residual = residual.to(torch.float32)
 
             attn_kwargs = convert_attn_args_to_kwargs(args, kwargs)
+            timer("attn_time").start()
             hidden_states = self.attention(hidden_states, **attn_kwargs)
+            timer("attn_time").stop()
 
             if not isinstance(self.feed_forward, nn.Identity):
                 if not self.fused_dropout_add_ln:
@@ -754,6 +757,7 @@ class DeepSeek2MoEDecoder(nn.Module):
 
                     if self.residual_in_fp32:
                         residual = residual.to(torch.float32)
+                timer("mlp_time").start()
                 if self.num_experts <= 1:
                     hidden_states = self.feed_forward(hidden_states)
                     moe_loss = None
@@ -762,7 +766,9 @@ class DeepSeek2MoEDecoder(nn.Module):
                     hidden_states, moe_loss, moe_z_loss = self.feed_forward(hidden_states)
 
             final_hidden_states = hidden_states + residual
+            timer("mlp_time").stop()
 
+            timer("transformer_block_time").stop()
         else:
             raise NotImplementedError("Post-norm is not supported yet.")
 

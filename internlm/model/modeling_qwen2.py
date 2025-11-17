@@ -10,6 +10,7 @@ from tqdm import tqdm
 from internlm.accelerator import get_accelerator
 from internlm.core.context import ParallelMode
 from internlm.core.context.parallel_context import global_context as gpc
+from internlm.utils.megatron_timers import megatron_timer as timer
 from internlm.initialize.initialize_tensor import (
     normal_,
     scaled_init_method_normal,
@@ -34,6 +35,7 @@ from transformers.modeling_utils import (
     SAFE_WEIGHTS_NAME,
     shard_checkpoint,
 )
+from internlm.utils.megatron_timers import megatron_timer as timer
 
 internlm_accelerator = get_accelerator()
 logger = get_logger(__file__)
@@ -228,7 +230,7 @@ class Qwen2Decoder(nn.Module):
             indexes: the length of index is same as hidden states, which stand for the current position
         """
         if self.prenorm:
-
+            timer("transformer_block_time").start()
             def _dropout_and_norm_attn(_residual, _hidden_states):
                 _dropped = self.dropout1(_hidden_states)
                 _residual = (_dropped + _residual) if _residual is not None else _dropped
@@ -245,7 +247,10 @@ class Qwen2Decoder(nn.Module):
                 residual = residual.to(torch.float32)
 
             mixer_kwargs = convert_attn_args_to_kwargs(args, kwargs)
+
+            timer("attn_time").start()
             hidden_states = self.attention(hidden_states, **mixer_kwargs)
+            timer("attn_time").stop()
 
             if not isinstance(self.feed_forward, nn.Identity):
                 if not self.fused_dropout_add_ln:
@@ -266,8 +271,11 @@ class Qwen2Decoder(nn.Module):
 
                     if self.residual_in_fp32:
                         residual = residual.to(torch.float32)
+                timer("mlp_time").start()
                 hidden_states = self.feed_forward(hidden_states)
+                timer("mlp_time").stop()
 
+            timer("transformer_block_time").stop()
             return hidden_states + residual
         else:
             assert residual is None
