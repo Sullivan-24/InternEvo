@@ -18,7 +18,7 @@ if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 
-DP_SIZE = 2
+DP_SIZE = 4
 PP_SIZE = 4
 TP_SIZE = 1
 
@@ -37,9 +37,9 @@ HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
 FAILURE= False
-FAILURE_TP_ID = [0,0,0,0]
-FAILURE_DP_ID = [3,2,1,0]
-FAILURE_PP_ID = [0,1,2,3]
+FAILURE_TP_ID = [0]
+FAILURE_DP_ID = [1]
+FAILURE_PP_ID = [2]
 FAILURE_GLOBAL_RANKS = []
 if FAILURE:
     for failure_index in range(len(FAILURE_DP_ID)):

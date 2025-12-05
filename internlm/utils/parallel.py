@@ -81,14 +81,17 @@ def sync_model_param(model):
     """
     sync_moe_param = gpc.is_using_parallel_mode(ParallelMode.EXPERT_DATA)
     sync_parallel_mode = ParallelMode.WEIGHT_DATA if is_using_isp() else ParallelMode.DATA
+    if gpc.get_global_rank() in gpc.config.get("FAILURE_GLOBAL_RANKS",[]):
+        return
     for param in model.parameters():
         if getattr(param, "is_expert", False):
             if sync_moe_param:
-                ranks = gpc.get_ranks_in_group(ParallelMode.EXPERT_DATA)
-                dist.broadcast(param, src=ranks[0], group=gpc.get_group(ParallelMode.EXPERT_DATA))
+                ranks = gpc.get_ranks_in_sub_group(ParallelMode.EXPERT_DATA)
+                dist.broadcast(param, src=ranks[0], group=gpc.get_sub_group(ParallelMode.EXPERT_DATA))
         else:
-            ranks = gpc.get_ranks_in_group(sync_parallel_mode)
-            dist.broadcast(param, src=ranks[0], group=gpc.get_group(sync_parallel_mode))
+            ranks = gpc.get_ranks_in_sub_group(sync_parallel_mode)
+
+            dist.broadcast(param, src=ranks[0], group=gpc.get_sub_group(sync_parallel_mode))
 
 
 def sync_model_replica_param_group(model):

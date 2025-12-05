@@ -769,7 +769,7 @@ def record_current_batch_training_metrics(
 
     timer.store_last_timers()
     if success_update in (0, True):
-        if gpc.config.DP_Transfer:
+        if gpc.config.get("DP_Transfer",False):
             train_state.num_consumed_tokens += batch[1].nelement()
         else:
             train_state.num_consumed_tokens += batch[1].nelement() * gpc.get_world_size(ParallelMode.DATA)
@@ -794,7 +794,7 @@ def record_current_batch_training_metrics(
             num_tokens_in_batch * gpc.get_world_size(ParallelMode.DATA) / gpc.get_world_size(ParallelMode.GLOBAL),
             4,
         )
-        if gpc.config.DP_Transfer:
+        if gpc.config.get("DP_Transfer",False):
             tk_per_gpu = round(
                 num_tokens_in_batch/ gpc.get_world_size(ParallelMode.GLOBAL),
                 4,
@@ -846,7 +846,7 @@ def record_current_batch_training_metrics(
             / time_cost,
             2,
         )
-        if gpc.config.DP_Transfer:
+        if gpc.config.get("DP_Transfer",False):
             tgs_origin = round(
                 num_tokens_in_batch
                 / gpc.get_world_size(ParallelMode.GLOBAL)

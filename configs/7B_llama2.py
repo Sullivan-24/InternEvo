@@ -1,4 +1,4 @@
-from configs.ppopp_configs.base_copy import *
+from configs.ppopp_configs.base import *
 JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
@@ -43,8 +43,9 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
+TRAIN_FOLDER = None #"/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
 VALID_FOLDER = None  # "/path/to/dataset"
+TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
@@ -56,7 +57,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=10000,
+    total_steps=5000,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -71,7 +72,7 @@ data = dict(
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
     type="streaming",
-    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-internlm2-tokenizer",
+    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(
@@ -186,7 +187,7 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=DP_SIZE),
+    zero1=dict(size=-1),
     tensor=dict(size=TP_SIZE, mode="mtp"),
     pipeline=dict(size=PP_SIZE, mode=PP_MODE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),

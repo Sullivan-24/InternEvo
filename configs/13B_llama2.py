@@ -70,11 +70,10 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = "/mnt/shared-storage-user/lusitian/data/data_jsonl/wiki/full_data/tokenized"
+# TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
+TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
-    # type="streaming",
-    # tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-internlm2-tokenizer",
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
     micro_num=MICRO_NUM,
@@ -99,6 +98,8 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
+    type="streaming",
+    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(

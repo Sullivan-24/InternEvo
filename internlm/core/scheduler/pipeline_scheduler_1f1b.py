@@ -309,7 +309,7 @@ class PipelineScheduler(BaseScheduler):
             micro_batch_data = self.load_micro_batch()
             data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
             # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
-            if gpc.config.DP_Transfer:
+            if gpc.config.get("DP_Transfer",False):
                 self.num_microbatches = gpc.config.num_microbatches_per_dp
             self._call_hooks("before_forward", data)
             if hasattr(gpc.config.model, "num_experts"):
@@ -401,7 +401,7 @@ class PipelineScheduler(BaseScheduler):
             # Backward pass.
 
             # Only the last microbatch does syncing grad.
-            if gpc.config.DP_Transfer:
+            if gpc.config.get("DP_Transfer",False):
                 self.num_microbatches = gpc.config.num_microbatches_per_dp
             skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
 
@@ -444,7 +444,7 @@ class PipelineScheduler(BaseScheduler):
                     for in_tensor in input_obj:
                         input_obj_grad.append(in_tensor.grad)
             self._call_hooks("after_backward", input_obj_grad)
-            if gpc.config["HETER"] and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
+            if gpc.config.get("HETER",False) and gpc.get_local_rank(parallel_mode=ParallelMode.TENSOR) == 0 and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
                 busy_wait_kernel(gpc.config["SLEEP_TIME"][1])
         return input_obj_grad
 

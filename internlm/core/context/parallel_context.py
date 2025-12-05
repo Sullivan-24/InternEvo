@@ -244,6 +244,23 @@ class ParallelContext(metaclass=SingletonMeta):
         """
         self._check_parallel_mode(parallel_mode)
         return self._local_ranks.get(parallel_mode, 0)
+
+    def get_sub_local_rank(self, parallel_mode: ParallelMode):
+        """Returns the local rank of the current device.
+
+        Args:
+            parallel_mode: The parallel mode for the rank.
+
+        Returns:
+            int: The local rank of the current device for `parallel_mode`.
+        """
+        self._check_parallel_mode(parallel_mode)
+        sub_parallel_mode = ParallelMode(f"{parallel_mode.value}_sub")
+        if sub_parallel_mode in self._groups.keys():
+            return self._local_ranks.get(sub_parallel_mode, 0)
+        else:
+            return self._local_ranks.get(parallel_mode, 0)
+        
     
     def get_global_rank_by_local_rank(self, parallel_mode: ParallelMode, local_rank: int):
         """Returns the global rank of the device.
@@ -418,13 +435,29 @@ class ParallelContext(metaclass=SingletonMeta):
         self._check_parallel_mode(parallel_mode)
         return self._world_sizes.get(parallel_mode, 1)
 
+    def get_sub_world_size(self, parallel_mode: ParallelMode):
+        """Returns the world size for `parallel_mode`.
+
+        Args:
+            parallel_mode: The chosen parallel mode.
+
+        Returns:
+            int: The world size for `parallel_mode`.
+        """
+        self._check_parallel_mode(parallel_mode)
+        sub_parallel_mode = ParallelMode(f"{parallel_mode.value}_sub")
+        if sub_parallel_mode in self._groups.keys():
+            return self._world_sizes.get(sub_parallel_mode, 1)
+        else:
+            return self._world_sizes.get(parallel_mode, 1)
+
     def get_sub_group(self, parallel_mode: ParallelMode):
         self._check_parallel_mode(parallel_mode)
         # return self._groups[parallel_mode]
-        sub_parallel_mode_value = f"{parallel_mode.value}_sub"
-        if ParallelMode(sub_parallel_mode_value) in self._groups.keys():
+        sub_parallel_mode = ParallelMode(f"{parallel_mode.value}_sub")
+        if sub_parallel_mode in self._groups.keys():
             # print(f"global_rank:{self.get_global_rank()}, ranks_in_sub_group:{self._ranks_in_group[ParallelMode(sub_parallel_mode_value)]}, mode:{sub_parallel_mode_value}")
-            return self._groups[ParallelMode(f"{parallel_mode.value}_sub")]
+            return self._groups[sub_parallel_mode]
         else:
             # print(f"global_rank:{self.get_global_rank()}, ranks_in_group:{self._ranks_in_group[parallel_mode]}, mode:{parallel_mode.value}")
             return self._groups[parallel_mode]

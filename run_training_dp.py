@@ -99,8 +99,8 @@ def run_and_log_megatron(megatron_cmd_args, log_file_handle, log_file_dir, distr
     my_env = os.environ
     my_env['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
     my_env['OMP_NUM_THREADS'] = '1'
-    my_env['LD_PRELOAD'] = '/workspace/Greyhound/detector/build/libncclprobe.so'
-    my_env['CONTROL_PLANE_WHL_PATH'] = '/workspace/Greyhound/detector/dist/control_plane-1.0-py3-none-any.whl'
+    my_env['LD_PRELOAD'] = '/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/detector/build/libncclprobe.so'
+    my_env['CONTROL_PLANE_WHL_PATH'] = '/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/detector/dist/control_plane-1.0-py3-none-any.whl'
     my_env['NCCLPROBE_LOG_PATH'] = log_file_dir
     my_env['GLOBAL_CONTROLLER_LOG_PATH'] = log_file_dir
     my_env['LOCAL_CONTROLLER_LOG_PATH'] = log_file_dir
@@ -138,7 +138,7 @@ def run_and_log_megatron(megatron_cmd_args, log_file_handle, log_file_dir, distr
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--logdir', type=str, default='/workspace/Greyhound/trainlog')
+    parser.add_argument('--logdir', type=str, default='/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/trainlog')
     parser.add_argument('--iter', type=int, default=10000)
     # parser.add_argument('--nnodes', type=int, default=1)
     # parser.add_argument('--rank', type=int, default=0)
@@ -183,8 +183,8 @@ def main():
         os.mkdir(log_file_dir)
     log_file_path = log_file_dir + f"/megatron_output_{rank}.log"
 
-    tp = {1:1, 2:1, 4:1, 8:1}
-    pp = {1:1, 2:1, 4:1, 8:1}
+    # tp = {1:1, 2:1, 4:1, 8:1}
+    # pp = {1:1, 2:1, 4:1, 8:1}
 
     num_gpus = torch.cuda.device_count()
     gpu_properties = torch.cuda.get_device_properties("cuda:0")

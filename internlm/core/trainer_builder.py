@@ -264,7 +264,7 @@ class TrainerBuilder(Trainer):
         """
         do_next = True
         if gpc.config.get("FAILURE",False):
-            if gpc.get_global_rank() in gpc.config.FAILURE_GLOBAL_RANKS:
+            if gpc.get_global_rank() in gpc.config.get("FAILURE_GLOBAL_RANKS",[]):
                 do_next = False
         if do_next:
             self.train()

@@ -424,7 +424,7 @@ def generate_():
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    dp_size=4
+    dp_size=2
     pp_size = len(stage_placement)
 
     transfer_info = None 
@@ -436,7 +436,7 @@ def generate_():
         if len(info) > 0:
             DP_Transfer = True
             break
-    num_microbatches = pp_size*4
+    num_microbatches = pp_size*2
     send_immediately = False
     unified_scheduler, recomp_stages, max_end_time, microbatch_id_infor = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info, microbatch_id_infor)

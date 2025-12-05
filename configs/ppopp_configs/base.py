@@ -18,17 +18,15 @@ if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 
-DP_SIZE = 4
-PP_SIZE = 8
+DP_SIZE = 1
+PP_SIZE = 4
 TP_SIZE = 2
 
 # MICRO_BSZ = int(8/DP_SIZE) # maintain the same global bsz, global_batch_size=gpc.config.data.micro_bsz* gpc.config.data.micro_num* gpc.get_world_size(ParallelMode.DATA)
 MICRO_NUM = PP_SIZE*2
 
-HETER= True
+HETER= False
 HETER_DEVICE = [[False for _ in range(PP_SIZE)] for _ in range(DP_SIZE)]
-HETER_DEVICE[1][3] = True
-HETER_DEVICE[3][7] = True
 # HETER_DEVICE[1][1] = True
 # HETER_DEVICE[2][3] = True
 
@@ -38,9 +36,9 @@ HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
 FAILURE= True
-FAILURE_TP_ID = [0,0]
-FAILURE_DP_ID = [0,2]
-FAILURE_PP_ID = [1,5]
+FAILURE_TP_ID = [1]
+FAILURE_DP_ID = [0]
+FAILURE_PP_ID = [1]
 FAILURE_GLOBAL_RANKS = []
 if FAILURE:
     for failure_index in range(len(FAILURE_DP_ID)):

@@ -235,7 +235,7 @@ Vs. self.num_samples: {self.num_samples}"
 
     def __iter__(self):
         indices = self.indices[self.data_rank :: self.data_world_size]
-        if gpc.config.DP_Transfer:
+        if gpc.config.get("DP_Transfer",False):
             indices = self.indices
         while self.num_consumed_samples_in_epoch < len(indices):
             batch_rampup_idx = self.batch_count // self.incre_every
