@@ -220,7 +220,7 @@ class HeadTensorParallelCommunicator(TensorParallelCommunicator):
     """
 
     def __init__(self, parallel_mode: ParallelMode, retain_out_sharded: bool = True) -> None:
-        super().__init__(process_group=gpc.get_group(parallel_mode), role=LinearRole.COLUMN)
+        super().__init__(process_group=gpc.get_sub_group(parallel_mode), role=LinearRole.COLUMN)
 
         self._parallel_mode = parallel_mode
         self._retain_out_sharded = retain_out_sharded
@@ -257,7 +257,7 @@ class HeadSequenceParallelCommunicator(SequenceParallelCommunicator):
         self, parallel_mode: ParallelMode, retain_out_sharded: bool = True, save_total_input_as_activation: bool = False
     ) -> None:
         super().__init__(
-            process_group=gpc.get_group(parallel_mode),
+            process_group=gpc.get_sub_group(parallel_mode),
             role=LinearRole.COLUMN,
             save_total_input_as_activation=save_total_input_as_activation,
         )

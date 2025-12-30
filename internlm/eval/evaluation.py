@@ -76,8 +76,8 @@ def evaluate_on_val_dls(
 ):
     val_metric = AccPerplex(
         device=get_current_device(),
-        tp_pg=gpc.get_group(ParallelMode.TENSOR),
-        dp_pg=gpc.get_group(ParallelMode.DATA),
+        tp_pg=gpc.get_sub_group(ParallelMode.TENSOR),
+        dp_pg=gpc.get_sub_group(ParallelMode.DATA),
     )
     val_sche_metric_hook = SchedulerMetricHook(metric=val_metric)
 

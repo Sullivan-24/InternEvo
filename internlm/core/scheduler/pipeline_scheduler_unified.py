@@ -33,6 +33,7 @@ import queue
 import time
 import json
 import os
+import pdb
 
 def safe_detach(x):
     return x.detach() if isinstance(x, torch.Tensor) else x
@@ -49,11 +50,11 @@ def write_debug_file(file_path, content, new_line=True):
             os.fsync(f.fileno())
 
 def write_json(jsonpath, content):
-    if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+    # if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
     #if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        with open(jsonpath, 'a',encoding='utf-8') as f:
-            json.dump(content, f)
-            f.write('\n')
+    with open(jsonpath, 'a',encoding='utf-8') as f:
+        json.dump(content, f)
+        f.write('\n')
 
 def _get_localrankid_by_placement(stage_id: int, stage_placement:list) -> int:
     for device_id in range(len(stage_placement)):
@@ -118,8 +119,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         comm_graph: List[List[List[tuple]]] = None,
         first_stage: int = None,
         last_stage: int = None,
-        dp_size: int = None,
-        pp_size: int = None,
+        dp_size: int = 1,
+        pp_size: int = 1,
 
     ):
         super().__init__(
@@ -139,7 +140,11 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         WeightGradStore.set_weight_grad_queue(num_chunks=1, num_microbatches=num_microbatches)
         self.local_pp_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
         self.local_dp_rank = gpc.get_local_rank(ParallelMode.DATA)
+        self.local_tp_rank = gpc.get_local_rank(ParallelMode.TENSOR)
+        self.global_rank = gpc.get_global_rank()
         self.dp_size = dp_size
+        self.pp_size = pp_size
+        self.tp_size = gpc.tensor_parallel_size
         self.last_stage = last_stage
         self.first_stage = first_stage
         self.unified_scheduler = unified_scheduler
@@ -160,51 +165,125 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.send_backward_result = [None for __ in range(self.num_microbatches)]
 
         file_path = f"InternEvo/jsonResult/async/pp{gpc.pipeline_parallel_size}_mb{self.num_microbatches}/DP{self.local_dp_rank}"
-        # os.makedirs(file_path, exist_ok=True)
-        gpc._config['jsonpath'] = file_path+f"/PP{self.local_pp_rank}_workloads.json"
+        os.makedirs(file_path, exist_ok=True)
+        gpc._config['jsonpath'] = file_path+f"/PP{self.local_pp_rank}_TP{self.local_tp_rank}workloads.json"
 
     def do_comms(self,comm_list):
         for ops in comm_list:
-            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, microbatch_id, source_dp_rank, _ , match_global_rank = ops
-            # match_global_rank = None
-            # if match_dp_rank == self.local_dp_rank:
-            #     match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)
-            # else:
-            #     match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)+match_dp_rank-self.local_dp_rank
+            op_type, _, match_dp_rank, match_pp_rank, source_stage_id, _, microbatch_id, source_dp_rank, _ , match_global_rank_ = ops
+            match_global_rank = None
+            match_global_ranks = []
+            split_indexs = []
+            split_size = None
+            split_index = None
+            if match_dp_rank == self.local_dp_rank:
+                match_global_rank = gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)
+            else:
+                match_global_rank = match_pp_rank*(self.dp_size*self.tp_size)+match_dp_rank*self.tp_size+self.local_tp_rank#gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)+match_dp_rank-self.local_dp_rank
             assert match_global_rank is not None
-            if op_type == 'SA':
-                comm.AsynCommunicator(
-                        object_send_next=self.send_forward_result[microbatch_id],
-                        next_rank=match_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                ).start()
-            elif op_type == 'SG':
-                comm.AsynCommunicator(
-                        object_send_prev=self.send_backward_result[microbatch_id],
-                        prev_rank=match_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                    ).start()
-            elif op_type == 'RA':
-                recv_f_buffer = comm.AsynCommunicator(
-                        recv_prev_shape=self.input_obj_shape,
-                        prev_rank=match_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                        )
-                recv_f_buffer.start()
-                self.recv_forward_buffer[microbatch_id] = recv_f_buffer
-            elif op_type == 'RG':
-                recv_b_buffer = comm.AsynCommunicator(
-                        recv_next_shape=self.output_obj_shape,
-                        next_rank=match_global_rank,
-                        dtype=self.dtype,
-                        scatter_gather_tensors=self.scatter_gather_tensors,
-                    )
-                recv_b_buffer.start()
-                self.recv_backward_buffer[microbatch_id] = recv_b_buffer
 
+            if gpc.config.get("FAILURE",False):
+                Available_ranks_map = gpc.config.get("Available_ranks_map", None)
+                assert Available_ranks_map is not None
+                self_tp_alive = Available_ranks_map[self.local_dp_rank][self.local_pp_rank]
+                match_tp_alive = Available_ranks_map[match_dp_rank][match_pp_rank]
+                self_tp_size = len(self_tp_alive)
+                match_tp_size = len(match_tp_alive)
+                index_tp = self_tp_alive.index(self.local_tp_rank)
+                scale_factor = self_tp_size/match_tp_size
+                if scale_factor<1:
+                    split_size = match_tp_size
+                    match_ranks_num = int(1/scale_factor)
+                    match_tp_list = match_tp_alive[index_tp*match_ranks_num:(index_tp+1)*match_ranks_num]
+                    for match_tp in match_tp_list:
+                        split_indexs.append(match_tp_alive.index(match_tp))
+                        match_global_ranks.append(match_pp_rank*(self.dp_size*self.tp_size)+match_dp_rank*self.tp_size+match_tp)
+                else:
+                    split_size = self_tp_size
+                    match_tp_rank = match_tp_alive[int(index_tp/scale_factor)]
+                    match_global_ranks.append(match_pp_rank*(self.dp_size*self.tp_size)+match_dp_rank*self.tp_size+match_tp_rank)# assert len == 1
+                    split_indexs.append(index_tp)
+
+                if op_type == 'SA':
+                    for index,match_global_rank_ in enumerate(match_global_ranks):
+                        split_index = split_indexs[index]
+                        comm.AsynCommunicator_send_split(
+                                object_send_next=self.send_forward_result[microbatch_id],
+                                next_rank=match_global_rank_,
+                                dtype=self.dtype,
+                                scatter_gather_tensors=self.scatter_gather_tensors,
+                                split_size=split_size,
+                                split_index=split_index,
+                            ).start()
+                elif op_type == 'SG':
+                    for index,match_global_rank_ in enumerate(match_global_ranks):
+                        split_index = split_indexs[index]
+                        comm.AsynCommunicator_send_split(
+                                object_send_prev=self.send_backward_result[microbatch_id],
+                                prev_rank=match_global_rank_,
+                                dtype=self.dtype,
+                                scatter_gather_tensors=self.scatter_gather_tensors,
+                                split_size=split_size,
+                                split_index=split_index,
+                                ).start()
+                elif op_type == 'RA':
+                    recv_f_buffer = comm.AsynCommunicator_recv_more(
+                            recv_prev_shape=self.input_obj_shape,
+                            prev_ranks=match_global_ranks,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                            split_size=split_size
+                            )
+                    recv_f_buffer.start()
+                    self.recv_forward_buffer[microbatch_id] = recv_f_buffer
+
+                elif op_type == 'RG':
+                    recv_b_buffer = comm.AsynCommunicator_recv_more(#TODO the order should be careful
+                            recv_next_shape=self.output_obj_shape,
+                            next_ranks=match_global_ranks,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                            split_size=split_size
+                            )
+                    recv_b_buffer.start()
+                    self.recv_backward_buffer[microbatch_id] = recv_b_buffer
+            else:
+                if op_type == 'SA':
+                    comm.AsynCommunicator(
+                            object_send_next=self.send_forward_result[microbatch_id],
+                            next_rank=match_global_rank,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                    ).start()
+                elif op_type == 'SG':
+                    comm.AsynCommunicator(
+                            object_send_prev=self.send_backward_result[microbatch_id],
+                            prev_rank=match_global_rank,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                        ).start()
+                elif op_type == 'RA':
+                    recv_f_buffer = comm.AsynCommunicator(
+                            recv_prev_shape=self.input_obj_shape,
+                            prev_rank=match_global_rank,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                            )
+                    recv_f_buffer.start()
+                    self.recv_forward_buffer[microbatch_id] = recv_f_buffer
+                elif op_type == 'RG':
+                    recv_b_buffer = comm.AsynCommunicator(
+                            recv_next_shape=self.output_obj_shape,
+                            next_rank=match_global_rank,
+                            dtype=self.dtype,
+                            scatter_gather_tensors=self.scatter_gather_tensors,
+                        )
+                    recv_b_buffer.start()
+                    self.recv_backward_buffer[microbatch_id] = recv_b_buffer
+            json_content = {"global_rank":self.global_rank , "microbatch_id":microbatch_id, "comm_type":op_type, "local_pp_rank": gpc.get_local_rank(ParallelMode.PIPELINE),
+                            "success":True, "match_global_ranks":match_global_ranks, "index_tp":index_tp, "scale_factor":scale_factor, "split_size":split_size
+                            }
+            write_json(gpc._config['jsonpath'], json_content)
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
         This function schedules the forward and backward computation of microbatches in the pipeline in a 1F1B manner.
@@ -248,6 +327,13 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         moe_losses = [None for __ in range(self.num_microbatches)]
         return_tensors = [None for __ in range(self.num_microbatches)]#TODO
         moe_z_losses = [None for __ in range(self.num_microbatches)]
+        self.recv_backward_buffer = [None for __ in range(self.num_microbatches)]
+        self.recv_forward_buffer = [None for __ in range(self.num_microbatches)]
+        self.recv_forward_result = [None for __ in range(self.num_microbatches)]
+        self.recv_backward_result = [None for __ in range(self.num_microbatches)]
+        self.send_forward_result = [None for __ in range(self.num_microbatches)]
+        self.send_backward_result = [None for __ in range(self.num_microbatches)]
+
         accum_loss = (
             torch.zeros(1, device=get_current_device())
             if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True)
@@ -260,6 +346,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         workloads = self.workloads
         num_workloads = len(workloads)
         jsonpath = gpc._config['jsonpath']
+        global_rank = self.global_rank
         # print(gpc.get_global_rank(), "start _forward_backward_step with num_workloads:", num_workloads)
         for s in range(num_workloads):
             workload = workloads[s]
@@ -269,8 +356,6 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             self.workload_id = s
             if len(before_comms)>0:
                 self.do_comms(before_comms)
-            json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"before_comms"}
-            # write_json(jsonpath, json_content)
 
             if workload_type == WorkloadType.FORWARD.value:# Forward pass
                 # Receive the input from the previous stage 
@@ -301,9 +386,9 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 )
                 self.send_forward_result[microbatch_id] = output_obj
                 #end_time = time.perf_counter()
-                json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
-                #end_time = time.perf_counter()
+                json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
+                write_json(jsonpath, json_content)
+                end_time = time.perf_counter()
                 
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
@@ -331,7 +416,6 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 output_obj = output_objs[microbatch_id]
                 moe_loss = moe_losses[microbatch_id]
                 moe_z_loss = moe_z_losses[microbatch_id]
-                
                 if stage_id<self.last_stage:
                     if self.recv_backward_result[microbatch_id] is not None:
                         output_obj_grad = self.recv_backward_result[microbatch_id]
@@ -351,8 +435,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 )
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()
-                json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
+                json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
+                write_json(jsonpath, json_content)
                 for microbatch in range(self.num_microbatches):
                     if self.recv_forward_buffer[microbatch] is not None and self.recv_forward_result[microbatch] is None:
                         recv_f_tensor, _ = self.recv_forward_buffer[microbatch].wait_and_receive()
@@ -368,14 +452,12 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                 # with torch.profiler.record_function(f"SCH-weight_workload-{microbatch_id}-0"):
                 WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
                 #end_time = time.perf_counter()
-                json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
-                # write_json(jsonpath, json_content)
+                json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
+                write_json(jsonpath, json_content)
             if s == len(workloads)-1:             
                 after_comms = comm_list[s+1]
                 if len(after_comms)>0:
                     self.do_comms(after_comms)
-                json_content = {"source_dp_rank":source_dp_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"after_comms"}
-                # write_json(jsonpath, json_content)
         return_tensors_ = []
         for tensor in return_tensors:
             if tensor is  not None:

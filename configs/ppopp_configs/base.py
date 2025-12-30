@@ -1,7 +1,7 @@
-import os
 from preprocess import generate_
 from datetime import datetime
-
+import math
+import pdb
 timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
 
 DO_ALERT = False
@@ -13,13 +13,13 @@ layerwise = False
 split_backward = False
 
 SEQ_LEN = 4096
-SCHEDULE = 0
+SCHEDULE = 1
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 
-DP_SIZE = 1
-PP_SIZE = 4
+DP_SIZE = 2
+PP_SIZE = 2
 TP_SIZE = 2
 
 # MICRO_BSZ = int(8/DP_SIZE) # maintain the same global bsz, global_batch_size=gpc.config.data.micro_bsz* gpc.config.data.micro_num* gpc.get_world_size(ParallelMode.DATA)
@@ -35,19 +35,42 @@ FALCON = False
 HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
-FAILURE= True
-FAILURE_TP_ID = [1]
-FAILURE_DP_ID = [0]
-FAILURE_PP_ID = [1]
+FAILURE = True
+# FAILURE_TP_ID = [1]
+# FAILURE_DP_ID = [0]
+# FAILURE_PP_ID = [1]
 FAILURE_GLOBAL_RANKS = []
-if FAILURE:
-    for failure_index in range(len(FAILURE_DP_ID)):
-        failure_tp = FAILURE_TP_ID[failure_index]
-        failure_dp = FAILURE_DP_ID[failure_index]
-        failure_pp = FAILURE_PP_ID[failure_index]
-        # FAILURE_GLOBAL_RANKS.append(failure_pp*DP_SIZE+failure_dp) #!!!!!!! easy wrong
-        FAILURE_GLOBAL_RANKS.append(failure_pp*(DP_SIZE*TP_SIZE)+failure_dp*TP_SIZE+failure_tp) #!!!!!!! easy wrong
 
+# if FAILURE:
+#     for failure_index in range(len(FAILURE_DP_ID)):
+#         failure_tp = FAILURE_TP_ID[failure_index]
+#         failure_dp = FAILURE_DP_ID[failure_index]
+#         failure_pp = FAILURE_PP_ID[failure_index]
+#         # FAILURE_GLOBAL_RANKS.append(failure_pp*DP_SIZE+failure_dp) #!!!!!!! easy wrong
+#         FAILURE_GLOBAL_RANKS.append(failure_pp*(DP_SIZE*TP_SIZE)+failure_dp*TP_SIZE+failure_tp) #!!!!!!! easy wrong
+
+Failure_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
+# Failure_ranks_map[0][0] = [0]
+Failure_ranks_map[0][0] = [0]
+Available_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
+
+if FAILURE:
+    for dp_index, pp_ranks in enumerate(Failure_ranks_map):
+        for pp_index, failure_tp_ranks in enumerate(pp_ranks):
+            TPGroup = [i for i in range(TP_SIZE)]
+            if len(failure_tp_ranks) == 0:
+                Available_ranks_map[dp_index][pp_index] = TPGroup
+                continue
+            for failure_tp_rank in failure_tp_ranks:
+                TPGroup.remove(failure_tp_rank)
+            if len(TPGroup)>0:
+                while(math.log2(len(TPGroup))%1 != 0):
+                    Failure_ranks_map[dp_index][pp_index].append(TPGroup.pop(-1))
+            for failure_local_tp_rank in Failure_ranks_map[dp_index][pp_index]:
+                FAILURE_GLOBAL_RANKS.append(pp_index*(DP_SIZE*TP_SIZE)+dp_index*TP_SIZE+failure_local_tp_rank)
+            Available_ranks_map[dp_index][pp_index] = TPGroup
+            # for tp_local_rank in TPGroup:
+            #     Available_ranks_map[dp_index][pp_index].append(pp_index*(DP_SIZE*TP_SIZE)+dp_index*TP_SIZE+tp_local_rank)
 if FALCON or FAILURE:
     SCHEDULE = 0
 

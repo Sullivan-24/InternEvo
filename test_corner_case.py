@@ -203,7 +203,7 @@ def setup_distributed(backend="nccl", port=None):
         rank = int(os.environ["SLURM_PROCID"])
         world_size = int(os.environ["SLURM_NTASKS"])
         local_world_size = int(os.environ['SLURM_NTASKS_PER_NODE']) 
-        # import pdb; pdb.set_trace() 
+
         node_list = os.environ["SLURM_NODELIST"]
         addr = subprocess.getoutput(f"scontrol show hostname {node_list} | head -n1")
         # specify master port

@@ -135,10 +135,14 @@ def judge_scheduler_type(stage_placement):
             return ModuleType.INTERLEAVED.value
 
 def judge_split_backward(unified_scheduler):
-    if unified_scheduler[0][0][-1]["workload_type"] == WorkloadType.WEIGHT.value:
-        return True
-    else:
-        return False
+    for dp_rank in range(len(unified_scheduler)):
+        for pp_rank in range(len(unified_scheduler[dp_rank])):
+            if len(unified_scheduler[dp_rank][pp_rank]) == 0:
+                continue
+            if unified_scheduler[dp_rank][pp_rank][-1]["workload_type"] == WorkloadType.WEIGHT.value:
+                return True
+            else:
+                return False
 
 def write_json(jsonpath, content):
     with open(jsonpath, 'a',encoding='utf-8') as f:
@@ -424,7 +428,7 @@ def generate_():
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    dp_size=2
+    dp_size=1
     pp_size = len(stage_placement)
 
     transfer_info = None 
@@ -436,7 +440,7 @@ def generate_():
         if len(info) > 0:
             DP_Transfer = True
             break
-    num_microbatches = pp_size*2
+    num_microbatches = 1#pp_size*2
     send_immediately = False
     unified_scheduler, recomp_stages, max_end_time, microbatch_id_infor = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info, microbatch_id_infor)
@@ -453,7 +457,7 @@ def generate_():
     # with open(file_path+'/runtime.json',WorkloadType.WEIGHT.value) as file:
     #     json.dump(result,file)
     # print(f'num_microbatches:{num_microbatches*dp_size}, pp_size:{pp_size}, stage_placement:{stage_placement}, scheduler_type:{scheduler_type}, split_backward:{split_backward}, \
-    #       recomp_stages:{recomp_stages}')
+    #       recomp_stages:{recomp_stages}, comm_graph:{comm_graph}')
     if DP_Transfer:
         return num_microbatches*dp_size, pp_size, stage_placement, scheduler_type ,\
                 split_backward, unified_scheduler, comm_graph, first_stage ,\

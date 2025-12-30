@@ -207,7 +207,7 @@ def _create_parallel_process_groups(
         group_ranks, accelerator_group = None, None
         all_group_ranks = get_group_ranks(global_ranks_or_sizes, group.size, pre_group_size, group.allow_partial_group)
         sub_group_ranks, sub_accelerator_group = None, None
-
+        import pdb
         for idx, ranks in enumerate(all_group_ranks):
             _pg = dist.new_group(ranks, timeout=LLM_NCCL_TIMEOUT)
             if self_rank in ranks:
@@ -225,6 +225,7 @@ def _create_parallel_process_groups(
                     sub_group_ranks, sub_accelerator_group = sub_ranks, sub_pg
                 else:
                     dist.destroy_process_group(sub_pg)
+        
 
         if group_ranks is None:
             pre_group_size = pre_group_size * group.size
@@ -239,7 +240,7 @@ def _create_parallel_process_groups(
             sub_mode_value = f"{group.mode.value}_sub"
             sub_mode = ParallelMode(sub_mode_value)
             sub_cpu_group = init_cpu_group(sub_accelerator_group, sub_group_ranks, with_cpu_group)
-            self_rank_index_sub = None
+            self_rank_index_sub = 0
             if self_rank in sub_group_ranks:
                 self_rank_index_sub = sub_group_ranks.index(self_rank)
             group_results.append(

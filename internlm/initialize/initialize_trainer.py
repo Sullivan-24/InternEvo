@@ -238,7 +238,7 @@ def initialize_trainer(
                     first_stage=gpc.config.first_stage,
                     last_stage=gpc.config.last_stage,
                     dp_size=gpc.config.dp_size,
-                    pp_size=gpc.config.pp_size
+                    pp_size=gpc.config.pp_size,
                 )
             print(f"Scheduler:{scheduler.__class__.__name__}")
         else:

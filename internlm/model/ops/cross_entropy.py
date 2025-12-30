@@ -84,7 +84,7 @@ def new_cross_entropy(
 
     elif op_type == CrossEntropyOpType.flash_vocab_parallel:
 
-        assert gpc.get_group(ParallelMode.TENSOR) is not None, "The process group should not be None."
+        assert gpc.get_sub_group(ParallelMode.TENSOR) is not None, "The process group should not be None."
 
         try:
             from flash_attn.losses.cross_entropy import (
@@ -112,7 +112,7 @@ def new_cross_entropy(
             ignore_index=ignore_index,
             reduction=reduction,
             label_smoothing=label_smoothing,
-            process_group=gpc.get_group(ParallelMode.TENSOR),
+            process_group=gpc.get_sub_group(ParallelMode.TENSOR),
             inplace_backward=inplace_backward,
         )
 
@@ -130,13 +130,13 @@ def new_cross_entropy(
         )
 
     elif op_type == CrossEntropyOpType.py_vocab_parallel:
-        assert gpc.get_group(ParallelMode.TENSOR) is not None, "The process group should not be None."
+        assert gpc.get_sub_group(ParallelMode.TENSOR) is not None, "The process group should not be None."
 
         return CrossEntropyApexVocabParallel(
             ignore_index=ignore_index,
             reduction=reduction,
             label_smoothing=label_smoothing,
-            process_group=gpc.get_group(ParallelMode.TENSOR),
+            process_group=gpc.get_sub_group(ParallelMode.TENSOR),
         )
 
     elif op_type == CrossEntropyOpType.py_naive:

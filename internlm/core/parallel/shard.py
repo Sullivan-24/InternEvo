@@ -202,7 +202,7 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
                 base_idx += chunk_size + (p >= left)
                 parts[p].append((st, base_idx))
 
-    if gpc.config.ALPA:
+    if gpc.config.get("ALPA",False):
         parts = []
         partition = []
         with open("InternEvo/mist_partition.txt", "r") as f:

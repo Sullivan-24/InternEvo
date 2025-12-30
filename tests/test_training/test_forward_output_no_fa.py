@@ -183,8 +183,8 @@ def train_check_output(args):
 
     metric = AccPerplex(
         device=get_current_device(),
-        tp_pg=gpc.get_group(ParallelMode.TENSOR),
-        dp_pg=gpc.get_group(ParallelMode.DATA),
+        tp_pg=gpc.get_sub_group(ParallelMode.TENSOR),
+        dp_pg=gpc.get_sub_group(ParallelMode.DATA),
         dataset_types=dataset_types,
     )
 

@@ -45,6 +45,7 @@ ckpt = dict(
 
 TRAIN_FOLDER = None
 VALID_FOLDER = None  # "/path/to/dataset"
+TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
@@ -56,7 +57,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=10000,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -70,6 +71,8 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
+    type="streaming",
+    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(

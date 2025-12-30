@@ -78,7 +78,7 @@ all_reduce = AllReduceFunc.apply
 
 def _split(input_, parallel_mode, dim=-1):
     # skip if only one rank involved
-    world_size = gpc.get_world_size(parallel_mode)
+    world_size = gpc.get_sub_world_size(parallel_mode)
     if world_size == 1:
         return input_
 
@@ -90,7 +90,7 @@ def _split(input_, parallel_mode, dim=-1):
     )
 
     tensor_list = torch.split(input_, dim_size // world_size, dim=dim)
-    rank = gpc.get_local_rank(parallel_mode)
+    rank = gpc.get_sub_local_rank(parallel_mode)
     output = tensor_list[rank].contiguous()
     output = output.detach().clone()
 
@@ -99,15 +99,15 @@ def _split(input_, parallel_mode, dim=-1):
 
 def _gather(input_, parallel_mode, dim=-1):
     # skip if only one rank involved
-    world_size = gpc.get_world_size(parallel_mode)
+    world_size = gpc.get_sub_world_size(parallel_mode)
     if world_size == 1:
         return input_
 
     # all gather
-    rank = gpc.get_local_rank(parallel_mode)
+    rank = gpc.get_sub_local_rank(parallel_mode)
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     tensor_list[rank] = input_
-    group = gpc.get_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_group(parallel_mode)
+    group = gpc.get_sub_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_sub_group(parallel_mode)
     dist.all_gather(tensor_list, input_, group=group)
 
     # concat
@@ -118,10 +118,10 @@ def _gather(input_, parallel_mode, dim=-1):
 
 def _reduce(input_, parallel_mode):
     # skip if only one rank involved
-    if gpc.get_world_size(parallel_mode) == 1:
+    if gpc.get_sub_world_size(parallel_mode) == 1:
         return input_
 
-    group = gpc.get_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_group(parallel_mode)
+    group = gpc.get_sub_cpu_group(parallel_mode) if input_.device.type == "cpu" else gpc.get_sub_group(parallel_mode)
     dist.all_reduce(input_, group=group)
 
     return input_

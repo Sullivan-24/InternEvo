@@ -106,11 +106,13 @@ def sync_model_replica_param_group(model):
     """
 
     parallel_mode = ParallelMode.WEIGHT if is_using_isp() else ParallelMode.TENSOR
+    if gpc.get_global_rank() in gpc.config.get("FAILURE_GLOBAL_RANKS",[]):
+        return
     if gpc.is_using_parallel_mode(parallel_mode):
         for param in model.parameters():
             if is_replica_zero_parallel_parameter(param):
-                ranks = gpc.get_ranks_in_group(parallel_mode)
-                dist.broadcast(param, src=ranks[0], group=gpc.get_group(parallel_mode))
+                ranks = gpc.get_ranks_in_sub_group(parallel_mode)
+                dist.broadcast(param, src=ranks[0], group=gpc.get_sub_group(parallel_mode))
 
 
 def get_parallel_log_file_name():

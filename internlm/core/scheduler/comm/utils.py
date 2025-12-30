@@ -107,6 +107,44 @@ def split_tensor_into_1d_equal_chunks(tensor: torch.Tensor, new_buffer=False) ->
         data = tensor.view(-1)[start_index:end_index]
     return data
 
+def split_tensor_into_1d_equal_chunks_failure(tensor: torch.Tensor, new_buffer=False, split_size= None, split_index=None) -> torch.Tensor:
+    """Break a tensor into equal 1D chunks.
+
+    Args:
+        tensor (:class:`torch.Tensor`): Tensor to be split before communication.
+        new_buffer (bool, optional): Whether to use a new buffer to store sliced tensor.
+
+    Returns:
+        :class:`torch.Tensor`: The split tensor
+    """
+    partition_size = torch.numel(tensor) // split_size
+    start_index = partition_size * split_index
+    end_index = start_index + partition_size
+    if new_buffer:
+        data = torch.empty(partition_size, dtype=tensor.dtype, device=get_current_device(), requires_grad=False)
+        data.copy_(tensor.view(-1)[start_index:end_index])
+    else:
+        data = tensor.view(-1)[start_index:end_index]
+    return data
+
+def manual_gather_split_1d_tensor_verbose(tensor_list: List[torch.Tensor]) -> torch. Tensor:
+    world_size = len(tensor_list)
+    assert world_size >= 1
+    if world_size == 1:
+        return tensor_list[0]#!!!!
+    numel = torch.numel(tensor_list[0])
+    
+    # 创建目标tensor
+    gathered = torch.empty(world_size * numel, 
+                          dtype=tensor_list[0].dtype, 
+                          device=tensor_list[0].device, 
+                          requires_grad=False)
+    
+    # 逐个赋值
+    for i, tensor in enumerate(tensor_list):
+        gathered[i * numel : (i + 1) * numel] = tensor
+
+    return gathered
 
 def gather_split_1d_tensor(tensor: torch.Tensor) -> torch.Tensor:
     """Opposite of above function, gather values from model parallel ranks.
@@ -116,10 +154,10 @@ def gather_split_1d_tensor(tensor: torch.Tensor) -> torch.Tensor:
     Returns:
         :class:`torch.Tensor`: The gathered tensor.
     """
-    world_size = gpc.get_world_size(ParallelMode.TENSOR)
+    world_size = gpc.get_sub_world_size(ParallelMode.TENSOR)
     numel = torch.numel(tensor)
     numel_gathered = world_size * numel
     gathered = torch.empty(numel_gathered, dtype=tensor.dtype, device=get_current_device(), requires_grad=False)
     chunks = [gathered[i * numel : (i + 1) * numel] for i in range(world_size)]
-    dist.all_gather(chunks, tensor, group=gpc.get_group(ParallelMode.TENSOR))
+    dist.all_gather(chunks, tensor, group=gpc.get_sub_group(ParallelMode.TENSOR))
     return gathered

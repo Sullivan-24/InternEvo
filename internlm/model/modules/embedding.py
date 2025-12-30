@@ -49,14 +49,14 @@ class Embedding1D(nn.Module):
         self.embed_kwargs = kwargs
         self.vocab_parallel = vocab_parallel
 
-        parallel_size = gpc.weight_parallel_size if is_using_isp() else gpc.tensor_parallel_size
-
+        # parallel_size = gpc.weight_parallel_size if is_using_isp() else gpc.tensor_parallel_size
+        parallel_size = gpc.get_sub_world_size(ParallelMode.WEIGHT) if is_using_isp() else gpc.get_sub_world_size(ParallelMode.TENSOR)#subset of available devices
         if vocab_parallel:
             assert num_embeddings % parallel_size == 0, f"{num_embeddings} is not divisible by {parallel_size}"
 
             self.num_embeddings_per_partition = num_embeddings // parallel_size
             self.embed_dim_per_partition = embedding_dim
-            self.vocab_start_index = gpc.get_local_rank(ParallelMode.TENSOR) * self.num_embeddings_per_partition
+            self.vocab_start_index = gpc.get_sub_local_rank(ParallelMode.TENSOR) * self.num_embeddings_per_partition
             self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
         else:
             assert embedding_dim % parallel_size == 0, f"{embedding_dim} is not divisible by {parallel_size}"

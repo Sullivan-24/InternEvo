@@ -619,9 +619,8 @@ class ParallelLinearWithCommExt(nn.Linear):
     ) -> None:
         assert split_mode in ("none", "column", "row"), f"unknown split_mode {split_mode}"
 
-        world_size = gpc.get_world_size(parallel_mode)
-        rank = gpc.get_local_rank(parallel_mode)
-
+        world_size = gpc.get_sub_world_size(parallel_mode)
+        rank = gpc.get_sub_local_rank(parallel_mode)
         if split_mode != "none":
             split_features = out_features if split_mode == "column" else in_features
             multiple = split_features // multiple_of
@@ -723,7 +722,7 @@ class RowParallelLinear(ParallelLinearWithCommExt):
             raise ValueError(f"in_features ({in_features}) must be a multiple of {multiple_of}")
 
         parallel_mode = get_tensor_split_parallel_mode(is_expert=is_expert)
-        rank = gpc.get_local_rank(parallel_mode)
+        rank = gpc.get_sub_local_rank(parallel_mode)
         super().__init__(
             in_features,
             out_features,
@@ -836,10 +835,10 @@ class RewardModelLinear(ScaleColumnParallelLinear):
 
         # broadcast parameters for reward model head layer.
         parallel_mode = get_head_parallel_mode()
-        process_group = gpc.get_group(parallel_mode)
-        dist.broadcast(self.weight, gpc.get_ranks_in_group(parallel_mode)[0], process_group)
+        process_group = gpc.get_sub_group(parallel_mode)
+        dist.broadcast(self.weight, gpc.get_ranks_in_sub_group(parallel_mode)[0], process_group)
         if bias:
-            dist.broadcast(self.bias, gpc.get_ranks_in_group(parallel_mode)[0], process_group)
+            dist.broadcast(self.bias, gpc.get_ranks_in_sub_group(parallel_mode)[0], process_group)
 
 
 class GroupedParallelLinearWithCommExt(ParallelLinearWithCommExt):
@@ -872,8 +871,8 @@ class GroupedParallelLinearWithCommExt(ParallelLinearWithCommExt):
 
         assert split_mode in ("none", "column", "row", "weight"), f"unknown split_mode {split_mode}"
 
-        world_size = gpc.get_world_size(parallel_mode)
-        rank = gpc.get_local_rank(parallel_mode)
+        world_size = gpc.get_sub_world_size(parallel_mode)
+        rank = gpc.get_sub_local_rank(parallel_mode)
 
         split_features_dict = {"column": out_features, "row": in_features, "weight": num_groups * in_features}
         if split_mode != "none":

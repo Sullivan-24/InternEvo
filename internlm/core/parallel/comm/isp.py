@@ -82,7 +82,7 @@ class HeadWeightParallelCommunicator(WPCommunicator):
         self.weight_process_group = weight_process_group
         self.seq_process_group = seq_process_group
         self._seq_parallel_mode = ParallelMode.TENSOR
-        self._seq_world_size = gpc.get_world_size(ParallelMode.TENSOR)
+        self._seq_world_size = gpc.get_sub_world_size(ParallelMode.TENSOR)
         self._retain_out_sharded = retain_out_sharded
         self._seq_dim = 1
         self._hid_dim = 2
@@ -1035,9 +1035,9 @@ def auto_wrap_distributed_attention(attn_impl: nn.Module) -> Callable[[bool, Any
             return attn_impl(causal, softmax_scale, attention_dropout)
         else:
             if gpc.config.parallel.sequence_2D.enable is True:
-                spg = gpc.get_group(ParallelMode.HEAD)
+                spg = gpc.get_sub_group(ParallelMode.HEAD)
             else:
-                spg = gpc.get_group(ParallelMode.TENSOR)
+                spg = gpc.get_sub_group(ParallelMode.TENSOR)
             return DistributedAttention(
                 local_attention=attn_impl(causal, softmax_scale, attention_dropout, layer_idx),
                 sequence_process_group=spg,
@@ -1059,7 +1059,7 @@ def auto_wrap_func_distributed_attention(attn_impl: Callable) -> Callable[..., C
             return attn_impl(*args, **kwargs)
         else:
             return DistributedAttention(
-                local_attention=attn_impl, sequence_process_group=gpc.get_group(ParallelMode.TENSOR)
+                local_attention=attn_impl, sequence_process_group=gpc.get_sub_group(ParallelMode.TENSOR)
             )(*args, **kwargs)
 
     return partial(_attetion_constructor, attn_impl=attn_impl)

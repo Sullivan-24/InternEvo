@@ -503,7 +503,14 @@ class ParallelContext(metaclass=SingletonMeta):
         """
         self._check_parallel_mode(parallel_mode)
         return self._ranks_in_group[parallel_mode]
-
+    def get_sub_cpu_group(self, parallel_mode: ParallelMode):
+        self._check_parallel_mode(parallel_mode)
+        sub_parallel_mode = ParallelMode(f"{parallel_mode.value}_sub")
+        if sub_parallel_mode in self._cpu_groups.keys():
+            return self._cpu_groups[sub_parallel_mode]
+        else:
+            return self._cpu_groups[parallel_mode]
+    
     def get_cpu_group(self, parallel_mode: ParallelMode):
         self._check_parallel_mode(parallel_mode)
         return self._cpu_groups[parallel_mode]
@@ -775,7 +782,6 @@ class ParallelContext(metaclass=SingletonMeta):
         ), "can not place the experts evenly"
 
         self.check_sanity()
-
         parallel_sizes = {
             ParallelMode.TENSOR: self.tensor_parallel_size,
             ParallelMode.SEQUENCE: self.sequence_parallel_size,
@@ -884,7 +890,7 @@ class ParallelContext(metaclass=SingletonMeta):
 
         # model parallel seeds are different across ranks
         if self.is_initialized(ParallelMode.TENSOR):
-            tp_rank = self.get_local_rank(ParallelMode.TENSOR)
+            tp_rank = self.get_sub_local_rank(ParallelMode.TENSOR)
             tp_seed = seed + tp_rank + pipeline_offset * 1024
             add_seed(ParallelMode.TENSOR, tp_seed)
 

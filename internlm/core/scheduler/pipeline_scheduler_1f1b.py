@@ -344,10 +344,10 @@ class PipelineScheduler(BaseScheduler):
                     moe_z_loss = torch.tensor(0.0, device=get_current_device(), dtype=gpc.config.model.get("dtype"))
                 # the moe_loss is computed among the "tensor" group if sequence parallel is enabled,
                 # so we need to do allreduce
-                if gpc.config.parallel.sequence_parallel and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+                if gpc.config.parallel.sequence_parallel and gpc.get_sub_world_size(ParallelMode.TENSOR) > 1:
                     all_moe_losses = torch.cat([moe_loss.unsqueeze(0), moe_z_loss.unsqueeze(0)])
-                    dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
-                    all_moe_losses.div_(gpc.get_world_size(ParallelMode.TENSOR))
+                    dist.all_reduce(all_moe_losses, op=dist.ReduceOp.SUM, group=gpc.get_sub_group(ParallelMode.TENSOR))
+                    all_moe_losses.div_(gpc.get_sub_world_size(ParallelMode.TENSOR))
                     moe_loss = all_moe_losses[0]
                     moe_z_loss = all_moe_losses[1]
 
@@ -388,6 +388,8 @@ class PipelineScheduler(BaseScheduler):
         Returns:
             Union[torch.Tensor, List[torch.Tensor]]: Gradient of input tensor.
         """
+
+        torch.autograd.set_detect_anomaly(True)
         with torch.profiler.record_function(f"SCH-backward_step-{step_id}"):
             # Retain the grad on the input_obj.
             if input_obj is not None:

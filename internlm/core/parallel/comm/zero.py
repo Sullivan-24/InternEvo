@@ -34,7 +34,7 @@ class ParamAsyncBcastHandler:
         self._bcast_handles: Dict[int, List[dist.Work]] = {}
         self._block_to_name: Dict[nn.Module, str] = {}
 
-        zero1_size = gpc.get_world_size(zero1_mode)
+        zero1_size = gpc.get_sub_world_size(zero1_mode)
         total_param_num = sum(p.numel() for p in model.parameters())
         avg_param_num = total_param_num * 1.0 // zero1_size
 

@@ -403,7 +403,7 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
                 gpc.config.model.checkpoint,
             ),
             gpc.config.parallel.weight.overlap,
-            gpc.get_group(ParallelMode.WEIGHT),
+            gpc.get_sub_group(ParallelMode.WEIGHT),
             is_moe=False,
             selective_ckpt_offload=gpc.config.get("selective_checkpoint_offload", False),
             early_reduce_scatter_release=gpc.config.parallel.weight.early_reduce_scatter_release,
@@ -413,8 +413,8 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
         # row parallel linear will not be used.
         RowParallelLinear.register_cls_communicator(None)
         _head_communicator = HeadWeightParallelCommunicator(
-            weight_process_group=gpc.get_group(ParallelMode.WEIGHT),
-            seq_process_group=gpc.get_group(ParallelMode.TENSOR),
+            weight_process_group=gpc.get_sub_group(ParallelMode.WEIGHT),
+            seq_process_group=gpc.get_sub_group(ParallelMode.TENSOR),
             retain_out_sharded=_retain_out_sharded,
         )
         _embedding_communicator = EmbeddingWeightParallelCommunicator(ParallelMode.WEIGHT)
@@ -430,7 +430,7 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
                     gpc.config.model.checkpoint,
                 ),
                 gpc.config.parallel.expert_weight.overlap,
-                gpc.get_group(ParallelMode.EXPERT_WEIGHT),
+                gpc.get_sub_group(ParallelMode.EXPERT_WEIGHT),
                 is_moe=True,
                 early_reduce_scatter_release=gpc.config.parallel.expert_weight.early_reduce_scatter_release,
             )
@@ -449,27 +449,27 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
     # tensor parallel
     if gpc.config.parallel.tensor.mode == TensorParallelMode.mtp.name:
         ColumnParallelLinear.register_cls_communicator(
-            TensorParallelCommunicator(process_group=gpc.get_group(ParallelMode.TENSOR), role=LinearRole.COLUMN)
+            TensorParallelCommunicator(process_group=gpc.get_sub_group(ParallelMode.TENSOR), role=LinearRole.COLUMN)
         )
         RowParallelLinear.register_cls_communicator(
-            TensorParallelCommunicator(process_group=gpc.get_group(ParallelMode.TENSOR), role=LinearRole.ROW)
+            TensorParallelCommunicator(process_group=gpc.get_sub_group(ParallelMode.TENSOR), role=LinearRole.ROW)
         )
 
         if gpc.config.model.get("num_experts", 1) > 1:
             GroupedColumnLinear.register_cls_communicator(
-                TensorParallelCommunicator(process_group=gpc.get_group(ParallelMode.TENSOR), role=LinearRole.COLUMN)
+                TensorParallelCommunicator(process_group=gpc.get_sub_group(ParallelMode.TENSOR), role=LinearRole.COLUMN)
             )
             GroupedRowLinear.register_cls_communicator(
-                TensorParallelCommunicator(process_group=gpc.get_group(ParallelMode.TENSOR), role=LinearRole.ROW)
+                TensorParallelCommunicator(process_group=gpc.get_sub_group(ParallelMode.TENSOR), role=LinearRole.ROW)
             )
             GroupedWPLinear.register_cls_communicator(None)
             # treat as sequence paralle if no_tp
             if gpc.config.parallel.expert.no_tp:
                 _column_communicator = TensorParallelCommunicator(
-                    process_group=gpc.get_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.COLUMN
+                    process_group=gpc.get_sub_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.COLUMN
                 )
                 _row_communicator = TensorParallelCommunicator(
-                    process_group=gpc.get_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.ROW
+                    process_group=gpc.get_sub_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.ROW
                 )
                 for moe in _submodule_filter(model, MoE):
                     # 1. the linear in MoE degrades as no tp communication pattern
@@ -488,14 +488,14 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
 
         ColumnParallelLinear.register_cls_communicator(
             SequenceParallelCommunicator(
-                process_group=gpc.get_group(ParallelMode.TENSOR),
+                process_group=gpc.get_sub_group(ParallelMode.TENSOR),
                 role=LinearRole.COLUMN,
                 save_total_input_as_activation=save_total_input_as_activation,
             )
         )
         RowParallelLinear.register_cls_communicator(
             SequenceParallelCommunicator(
-                gpc.get_group(ParallelMode.TENSOR),
+                gpc.get_sub_group(ParallelMode.TENSOR),
                 role=LinearRole.ROW,
                 save_total_input_as_activation=save_total_input_as_activation,
             )
@@ -503,14 +503,14 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
         if gpc.config.model.get("num_experts", 1) > 1:
             GroupedColumnLinear.register_cls_communicator(
                 SequenceParallelCommunicator(
-                    process_group=gpc.get_group(ParallelMode.TENSOR),
+                    process_group=gpc.get_sub_group(ParallelMode.TENSOR),
                     role=LinearRole.COLUMN,
                     save_total_input_as_activation=save_total_input_as_activation,
                 )
             )
             GroupedRowLinear.register_cls_communicator(
                 SequenceParallelCommunicator(
-                    gpc.get_group(ParallelMode.TENSOR),
+                    gpc.get_sub_group(ParallelMode.TENSOR),
                     role=LinearRole.ROW,
                     save_total_input_as_activation=save_total_input_as_activation,
                 )
@@ -518,10 +518,10 @@ def initialize_parallel_communicator(model: Union[nn.Module, nn.ModuleList]):
             GroupedWPLinear.register_cls_communicator(None)
             if gpc.config.parallel.expert.no_tp:
                 _column_communicator = TensorParallelCommunicator(
-                    process_group=gpc.get_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.COLUMN
+                    process_group=gpc.get_sub_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.COLUMN
                 )
                 _row_communicator = TensorParallelCommunicator(
-                    process_group=gpc.get_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.ROW
+                    process_group=gpc.get_sub_group(ParallelMode.EXPERT_TENSOR), role=LinearRole.ROW
                 )
                 for moe in _submodule_filter(model, MoE):
                     # 1. the linear in MoE degrades as no tp communication pattern
@@ -1081,7 +1081,7 @@ def inject_model_helper(model: Union[nn.Module, nn.ModuleList], inject_info: Opt
         if (
             isinstance(gpc.config.parallel["tensor"], dict)
             and gpc.config.parallel["tensor"].get("mode", TensorParallelMode.mtp.name) == TensorParallelMode.mtp.name
-            and gpc.get_world_size(ParallelMode.DATA) == gpc.get_world_size(ParallelMode.GLOBAL)
+            and gpc.get_world_size(ParallelMode.DATA) == gpc.get_world_size(ParallelMode.GLOBAL)#TODO
         ):
             continue
         # In-place replacement or check for modules: "embed", "linear", "norm"
