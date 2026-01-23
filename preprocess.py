@@ -25,7 +25,7 @@ def busy_wait_kernel(time):
         a = torch.rand(N, N, device='cuda')
         b = torch.rand(N, N, device='cuda')
         # GPU矩阵乘法
-        for __ in range(25):
+        for __ in range(50):
             torch.matmul(a, b)
     return
 
@@ -422,25 +422,25 @@ def generate_():
     stage_placement = ""
     input_str=""
     file_path = 'InternEvo/executor_config'
-    os.makedirs(file_path,exist_ok=True)
+    # os.makedirs(file_path,exist_ok=True)
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()
     with open(file_path+'/result.txt', 'r', encoding='utf-8') as file:
         input_str = file.read()
     stage_placement = json.loads(stage_placement)
-    dp_size=1
+    dp_size=2
     pp_size = len(stage_placement)
 
     transfer_info = None 
     with open(file_path+'/transfer_info.txt', 'r', encoding='utf-8') as file:
         transfer_info = file.read()
     transfer_info = ast.literal_eval(transfer_info)
-    DP_Transfer = False
+    DP_Transfer = True
     for index,info in enumerate(transfer_info):
         if len(info) > 0:
             DP_Transfer = True
             break
-    num_microbatches = 1#pp_size*2
+    num_microbatches = 8#pp_size*2
     send_immediately = False
     unified_scheduler, recomp_stages, max_end_time, microbatch_id_infor = order_result_mutichunk(input_str, stage_placement, num_microbatches, dp_size, pp_size)
     comm_graph = generate_comm_graph(unified_scheduler,stage_placement,max_end_time, send_immediately, dp_size, pp_size, transfer_info, microbatch_id_infor)

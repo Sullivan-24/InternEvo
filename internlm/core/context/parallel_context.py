@@ -336,14 +336,29 @@ class ParallelContext(metaclass=SingletonMeta):
         if self.is_initialized(parallel_mode):
             rank = self.get_local_rank(parallel_mode)
         return rank == 0
+    def is_first_rank_sub(self, parallel_mode: ParallelMode):
+        """Returns a boolean value indicating whether the current device is the first one
+        among its group for `parallel_mode`.
+
+        Args:
+            parallel_mode: The chosen parallel mode.
+
+        Returns:
+            bool: a boolean value indicating whether the current device is the first one
+            among its group for `parallel_mode`.
+        """
+        rank = 0
+        if self.is_initialized(parallel_mode):
+            rank = self.get_sub_local_rank(parallel_mode)
+        return rank == 0
 
     def is_rank_for_log(self):
         """Returns a boolean value indicating whether the current device should print log."""
         is_log_rank = (
-            self.is_first_rank(ParallelMode.TENSOR)
-            and self.is_first_rank(ParallelMode.WEIGHT)
-            and self.is_first_rank(ParallelMode.DATA)
-            and self.is_first_rank(ParallelMode.WEIGHT_DATA)
+            self.is_first_rank_sub(ParallelMode.TENSOR)
+            and self.is_first_rank_sub(ParallelMode.WEIGHT)
+            and self.is_first_rank_sub(ParallelMode.DATA)
+            and self.is_first_rank_sub(ParallelMode.WEIGHT_DATA)
         )
         
         # if not self.v_shape:
@@ -862,7 +877,6 @@ class ParallelContext(metaclass=SingletonMeta):
         if device_ordinal is None:
             devices_per_node = internlm_accelerator.device_count()
             device_ordinal = global_rank % devices_per_node
-
         internlm_accelerator.set_device(device_ordinal)
         logger.info(f"process rank {global_rank} is bound to host:{socket.gethostname()} device: {device_ordinal}")
 

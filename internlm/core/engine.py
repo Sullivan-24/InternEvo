@@ -13,8 +13,8 @@ from torch.optim.lr_scheduler import _LRScheduler
 from internlm.core.gradient_handler import BaseGradientHandler
 from internlm.solver.optimizer.hybrid_zero_optim import BaseOptimizer
 from internlm.solver.schedulers.beta2_scheduler import Beta2Scheduler
-from internlm.utils.common import get_batch_size, move_to_device
-
+from internlm.utils.common import get_batch_size, move_to_device,get_current_device
+from internlm.core.context import global_context as gpc
 
 class Engine:
     """
@@ -117,14 +117,17 @@ class Engine:
             success (bool): Whether the parameter update was successful.
             grad_norm (float): The norm of the gradient after clipping.
         """
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 3",flush=True)
         self._all_reduce_gradients()
+
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 4",flush=True)
         self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
-
+        
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5",flush=True)
         success, grad_norm = self.optimizer.step()
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5E",flush=True)
         if success and self._lr_scheduler is not None:
-            self._lr_scheduler.step()
-
+            self._lr_scheduler.step() 
         if success and self._beta2_scheduler is not None:
             self._beta2_scheduler.step()
 

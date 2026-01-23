@@ -124,8 +124,6 @@ class TrainerBuilder(Trainer):
 
         # initialize train state
         train_state = get_train_state(train_dl)
-        print(f"global_rank:{gpc.get_global_rank()}, get_current_device:{get_current_device()}, dp:{gpc.get_local_rank(ParallelMode.DATA)}, pp:{gpc.get_local_rank(ParallelMode.PIPELINE)},tp:{gpc.get_local_rank(ParallelMode.TENSOR)}, \
-              sub_dp:{gpc.get_local_rank(ParallelMode.DATA_SUB)}, sub_pp:{gpc.get_local_rank(ParallelMode.PIPELINE_SUB)}, sub_tp:{gpc.get_local_rank(ParallelMode.TENSOR_SUB)}")
 
         # initialize optimizer
         optimizer, beta2_scheduler, lr_scheduler = initialize_optimizer(model, isp_communicator)
@@ -298,13 +296,13 @@ class TrainerBuilder(Trainer):
         loss, moe_loss = self._forward_backward(batch)
         timer("fwd-bwd").stop()
         #TODO, how chimera do this
-        # if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        #     print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time_before_update_paramterts:{time.perf_counter() - start_time_}")
+        timer("update-parameters").start()
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 1")
         success_update, grad_norm_groups = self._update_parameters()
-        self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 1E")
+        timer("update-parameters").stop()
         timer("one-batch").stop()
-        if gpc.is_first_rank(parallel_mode=ParallelMode.PIPELINE) and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            print(f"DP:{gpc.get_local_rank(ParallelMode.DATA)},PP:{gpc.get_local_rank(ParallelMode.PIPELINE)}, iteration_time:{time.perf_counter() - start_time_}")
+        self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
         if self._should_evaluate():
             self._evaluate()
 
@@ -334,7 +332,9 @@ class TrainerBuilder(Trainer):
         return loss, moe_loss
 
     def _update_parameters(self):
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 2")
         trainer_result = self.step()
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 2E")
         assert trainer_result is not None
         success_update, grad_norm_groups = trainer_result
         if success_update:

@@ -172,8 +172,8 @@ def evaluate_on_val_dls(
 
         val_metric = AccPerplex(
             device=get_current_device(),
-            tp_pg=gpc.get_group(ParallelMode.TENSOR),
-            dp_pg=gpc.get_group(ParallelMode.DATA),
+            tp_pg=gpc.get_sub_group(ParallelMode.TENSOR),#TODO
+            dp_pg=gpc.get_sub_group(ParallelMode.DATA),
         )
         val_sche_metric_hook = SchedulerMetricHook(metric=val_metric)
 
@@ -351,7 +351,13 @@ def exam_loss(args):
             / (time.time() - start_time),
             2,
         )
-
+        if gpc.config.get("DP_transfer",False):
+            tgs_origin = round(
+                num_tokens_in_batch
+                / gpc.get_world_size(ParallelMode.GLOBAL)
+                / (time.time() - start_time),
+                2,
+            )  
         if rank == 0:
             logger.info(f"batch_count: {batch_count}, tgs: {tgs_origin}, loss: {loss}")
 

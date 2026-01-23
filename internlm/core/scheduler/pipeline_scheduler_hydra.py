@@ -396,7 +396,6 @@ class HydraPipelineScheduler(BaseScheduler):
                     input_obj_grad.append(in_tensor.grad)
         self._call_hooks("after_backward", input_obj_grad)
         if gpc.config["HETER"] and gpc.get_local_rank(ParallelMode.PIPELINE) >= gpc.config["PP_SIZE"] // 2:
-            import time
             busy_wait_kernel(gpc.config["SLEEP_TIME"])
         return input_obj_grad
 

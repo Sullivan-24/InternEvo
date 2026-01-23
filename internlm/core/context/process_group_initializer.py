@@ -207,26 +207,33 @@ def _create_parallel_process_groups(
         group_ranks, accelerator_group = None, None
         all_group_ranks = get_group_ranks(global_ranks_or_sizes, group.size, pre_group_size, group.allow_partial_group)
         sub_group_ranks, sub_accelerator_group = None, None
-        import pdb
         for idx, ranks in enumerate(all_group_ranks):
             _pg = dist.new_group(ranks, timeout=LLM_NCCL_TIMEOUT)
+            destroy_pg = False
+            destroy_sub_pg = False
             if self_rank in ranks:
                 group_ranks, accelerator_group = all_group_ranks[idx], _pg
             else:
+                destroy_pg = True
                 dist.destroy_process_group(_pg)
+            if len(failure_global_ranks) >0 :
+                sub_ranks = copy.deepcopy(ranks)
+                for failure_global_rank in failure_global_ranks:
+                    if failure_global_rank in sub_ranks:
+                        sub_ranks.remove(failure_global_rank)
+                if len(sub_ranks)>0:
+                    sub_pg = dist.new_group(sub_ranks, timeout=LLM_NCCL_TIMEOUT)
+                    if self_rank in sub_ranks or ((self_rank in failure_global_ranks) and (self_rank in ranks)):
+                        sub_group_ranks, sub_accelerator_group = copy.deepcopy(all_group_ranks[idx]),sub_pg
+                        for failure_global_rank in failure_global_ranks:
+                            if failure_global_rank in group_ranks:
+                                sub_group_ranks.remove(failure_global_rank)
+                    else:
+                        destroy_sub_pg = True
+                        dist.destroy_process_group(sub_pg)
+        #     print(f"HJPRINT-RANK:{self_rank}====>>>>>> ranks:{ranks}, group_ranks:{group_ranks}, group.mode:{group.mode.value}, destroy_pg:{destroy_pg}, sub_ranks:{sub_ranks}, sub_group_ranks:{sub_group_ranks}, destroy_sub_pg:{destroy_sub_pg}", flush=True)
 
-            sub_ranks = copy.deepcopy(ranks)
-            for failure_global_rank in failure_global_ranks:
-                if failure_global_rank in sub_ranks:
-                    sub_ranks.remove(failure_global_rank)
-            if len(sub_ranks)>0:
-                sub_pg = dist.new_group(sub_ranks, timeout=LLM_NCCL_TIMEOUT)
-                if self_rank in sub_ranks or ((self_rank in failure_global_ranks) and (self_rank in ranks)):
-                    sub_group_ranks, sub_accelerator_group = sub_ranks, sub_pg
-                else:
-                    dist.destroy_process_group(sub_pg)
-        
-
+        # print(f"FINAL-RANK:{self_rank}====>>>>>> ranks:{ranks}, group_ranks:{group_ranks}, sub_group.mode:{group.mode.value}_sub, destroy_pg:{destroy_pg}, sub_ranks:{sub_ranks}, sub_group_ranks:{sub_group_ranks}, destroy_sub_pg:{destroy_sub_pg}", flush=True)
         if group_ranks is None:
             pre_group_size = pre_group_size * group.size
             continue

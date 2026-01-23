@@ -1,18 +1,45 @@
-from configs.ppopp_configs.base import *
-JOB_NAME = "7b_llama2_train_DP2_PP2_TP2"
+from configs.ppopp_configs.base_copy import *
+JOB_NAME = "30b_llama2_train_DP2_PP8_TP2"
 model_type = "LLAMA2"
 DO_ALERT = False
 
+# {
+#   "_name_or_path": "meta-llama/Llama-2-13b-hf",
+#   "architectures": [
+#     "LlamaForCausalLM"
+#   ],
+#   "bos_token_id": 1,
+#   "eos_token_id": 2,
+#   "hidden_act": "silu",
+#   "hidden_size": 5120,
+#   "initializer_range": 0.02,
+#   "intermediate_size": 13824,
+#   "max_position_embeddings": 4096,
+#   "model_type": "llama",
+#   "num_attention_heads": 40,
+#   "num_hidden_layers": 40,
+#   "num_key_value_heads": 40,
+#   "pretraining_tp": 1,
+#   "rms_norm_eps": 1e-05,
+#   "rope_scaling": null,
+#   "tie_word_embeddings": false,
+#   "torch_dtype": "float16",
+#   "transformers_version": "4.32.0.dev0",
+#   "use_cache": true,
+#   "vocab_size": 32000
+# }
+
 VOCAB_SIZE = 32000
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 32
-CHUNK_NUM = 1
+HIDDEN_SIZE = 6656         # 增加
+NUM_ATTENTION_HEAD = 52    # 增加 (6656/128)
+NUM_KV_ATTENTION_HEAD = 52 # 保持与 HEAD 一致或使用 GQA
+MLP_RATIO = 2.7            # 保持
+NUM_LAYER = 64             # 增加
+CHUNK_NUM = 1              # 保持 (通常由并行策略决定)
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, profile_fwd_bwd:{profile_fwd_bwd}")
+
 CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
                 DP_SIZE{DP_SIZE}, PP_SIZE{PP_SIZE}, TP_SIZE{TP_SIZE}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
                 layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
@@ -46,9 +73,9 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = None #"/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
-VALID_FOLDER = None  # "/path/to/dataset"
+# TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
 TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
+VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
@@ -69,7 +96,7 @@ data = dict(
     #       (IMPORTANT): The interval step size is 'micro_bsz'.
     rampup_batch_size="",
     # Datasets with less than 50 rows will be discarded
-    min_length=50,
+    min_length=20,
     train_folder=TRAIN_FOLDER,
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,

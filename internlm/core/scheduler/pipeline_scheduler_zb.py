@@ -79,6 +79,7 @@ class WeightGradStore:
 
     @classmethod
     def pop(cls, chunk_id=0, microbatch_id=0):
+        # with torch.profiler.record_function(f"SCH-weight_step-{microbatch_id}"):
         if cls.pp_mode == "ZBH1" and gpc.is_first_rank(ParallelMode.PIPELINE):
             return
         if isinstance(cls._weight_grad_queue, queue.Queue):
@@ -114,8 +115,8 @@ class WeightGradStore:
                 if has_d_bias:
                     for hook in cls._hooks[bias]:
                         hook()
-        if gpc.config["HETER"] and gpc.config["HETER_DEVICE"][gpc.get_local_rank(ParallelMode.DATA)][gpc.get_local_rank(ParallelMode.PIPELINE)]:
-            busy_wait_kernel(gpc.config["SLEEP_TIME"][2])       
+        if gpc.config.get("HETER",False) and gpc.get_global_rank() in gpc.config.get("HETER_GLOBAL_RANKS",[]):
+            busy_wait_kernel(int(gpc.config["SLEEP_TIME"][2]*gpc.config["layer_partition"][gpc.get_local_rank(ParallelMode.PIPELINE)]*gpc.config["slow_ratio_dict"][gpc.get_global_rank()]))       
     @classmethod
     def register_hook(cls, param, hooks):
         cls._hooks[param] = hooks

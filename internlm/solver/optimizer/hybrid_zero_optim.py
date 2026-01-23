@@ -667,6 +667,7 @@ class HybridZeroOptimizer(BaseOptimizer):
     def _compute_norm(self, group_id: int = 0):
         # compute norm for gradients that have been reduced
         params, grads = self._param_store.get_reduced_param_for_compute_norm(group_id=group_id)
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1")
         params_is_padding = False
         if len(params) == 0:
             params_is_padding = True
@@ -698,7 +699,7 @@ class HybridZeroOptimizer(BaseOptimizer):
         if self._clip_grad_norm > 0:
             # this norm is before scaling, it will be very large
             norm = compute_norm(gradients=grads, parameters=params, zero_mode=self._broadcast_parallel_mode[group_id])
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-2")
         if params_is_padding:
             for param in params:
                 if hasattr(param, IS_REPLICA_ZERO_PARALLEL):
@@ -739,7 +740,7 @@ class HybridZeroOptimizer(BaseOptimizer):
 
         # we need to reduce the gradients left in the communication bucket
         self.reduce_left_grads_after_backward()
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-1")
         if internlm_accelerator.get_accelerator_backend() in [
             AcceleratorType.NPU,
             AcceleratorType.DIPU,
@@ -756,20 +757,20 @@ class HybridZeroOptimizer(BaseOptimizer):
             bucket.empty()
         self._bucket_in_progress = []
         self._param_store.clear_grads_of_previous_reduced_params()
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2")
         # compute norm for gradients in the last bucket
         total_norms = {}
         for group_id in range(self.num_param_groups):
             group_name = self.param_groups[group_id]["name"] if "name" in self.param_groups[group_id] else "default"
             group_name = f"{group_id}_{group_name}"
             total_norms[group_name] = self._compute_norm(group_id=group_id)
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-3")
         timer("sync_grad").start()
         self._sync_grad()
         timer("sync_grad").stop()
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 6")
         state, global_norms = self._step(closure=closure, norms=total_norms)
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 6E")
         return state, global_norms
 
     def _step(self, closure=None, norms=None):
@@ -876,8 +877,9 @@ class HybridZeroOptimizer(BaseOptimizer):
                     fp32_param = self._fp32_flat_param_groups_of_current_rank[group_id]
                     fp16_param.data.copy_(fp32_param)
         internlm_accelerator.synchronize()
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 7")
         self.broadcast_params()
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 7E")
         timer("step").stop()
 
         # update gradients may not be needed here, because the sync_params function is used in initialization,
@@ -888,7 +890,7 @@ class HybridZeroOptimizer(BaseOptimizer):
 
     def broadcast_params(self):
         handles = []
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 8")
         # traverse according to rank firstly, which is conducive to overlapping broadcast communication.
         for rank, group_id in product(range(max(self._zero_world_size)), range(self.num_param_groups)):
             # skip ranks not in this parameter group.
@@ -914,7 +916,8 @@ class HybridZeroOptimizer(BaseOptimizer):
                 self._param_bcast_sync_handler.add_bcast_handle(rank, handle)
             else:
                 handles.append(handle)
-
+            # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, IN8, g_rank:{g_rank}, \
+                #   _broadcast_parallel_mode:{self._broadcast_parallel_mode[group_id]}, sub_group_ranks:{gpc.get_ranks_in_sub_group(self._broadcast_parallel_mode[group_id])}")
         for handle in handles:
             handle.wait()
 

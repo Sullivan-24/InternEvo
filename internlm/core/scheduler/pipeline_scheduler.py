@@ -857,14 +857,19 @@ class PipelineScheduler(BaseScheduler):
             from collections import OrderedDict
             data = OrderedDict()
             # 4. 更新平均值
+            data["configs"]=f"PPMODE{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}_DPSIZE{gpc.config.DP_SIZE}_PPSIZE{gpc.config.PP_SIZE}_TPSIZE{gpc.config.TP_SIZE}_FAILURE{gpc.config.FAILURE}_HETER{gpc.config.HETER}_FALCON{gpc.config.FALCON}_DPTransfer:{gpc.config.DP_Transfer}"
             data["avg_fwd"] = sum(history["fwd_times"]) / len(history["fwd_times"])
             data["avg_bwd"] = sum(history["bwd_times"]) / len(history["bwd_times"])
+            data["min_fwd"] = min(history["fwd_times"])
+            data["max_fwd"] = max(history["fwd_times"])
+            data["min_bwd"] = min(history["bwd_times"])
+            data["max_bwd"] = max(history["bwd_times"])         
             f_f = round(data["avg_fwd"]/data["avg_fwd"],3)
             b_f = round(data["avg_bwd"]/data["avg_fwd"],3)
             data["f_b_w"] = (f_f, b_f)
             data["fwd_times"] = history["fwd_times"]
             data["bwd_times"] = history["bwd_times"]
-
+            
             # 5. 写回文件
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=4)

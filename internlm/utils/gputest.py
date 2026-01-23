@@ -124,6 +124,31 @@ def warmup_process_group():
             dist.all_reduce(buffer, group=gpc.get_group(ParallelMode.EXPERT_DATA))
         if gpc.is_initialized(ParallelMode.EXPERT):
             dist.all_reduce(buffer, group=gpc.get_group(ParallelMode.EXPERT))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---0",flush=True)
+        # if gpc.is_initialized(ParallelMode.DATA):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.DATA))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---1",flush=True)
+        # if gpc.is_initialized(ParallelMode.TENSOR):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.TENSOR))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---2",flush=True)
+        # if gpc.is_initialized(ParallelMode.PIPELINE):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.PIPELINE))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---3",flush=True)
+        # if gpc.is_initialized(ParallelMode.ZERO1):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.ZERO1))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---4",flush=True)
+        # if gpc.is_initialized(ParallelMode.MODEL):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.MODEL))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---5",flush=True)
+        # if gpc.is_initialized(ParallelMode.ZERO3_DP):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.ZERO3_DP))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---6",flush=True)
+        # if gpc.is_initialized(ParallelMode.EXPERT_DATA):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.EXPERT_DATA))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---7",flush=True)
+        # if gpc.is_initialized(ParallelMode.EXPERT):
+        #     dist.all_reduce(buffer, group=gpc.get_sub_group(ParallelMode.EXPERT))
+        # print(f"GPUTEST>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()},---8",flush=True)
 
         dist.barrier()
         del buffer

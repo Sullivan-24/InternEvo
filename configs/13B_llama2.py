@@ -1,5 +1,5 @@
-from configs.ppopp_configs.base_copy import *
-JOB_NAME = "13b_llama2_train"
+from configs.ppopp_configs.base import *
+JOB_NAME = "13b_llama2_train_DP2_PP4_TP2"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -39,8 +39,11 @@ NUM_LAYER = 40
 CHUNK_NUM = 1
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
-
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, profile_fwd_bwd:{profile_fwd_bwd}")
+CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
+                DP_SIZE{DP_SIZE}, PP_SIZE{PP_SIZE}, TP_SIZE{TP_SIZE}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
+                layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
+opti_methods = ""
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -84,7 +87,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=10000,
+    total_steps=26,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -214,7 +217,7 @@ weight parallel (dict):
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
 parallel = dict(
-    zero1=dict(size=DP_SIZE),
+    zero1=dict(size=-1),
     tensor=dict(size=TP_SIZE, mode="mtp"),
     pipeline=dict(size=PP_SIZE, mode=PP_MODE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),

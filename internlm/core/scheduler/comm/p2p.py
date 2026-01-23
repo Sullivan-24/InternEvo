@@ -974,7 +974,6 @@ class AsynCommunicator:
         next_rank: int = None,
         dtype: torch.dtype = None,
         scatter_gather_tensors: bool = False,
-        recv_activation: bool =True,
     ) -> None:
         self._need_receive = recv_prev_shape is not None or recv_next_shape is not None
         self._coroutine = _communicate_async(
@@ -988,7 +987,6 @@ class AsynCommunicator:
             next_rank=next_rank,
             dtype=dtype,
             scatter_gather_tensors=scatter_gather_tensors,
-            recv_activation = recv_activation,
         )
 
     @property

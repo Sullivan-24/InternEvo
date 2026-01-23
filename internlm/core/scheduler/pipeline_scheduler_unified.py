@@ -9,13 +9,10 @@ import torch.distributed as dist
 from torch.optim.optimizer import Optimizer
 from internlm.core.naive_amp import NaiveAMPModel
 from internlm.core.context import ParallelMode
-from preprocess import busy_wait_kernel
 from internlm.core.context import global_context as gpc
-from internlm.core.engine import Engine
 from internlm.core.scheduler import comm
 from internlm.utils.common import SchedulerHook, get_current_device
 from internlm.utils.logger import get_logger
-from internlm.utils.parallel import is_using_isp
 from internlm.utils.utils import ModuleType,WorkloadType
 from .pipeline_scheduler_1f1b import (
     InterleavedPipelineScheduler,
@@ -52,6 +49,7 @@ def write_debug_file(file_path, content, new_line=True):
 def write_json(jsonpath, content):
     # if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
     #if gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+    return
     with open(jsonpath, 'a',encoding='utf-8') as f:
         json.dump(content, f)
         f.write('\n')
@@ -373,22 +371,21 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
                 # Perform forward computation
                 #start_time = time.perf_counter()
-                # with torch.profiler.record_function(f"SCH-forward_workload-{microbatch_id}-0"):
-                output_obj, moe_loss, moe_z_loss = self._forward_step(
-                    engine,
-                    input_obj,
-                    return_tensors,
-                    return_output_label=return_output_label,
-                    accum_loss=accum_loss,
-                    accum_moe_loss=accum_moe_loss,
-                    accum_moe_z_loss=accum_moe_z_loss,
-                    microbatch_id=microbatch_id
-                )
+                with torch.profiler.record_function(f"SCH-forward_workload-{microbatch_id}"):
+                    output_obj, moe_loss, moe_z_loss = self._forward_step(
+                        engine,
+                        input_obj,
+                        return_tensors,
+                        return_output_label=return_output_label,
+                        accum_loss=accum_loss,
+                        accum_moe_loss=accum_moe_loss,
+                        accum_moe_z_loss=accum_moe_z_loss,
+                        microbatch_id=microbatch_id
+                    )
                 self.send_forward_result[microbatch_id] = output_obj
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
                 write_json(jsonpath, json_content)
-                end_time = time.perf_counter()
                 
                 if stage_id < self.last_stage:
                     if isinstance(output_obj, torch.Tensor):
@@ -429,10 +426,10 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                     output_obj_grad = None
             
                 #start_time = time.perf_counter()
-                # with torch.profiler.record_function(f"SCH-backward_workload-{microbatch_id}-0"):
-                input_obj_grad = self._backward_step(
-                    engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
-                )
+                with torch.profiler.record_function(f"SCH-backward_workload-{microbatch_id}"):
+                    input_obj_grad = self._backward_step(
+                        engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
+                    )
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
@@ -449,8 +446,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
 
             elif workload_type == WorkloadType.WEIGHT.value: # Weight update
                 #start_time = time.perf_counter()
-                # with torch.profiler.record_function(f"SCH-weight_workload-{microbatch_id}-0"):
-                WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
+                with torch.profiler.record_function(f"SCH-weight_workload-{microbatch_id}"):
+                    WeightGradStore.pop(chunk_id=0,microbatch_id=microbatch_id)
                 #end_time = time.perf_counter()
                 json_content = {"source_dp_rank":source_dp_rank, "global_rank":global_rank, "chunk_id":0, "microbatch_id":microbatch_id, "workload_type":workload_type, "operation":"compute"}
                 write_json(jsonpath, json_content)

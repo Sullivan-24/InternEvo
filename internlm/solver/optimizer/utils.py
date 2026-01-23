@@ -302,14 +302,14 @@ def compute_norm(gradients, parameters, norm_type=2, zero_mode=ParallelMode.ZERO
                     op=dist.ReduceOp.MAX,
                     group=gpc.get_sub_group(weight_parallel_mode),
                 )
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1-1",flush=True)
         if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
             dist.all_reduce(
                 total_norm_cuda,
                 op=dist.ReduceOp.MAX,
                 group=gpc.get_sub_group(ParallelMode.PIPELINE),
             )
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1-2",flush=True)
         total_norm = total_norm_cuda[0].item()
     else:
         tensor_parallel_grads = reduce_grads(gradients, parameters, weight_parallel_mode)
@@ -343,18 +343,20 @@ def compute_norm(gradients, parameters, norm_type=2, zero_mode=ParallelMode.ZERO
                     op=dist.ReduceOp.SUM,
                     group=gpc.get_sub_group(weight_parallel_mode),
                 )
-
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1-3, sub_pp_groups:{gpc.get_ranks_in_sub_group(ParallelMode.PIPELINE)}",flush=True)
         if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
             dist.all_reduce(
                 total_norm,
                 op=dist.ReduceOp.SUM,
                 group=gpc.get_sub_group(ParallelMode.PIPELINE),
             )
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1-4, zero_mode_group_ranks:{gpc.get_ranks_in_sub_group(zero_mode)},flush=True")
 
         # This is because we use zero1, so we need to use this reduction.
         if gpc.is_using_parallel_mode(zero_mode):
             dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_sub_group(zero_mode))
 
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 5-2-1-5",flush=True)
         if torch.is_tensor(total_norm):
             total_norm = total_norm.item()
 

@@ -8,7 +8,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Uni
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-
+import os
+import json
 from internlm.accelerator import AcceleratorType, get_accelerator
 from internlm.core.context import (
     IS_REPLICA_EXPERT_DATA_PARALLEL,
@@ -891,6 +892,8 @@ def record_current_batch_training_metrics(
         infos["fwd_bwd_time"] = fwd_bwd_time
         bwd_time = round(timer("bwd").elapsed(), 2)
         infos["bwd_time"] = bwd_time
+        update_parameters_time = round(timer("update-parameters").elapsed(), 2)
+        iter_time = round(timer("one-batch").elapsed(), 2)
 
         for key, value in acc_perplex.items():
             infos[key] = value
@@ -911,6 +914,50 @@ def record_current_batch_training_metrics(
             step_count=batch_count,
             cur_step_loss=loss.item(),
         )
+        if gpc.config.get("evaluation",False) and batch_count > 5:
+            output_dir = os.path.join("./InternEvo/results/evaluation", gpc.config.model_type, gpc.config.JOB_NAME, gpc.config.timestamp)
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = os.path.join(output_dir, f"evaluation.json")
+            history = {
+                "tgs": [],
+                "iter_time": [],
+                "fwd_bwd_time":[],
+                "update_parameters_time": [],
+                "loss": []
+            }
+            # 2. 如果文件存在，则读取旧数据
+            if os.path.exists(output_file):
+                with open(output_file, 'r') as f:
+                    try:
+                        history = json.load(f)
+                    except json.JSONDecodeError:
+                        pass  # 文件为空或损坏则跳过
+            # 3. 追加新数据
+            history["tgs"].append(tgs_origin)
+            history["iter_time"].append(iter_time)
+            history["update_parameters_time"].append(update_parameters_time)
+            history["loss"].append(infos["loss"])
+            history["fwd_bwd_time"].append(fwd_bwd_time)
+            from collections import OrderedDict
+            data = OrderedDict()
+            # 4. 更新平均值
+            data["configs"]=gpc.config.get("CONFIG_INFOS","")
+            data["opti_methods"]= gpc.config.get("opti_methods","")
+            data["avg_iter_time"] = round(sum(history["iter_time"]) / len(history["iter_time"]),2)
+            data["avg_fwd_bwd_time"] = sum(history["fwd_bwd_time"]) / len(history["fwd_bwd_time"])
+            data["avg_update_parameters_time"] = sum(history["update_parameters_time"]) / len(history["update_parameters_time"])
+            data["avg_tgs"] = int(sum(history["tgs"]) / len(history["tgs"]))
+
+            data["tgs"] = history["tgs"]
+            data["iter_time"] = history["iter_time"]
+            data["fwd_bwd_time"] = history["fwd_bwd_time"]
+            data["update_parameters_time"] = history["update_parameters_time"]
+            data["loss"] = history["loss"]
+
+            # 5. 写回文件
+            with open(output_file, 'w') as f:
+                json.dump(data, f, indent=4)
+
 
 
 def inject_embed(model: nn.Module, inject=False, interactive=False) -> None:

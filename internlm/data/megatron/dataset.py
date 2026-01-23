@@ -260,7 +260,7 @@ def _build_index_mappings(
     counts = torch.cuda.LongTensor([data_cache_success])
 
     if gpc.is_using_parallel_mode(ParallelMode.DATA):
-        torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.DATA))
+        torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.DATA))#
 
     if gpc.is_using_parallel_mode(ParallelMode.PIPELINE):
         torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.PIPELINE))
