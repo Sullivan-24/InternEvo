@@ -168,5 +168,5 @@ def main():
 # if __name__ == "__main__":
 #     main()
 
-bin_output_path = '/mnt/shared-storage-user/lusitian/data/data_jsonl/github/tokenized_llama2/output.bin'
+bin_output_path = '/mnt/shared-storage-user/lusitian/data/data_jsonl/c4/tokenized_llama2/output.bin'
 prepare_meta(bin_output_path)

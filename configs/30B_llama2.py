@@ -1,17 +1,49 @@
-JOB_NAME = "7b_llama2_train"
+from configs.ppopp_configs.base_copy import *
+JOB_NAME = "30b_llama2_train_DP2_PP8_TP2"
 model_type = "LLAMA2"
 DO_ALERT = False
 
-VOCAB_SIZE = 32000
-SEQ_LEN = 4*1024
-HIDDEN_SIZE = 4096 # 4096
-NUM_ATTENTION_HEAD = 32 # 32
-NUM_KV_ATTENTION_HEAD = 32 # 32
-MLP_RATIO = 2.7 # 2.6875
-NUM_LAYER = 32 # 32
-BUCKET_SIZE = 512
-BUCKET_ROTATION_MODE = "UR" # 'round_robin', 'random', 'U', 'U0.5'
+# {
+#   "_name_or_path": "meta-llama/Llama-2-13b-hf",
+#   "architectures": [
+#     "LlamaForCausalLM"
+#   ],
+#   "bos_token_id": 1,
+#   "eos_token_id": 2,
+#   "hidden_act": "silu",
+#   "hidden_size": 5120,
+#   "initializer_range": 0.02,
+#   "intermediate_size": 13824,
+#   "max_position_embeddings": 4096,
+#   "model_type": "llama",
+#   "num_attention_heads": 40,
+#   "num_hidden_layers": 40,
+#   "num_key_value_heads": 40,
+#   "pretraining_tp": 1,
+#   "rms_norm_eps": 1e-05,
+#   "rope_scaling": null,
+#   "tie_word_embeddings": false,
+#   "torch_dtype": "float16",
+#   "transformers_version": "4.32.0.dev0",
+#   "use_cache": true,
+#   "vocab_size": 32000
+# }
 
+VOCAB_SIZE = 32000
+HIDDEN_SIZE = 6656         # 增加
+NUM_ATTENTION_HEAD = 52    # 增加 (6656/128)
+NUM_KV_ATTENTION_HEAD = 52 # 保持与 HEAD 一致或使用 GQA
+MLP_RATIO = 2.7            # 保持
+NUM_LAYER = 64             # 增加
+CHUNK_NUM = 1              # 保持 (通常由并行策略决定)
+
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, profile_fwd_bwd:{profile_fwd_bwd}")
+
+CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
+                DP_SIZE{DP_SIZE}, PP_SIZE{PP_SIZE}, TP_SIZE{TP_SIZE}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
+                layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
+opti_methods = ""
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -41,15 +73,13 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = '/mnt/shared-storage-user/ailab-sys/lusitian/data/github_split/'
+# TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
+TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
-    data_name="github",
     seq_len=SEQ_LEN,
-    bucket_size=BUCKET_SIZE,
-    bucket_rotation_mode=BUCKET_ROTATION_MODE,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=32,
+    micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -57,7 +87,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=50,
+    total_steps=26,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -66,12 +96,13 @@ data = dict(
     #       (IMPORTANT): The interval step size is 'micro_bsz'.
     rampup_batch_size="",
     # Datasets with less than 50 rows will be discarded
-    min_length=50,
+    min_length=20,
     train_folder=TRAIN_FOLDER,
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    num_worker=4,
+    type="streaming",
+    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(
@@ -95,7 +126,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=False,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -105,7 +136,6 @@ hybrid_zero_optimizer = dict(
 
 loss = dict(
     label_smoothing=0,
-    op_type="flash_vocab_parallel",
 )
 
 adam = dict(
@@ -134,7 +164,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
@@ -170,6 +200,7 @@ zero1 parallel (dict):
         * if size == 1, zero is not used, and all dp groups retain the full amount of model parameters.
         * if size > 1 and size <= dp world size, the world size of zero is a subset of dp world size.
         For smaller models, it is usually a better choice to split the parameters within nodes with a setting <= 8.
+    2. fsdp: bool, enable/disable torch's fully sharded data parallel, defaults to False.
 tensor parallel (dict):
     1. size: int, the size of tensor parallel.
     2. mode: str, the tensor parallel mode, should be in ['mtp', 'msp', 'fsp', 'isp'],
@@ -185,35 +216,28 @@ weight parallel (dict):
     1. size: int, the size of weight parallel.
     2. overlap: bool, enable/disable all_gather/reduce_scatter communication overlap, defaults to False.
 """
-# wdp = world_size // wp // pp  # isp
-# dp = world_size // tp // pp
-# zero1 size is up to wdp 
-
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=2, mode="msp"),
-    pipeline=dict(size=4,interleaved_overlap=True),
-    weight=dict(size=1, overlap=True, launch_allgather_before="wo", forward_overlap_per="layer"),
+    tensor=dict(size=TP_SIZE, mode="mtp"),
+    pipeline=dict(size=PP_SIZE, mode=PP_MODE, interleaved_overlap=True),
+    weight=dict(size=1, overlap=True),
 )
 
 cudnn_deterministic = False
 cudnn_benchmark = False
 
-profile_fwd_bwd = False
-flops_profiling = False
-
-# monitor = dict(
-#     # feishu alert configs
-#     alert=dict(
-#         enable_feishu_alert=DO_ALERT,
-#         feishu_alert_address=None,  # feishu webhook to send alert message
-#         light_monitor_address=None,  # light_monitor address to send heartbeat
-#         alert_file_path=f"llm_alter/{JOB_NAME}_alert.log",
-#     ),
-#     tensorboard=dict(
-#         queue_max_length=10,
-#     ),
-# )
+monitor = dict(
+    # feishu alert configs
+    alert=dict(
+        enable_feishu_alert=DO_ALERT,
+        feishu_alert_address=None,  # feishu webhook to send alert message
+        light_monitor_address=None,  # light_monitor address to send heartbeat
+        alert_file_path=f"llm_alter/{JOB_NAME}_alert.log",
+    ),
+    tensorboard=dict(
+        queue_max_length=10,
+    ),
+)
 
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics

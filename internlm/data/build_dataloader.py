@@ -280,6 +280,7 @@ def build_train_loader_with_data_type():
         pin_memory=True,
         collate_fn=train_collate_fn,
         persistent_workers=data_cfg.get("num_worker", 4) > 0,
+        prefetch_factor=2
     )
 
     return train_dl, dataset_types

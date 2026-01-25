@@ -152,3 +152,6 @@ DataDistribution/
 tokenizer/
 *.bin
 *.log
+flops_record/
+attn_record/
+*.csv

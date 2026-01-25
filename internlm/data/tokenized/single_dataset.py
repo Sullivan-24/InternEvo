@@ -130,6 +130,10 @@ class JsonlDataset(torch.utils.data.Dataset):
         self.offsets = meta[:, 0]
         self.lengths = meta[:, 1]
 
+        limit = len(self.offsets) // 10 
+        self.offsets = self.offsets[:limit]
+        self.lengths = self.lengths[:limit]
+        
         if min_length > 0: # filter short samples
             mask = self.lengths >= min_length
             self.old_lengths = self.lengths.copy()

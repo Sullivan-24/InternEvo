@@ -4,13 +4,13 @@ DO_ALERT = False
 
 VOCAB_SIZE = 32000
 SEQ_LEN = 4*1024
-HIDDEN_SIZE = 4096 # 4096
-NUM_ATTENTION_HEAD = 32 # 32
-NUM_KV_ATTENTION_HEAD = 32 # 32
+HIDDEN_SIZE = 6656 # 4096 # 5120 # 6656
+NUM_ATTENTION_HEAD = 52 # 32 # 40 # 52
+NUM_KV_ATTENTION_HEAD = 52 # 32 # 40 # 52
 MLP_RATIO = 2.7 # 2.6875
-NUM_LAYER = 32 # 32
+NUM_LAYER = 64 # 32 # 40 # 64
 BUCKET_SIZE = 512
-BUCKET_ROTATION_MODE = "UR" # 'round_robin', 'random', 'U', 'U0.5'
+BUCKET_ROTATION_MODE = "round_robin" # 'round_robin', 'random', 'U', 'U0.5'
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
@@ -49,7 +49,7 @@ data = dict(
     bucket_size=BUCKET_SIZE,
     bucket_rotation_mode=BUCKET_ROTATION_MODE,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=32,
+    micro_num=8,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -57,7 +57,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=50,
+    total_steps=48,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -192,7 +192,7 @@ weight parallel (dict):
 parallel = dict(
     zero1=dict(size=-1),
     tensor=dict(size=2, mode="msp"),
-    pipeline=dict(size=4,interleaved_overlap=True),
+    pipeline=dict(size=8,interleaved_overlap=True),
     weight=dict(size=1, overlap=True, launch_allgather_before="wo", forward_overlap_per="layer"),
 )
 
@@ -200,7 +200,7 @@ cudnn_deterministic = False
 cudnn_benchmark = False
 
 profile_fwd_bwd = False
-flops_profiling = False
+flops_profiling = True
 
 # monitor = dict(
 #     # feishu alert configs

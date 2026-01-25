@@ -219,9 +219,32 @@ class PipelineScheduler(BaseScheduler):
             micro_num = actual_batch_size // gpc.config.data["micro_bsz"]
         # import pdb 
         # breakpoint()
-        for micro_batch_cu in batch_data[0]['cu_seqlens']:
-            micro_batch_seqlist = [ int(micro_batch_cu[j]) - int(micro_batch_cu[j - 1]) for j in range(1, len(micro_batch_cu))]
-            batch_seqlist.append(micro_batch_seqlist)
+        
+        # micro_batch (batch_size 32, batch[0]['input_ids'].shape[1] seq_len, num-heads, head-dim)
+        num_heads = gpc.config.model.get("num_attention_heads", 32)
+        hidden_size = gpc.config.model.get("hidden_size", 4096)
+        head_dim = hidden_size // num_heads
+        batch_size = actual_batch_size
+        seq_len = batch_data[0]['input_ids'].shape[1]
+        macs = 0
+        
+        if gpc.config.flops_profiling or gpc.config.profile_fwd_bwd:
+            for micro_batch_cu in batch_data[0]['cu_seqlens']:
+                
+                micro_batch_seqlist = [ int(micro_batch_cu[j]) - int(micro_batch_cu[j - 1]) for j in range(1, len(micro_batch_cu))]
+                
+                torch_interaction = torch.dot(torch.tensor(micro_batch_seqlist), torch.tensor(micro_batch_seqlist)).item()
+                
+                # score & V
+                macs += 2 * torch_interaction * head_dim * num_heads
+                
+                # softmax
+                macs += 3 * torch_interaction * num_heads
+                
+                batch_seqlist.append(micro_batch_seqlist)
+            
+            flops = 2 * macs / 2
+            gpc.flops = gpc.config.model.num_layers * flops / gpc.get_world_size(ParallelMode.TENSOR) / gpc.get_world_size(ParallelMode.PIPELINE)
         
         self.microbatch_offset = 0
         self.batch_size = actual_batch_size
@@ -231,8 +254,8 @@ class PipelineScheduler(BaseScheduler):
         # but is determined on the fly by the Scheduler.
         self.num_microbatches = micro_num  # Rampup or variable bsz size.
         
-        if gpc.config.profile_fwd_bwd and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            output_dir = os.path.join("./micro_record", gpc.config.data.data_name, f"M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_seq{gpc.config.SEQ_LEN}_mb{gpc.config.data.micro_num}", f'S{gpc.batch_count}')
+        if gpc.config.profile_fwd_bwd and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            output_dir = os.path.join("./micro_record", gpc.config.data.data_name, f"seq{gpc.config.SEQ_LEN}", f"M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_mb{gpc.config.data.micro_num}", f"dp{gpc.get_world_size(ParallelMode.DATA)}_tp{gpc.get_world_size(ParallelMode.TENSOR)}_pp{gpc.get_world_size(ParallelMode.PIPELINE)}", f'S{gpc.batch_count}')
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"DP_rank_{gpc.get_local_rank(ParallelMode.DATA)}PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}_seq.json")
             
@@ -676,7 +699,7 @@ class PipelineScheduler(BaseScheduler):
                         scatter_gather_tensors=self.scatter_gather_tensors,
                     )
         if gpc.config.profile_fwd_bwd and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            output_dir = os.path.join("./micro_record", gpc.config.data.data_name, f"M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_seq{gpc.config.SEQ_LEN}_mb{gpc.config.data.micro_num}", f'S{gpc.batch_count}')
+            output_dir = os.path.join("./micro_record", gpc.config.data.data_name, f"seq{gpc.config.SEQ_LEN}", f"M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_mb{gpc.config.data.micro_num}", f"dp{gpc.get_world_size(ParallelMode.DATA)}_tp{gpc.get_world_size(ParallelMode.TENSOR)}_pp{gpc.get_world_size(ParallelMode.PIPELINE)}", f'S{gpc.batch_count}')
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"DP_rank_{gpc.get_local_rank(ParallelMode.DATA)}_PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
             gpc.batch_count += 1
@@ -778,9 +801,10 @@ class PipelineScheduler(BaseScheduler):
 
         # Load data first
         self.load_batch(engine, data_iter)
+        # torch.cuda.synchronize()
 
         # start to record step time (add)
-        timer('fwd-bwd').start()
+        timer("fwd-bwd").start()
         if forward_only:
             output, label, accum_loss, accum_moe_loss = self._forward_only_step(
                 engine, return_loss, return_output_label

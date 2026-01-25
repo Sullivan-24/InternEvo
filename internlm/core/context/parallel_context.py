@@ -171,6 +171,7 @@ class ParallelContext(metaclass=SingletonMeta):
         self.is_evaluating = False
         self.v_shape = False
         self.batch_count = 1
+        self.flops = 0
 
     @property
     def config(self):

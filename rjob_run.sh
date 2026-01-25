@@ -39,21 +39,28 @@ export MASTER_PORT=6001
 export NNODES=$NODE_COUNT
 export NODE_RANK=$NODE_RANK
 export WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
-export CUDA_LAUNCH_BLOCKING=1
+# export CUDA_LAUNCH_BLOCKING=1
 # export NCCL_DEBUG=INFO
 # export OMP_NUM_THREADS=1
 
-CONFIG_FILE=configs/7B_llama2.py
-LOG_DIR=./log_record
+NNODES=4
+NPROC_PER_NODE=8
+MODEL_SIZE=30B_llama2
+CONFIG_FILE=configs/7B_llama2_test.py
+LOG_DIR=./attn_record
 DATA_NAME=github
 DATA_SIZE=all
-BUCKET_SIZE=B1024
-SEQ_LEN=16k_8n
-DP_TP_PP=2_4_2
+BUCKET_SIZE=B512
+SEQ_LEN=4*1024
+MICRO_NUM=8
+DP_TP_PP=dp2_tp2_pp8
+BUCKET_MODE="round_robin"
+PROFILE="profile_True"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")  
-# LOG_FILE=${LOG_DIR}/${DATA_NAME}_${DATA_SIZE}_${BUCKET_SIZE}_${SEQ_LEN}_${DP_TP_PP}_${TIMESTAMP}.log
-LOG_FILE=test_U.log
+LOG_FILE=${LOG_DIR}/${DATA_NAME}/${MODEL_SIZE}/${SEQ_LEN}/M${BUCKET_MODE}_${BUCKET_SIZE}_mb${MICRO_NUM}/${DP_TP_PP}_${PROFILE}_${TIMESTAMP}.log
+# LOG_FILE=test_8k_32_tp2pp4_sych.log
 
+mkdir -p "$(dirname "${LOG_FILE}")"
 # nvidia-smi
 # python -c "import torch; print(torch.__version__);print(torch.version.cuda);print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 

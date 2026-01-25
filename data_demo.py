@@ -1,13 +1,15 @@
 import pandas as pd
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import seaborn as sns
-from modelscope.msdatasets import MsDataset
+# from modelscope.msdatasets import MsDataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
 import csv
 
+'''
 def data_visualization_raw():
     outputfile_name = "wikipedia_distribution"
     # 加载数据集
@@ -138,106 +140,157 @@ def data_visualization_raw():
     print(f"长度小于 8K 的序列占比: {(lengths_sr < 8192).mean() * 100:.2f}%")
     print(f"长度超过 32K 的序列占比: {(lengths_sr > 32768).mean() * 100:.2f}%")
     
-def data_visualization_withmeta():
-    # 配置参数
-    input_file = "/mnt/shared-storage-user/lusitian/data/data_jsonl/github/tokenized_llama2/output.bin.meta"  # 输入文件路径
-    output_dir = "./DataDistribution/github/"  # 输出目录
-    output_name = "token_distribution_llama2"
+'''
 
-    print("Loading tokenized data from meta file...")
+# def data_visualization_withmeta():
+#     # 配置参数
+#     input_file = "/mnt/shared-storage-user/lusitian/data/data_jsonl/c4/tokenized_llama2/output.bin.meta"  # 输入文件路径
+#     output_dir = "./DataDistribution/c4/"  # 输出目录
+#     output_name = "token_distribution_llama2"
+#     matplotlib.use('Agg')
+    
+#     print("Loading tokenized data from meta file...")
 
-    # 读取.meta文件
-    try:
-        # 假设meta文件是numpy格式
-        meta = np.load(input_file, allow_pickle=True)
-        # 提取token数 (meta[:, 1]为各document的token数)
-        lengths = meta[:, 1].astype(int).tolist()
-        print(f"Successfully loaded {len(lengths)} documents")
-    except Exception as e:
-        print(f"Failed to load meta file, error: {e}")
-        exit()
+#     # 读取.meta文件
+#     try:
+#         # 假设meta文件是numpy格式
+#         meta = np.load(input_file, allow_pickle=True)
+#         # 提取token数 (meta[:, 1]为各document的token数)
+#         lengths = meta[:, 1].astype(int).tolist()
+#         print(f"Successfully loaded {len(lengths)} documents")
+#     except Exception as e:
+#         print(f"Failed to load meta file, error: {e}")
+#         exit()
 
-    # # 保存原始数据到CSV
-    # print("Saving token lengths to CSV...")
-    # try:
-    #     with open(f"{output_dir}{output_name}.csv", 'w', newline='', encoding='utf-8') as csvfile:
-    #         writer = csv.writer(csvfile)
-    #         writer.writerow(['Sequence_Length', 'Document_Index'])
-    #         for idx, length in enumerate(lengths):
-    #             writer.writerow([length, idx])
-    #     print(f"Successfully saved data to {output_name}.csv")
-    # except IOError as e:
-    #     print(f"Failed to write CSV file, error: {e}")
-    #     exit()
+#     # # 保存原始数据到CSV
+#     # print("Saving token lengths to CSV...")
+#     # try:
+#     #     with open(f"{output_dir}{output_name}.csv", 'w', newline='', encoding='utf-8') as csvfile:
+#     #         writer = csv.writer(csvfile)
+#     #         writer.writerow(['Sequence_Length', 'Document_Index'])
+#     #         for idx, length in enumerate(lengths):
+#     #             writer.writerow([length, idx])
+#     #     print(f"Successfully saved data to {output_name}.csv")
+#     # except IOError as e:
+#     #     print(f"Failed to write CSV file, error: {e}")
+#     #     exit()
 
-    # 计算不同长度的统计
-    lengths_sr = pd.Series(lengths)
-    lengths_count = lengths_sr.value_counts().sort_index()
-    df_lengths_count = lengths_count.reset_index()
-    df_lengths_count.columns = ['Sequence_Length', 'Count']
+#     # 计算不同长度的统计
+#     lengths_sr = pd.Series(lengths)
+#     lengths_count = lengths_sr.value_counts().sort_index()
+#     df_lengths_count = lengths_count.reset_index()
+#     df_lengths_count.columns = ['Sequence_Length', 'Count']
 
-    try:
-        df_lengths_count.to_csv(f"{output_dir}{output_name}_count.csv", index=False)
-        print("Successfully saved count statistics")
-    except IOError as e:
-        print(f"Failed to write count CSV file, error: {e}")
+#     try:
+#         df_lengths_count.to_csv(f"{output_dir}{output_name}_count.csv", index=False)
+#         print("Successfully saved count statistics")
+#     except IOError as e:
+#         print(f"Failed to write count CSV file, error: {e}")
 
-    # 绘制分布图
-    print("Generating distribution plot...")
+#     # 绘制分布图
+#     print("Generating distribution plot...")
 
-    # 设置绘图风格
-    sns.set_theme(style="white")
-    plt.figure(figsize=(10, 6))
+#     # 设置绘图风格
+#     sns.set_theme(style="white")
+#     plt.figure(figsize=(10, 6))
 
-    # 绘制直方图和KDE曲线
-    ax = sns.histplot(
-        data=lengths_sr, 
-        log_scale=True,  # X轴使用对数尺度
-        kde=True,        # 绘制核密度估计曲线
-        color='#4C72B0', # 使用蓝色
-        line_kws={'linewidth': 2.5},
-        alpha=0.2  # 填充区域的透明度
-    )
+#     # 绘制直方图和KDE曲线
+#     ax = sns.histplot(
+#         data=lengths_sr, 
+#         log_scale=True,  # X轴使用对数尺度
+#         kde=True,        # 绘制核密度估计曲线
+#         color="#B6563B", # 使用蓝色
+#         line_kws={'linewidth': 2.5},
+#         alpha=0.2  # 填充区域的透明度
+#     )
 
-    # 设置X轴的刻度值
-    ticks = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
-    ax.set_xticks(ticks)
+#     # 设置X轴的刻度值
+#     ticks = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
+#     ax.set_xticks(ticks)
 
-    # 自定义X轴刻度标签,将数字转换为 '1K', '2K' 的格式
-    @mticker.FuncFormatter
-    def custom_formatter(x, pos):
-        if x >= 1024:
-            return f'{int(x/1024)}K'
-        return str(int(x))
+#     # 自定义X轴刻度标签,将数字转换为 '1K', '2K' 的格式
+#     @mticker.FuncFormatter
+#     def custom_formatter(x, pos):
+#         if x >= 1024:
+#             return f'{int(x/1024)}K'
+#         return str(int(x))
 
-    ax.xaxis.set_major_formatter(custom_formatter)
-    plt.xticks(rotation=45, ha="right")  # 旋转标签防止重叠
+#     ax.xaxis.set_major_formatter(custom_formatter)
+#     plt.xticks(rotation=45, ha="right")  # 旋转标签防止重叠
 
-    # 隐藏Y轴刻度和标签
-    ax.set_yticks([])
-    ax.set_ylabel('')
+#     # 隐藏Y轴刻度和标签
+#     ax.set_yticks([])
+#     ax.set_ylabel('')
 
-    # 添加标题和标签
-    plt.title('Distribution of Token Lengths in Tokenized Dataset', fontsize=16)
-    plt.xlabel('Token Lengths', fontsize=12)
-    plt.grid(axis='x', linestyle='--', alpha=0.6)
+#     # 添加标题和标签
+#     plt.title('Distribution of Token Lengths in Tokenized Dataset github', fontsize=16)
+#     plt.xlabel('Token Lengths', fontsize=12)
+#     plt.grid(axis='x', linestyle='--', alpha=0.6)
+#     plt.tight_layout()
+#     plt.savefig(f"{output_dir}{output_name}.png", dpi=300)
+
+#     print(f"Successfully saved plot to {output_name}.png")
+
+#     # 输出统计信息
+#     print("\n--- Token Distribution Statistics ---")
+#     print(f"Total documents: {len(lengths_sr)}")
+#     print(f"Average token length: {lengths_sr.mean():.2f}")
+#     print(f"Median token length: {lengths_sr.median():.2f}")
+#     print(f"Max token length: {lengths_sr.max()}")
+#     print(f"Min token length: {lengths_sr.min()}")
+#     print(f"Sequences < 8K tokens: {(lengths_sr < 8192).mean() * 100:.2f}%")
+#     print(f"Sequences > 32K tokens: {(lengths_sr > 32768).mean() * 100:.2f}%")
+#     print(f"Sequences in [8K, 32K]: {((lengths_sr >= 8192) & (lengths_sr <= 32768)).mean() * 100:.2f}%")
+
+#     # 显示图像
+#     plt.show()
+    
+# data_visualization_withmeta()
+
+def plot_training_time_comparison():
+    """
+    绘制不同序列长度下两种打包策略的训练时间对比柱状图
+    """
+    # 数据设置
+    sequence_lengths = ['16K', '32K', '64K']
+    short_subsequences = [1.00, 1.35, 2.08]  # 替换为实际数据
+    long_sequences = [1.21, 2.50, 4.42]      # 替换为实际数据
+    
+    # 设置柱状图参数
+    x = np.arange(len(sequence_lengths))
+    width = 0.2  # 柱子宽度
+    
+    # 创建图形
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # 绘制柱状图
+    bars1 = ax.bar(x - width/2, short_subsequences, width, 
+                   label='Packed with short subsequences', 
+                   color='#4C72B0', alpha=0.8)
+    bars2 = ax.bar(x + width/2, long_sequences, width, 
+                   label='Packed with long sequences', 
+                   color='#DD8452', alpha=0.8)
+    
+    # 设置标签和标题
+    ax.set_xlabel('Sequence Length', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Training Time (s)', fontsize=12, fontweight='bold')
+    ax.set_title('Training Time Comparison: Short vs Long Subsequences', 
+                 fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(sequence_lengths)
+    ax.legend(fontsize=10, loc='upper left')
+    
+    # 添加网格线
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    ax.set_axisbelow(True)
+    
+    # 在柱子上添加数值标签（可选）
+    
     plt.tight_layout()
-    plt.savefig(f"{output_dir}{output_name}.png", dpi=300)
-
-    print(f"Successfully saved plot to {output_name}.png")
-
-    # 输出统计信息
-    print("\n--- Token Distribution Statistics ---")
-    print(f"Total documents: {len(lengths_sr)}")
-    print(f"Average token length: {lengths_sr.mean():.2f}")
-    print(f"Median token length: {lengths_sr.median():.2f}")
-    print(f"Max token length: {lengths_sr.max()}")
-    print(f"Min token length: {lengths_sr.min()}")
-    print(f"Sequences < 8K tokens: {(lengths_sr < 8192).mean() * 100:.2f}%")
-    print(f"Sequences > 32K tokens: {(lengths_sr > 32768).mean() * 100:.2f}%")
-    print(f"Sequences in [8K, 32K]: {((lengths_sr >= 8192) & (lengths_sr <= 32768)).mean() * 100:.2f}%")
-
-    # 显示图像
+    plt.savefig('./training_time_comparison.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-data_visualization_withmeta()
+    print("Successfully saved plot to training_time_comparison.png")
+
+# 调用函数
+plot_training_time_comparison()

@@ -7,6 +7,7 @@ This file implements support for the attention operators.
 """
 
 import math
+import os
 from enum import Enum
 from typing import Callable, Tuple
 
@@ -29,6 +30,7 @@ from internlm.utils.utils import (
     check_attention_argument,
     params_dispatch_with_condition,
 )
+from internlm.utils.megatron_timers import megatron_timer as timer
 
 if get_accelerator().get_accelerator_backend() in [AcceleratorType.DIPU, AcceleratorType.DITORCH]:
     try:
@@ -194,6 +196,15 @@ def _flash_varlen_kvpacked_attn(
     q, kv = q.squeeze(dim=0), kv.squeeze(dim=0)
 
     # input_idxs: 0: q, 1: kv
+    # torch.cuda.synchronize()
+    # print(f"PPRANK: {gpc.get_local_rank(ParallelMode.PIPELINE)}, TPRANK: {gpc.get_local_rank(ParallelMode.TENSOR)}")
+    if gpc.config.flops_profiling is True and gpc.is_rank_for_log():
+        start_evt = internlm_accelerator.Event(enable_timing=True)
+        end_evt = internlm_accelerator.Event(enable_timing=True)
+        start_evt.record()
+        # timer("attn_time").start()
+    # torch.cuda.synchronize()
+    # timer("attn_time").start()
     output = _flash_float32_compatibility_wrapper(
         (0, 1),
         _flash_varlen_kvpacked_func,
@@ -208,7 +219,16 @@ def _flash_varlen_kvpacked_attn(
         causal,
         layer_idx=layer_idx,
     )
-
+    # torch.cuda.synchronize()
+    if gpc.config.flops_profiling is True and gpc.is_rank_for_log():
+        # timer("attn_time").stop()
+        end_evt.record()
+        end_evt.synchronize()
+        # elapsed_time returns milliseconds, convert to seconds
+        timer("attn_time").elapsed_ += start_evt.elapsed_time(end_evt) / 1000.0
+        #print(f"PIPELINE{gpc.get_local_rank(ParallelMode.PIPELINE)}, TENSOR{gpc.get_local_rank(ParallelMode.TENSOR)}: attn_time: {timer('attn_time').elapsed_} s")
+    # timer("attn_time").stop()
+        
     return output.unsqueeze(dim=0)
 
 
@@ -783,6 +803,7 @@ def _torch_varlen_kvpacked_attn(
     softmax_scale=None,
     causal=False,
     key_padding_mask=None,
+    layer_idx=0,  # pylint: disable=W0613
 ):
 
     packed_length = q.size(dim=1)

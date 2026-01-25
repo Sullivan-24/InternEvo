@@ -1,10 +1,10 @@
 rjob delete rjob-test-heyu
-rjob submit --name=rjob-U-test --gpu=8 --memory=1500000 --cpu=96 \
+rjob submit --name=rjob-U-test --gpu=8 --memory=1500000 --cpu=160 \
 --charged-group=sys_gpu --private-machine=group \
 --mount=gpfs://gpfs1/ailab-sys/lusitian:/mnt/shared-storage-user/ailab-sys/lusitian \
 --mount=gpfs://gpfs1/lusitian:/mnt/shared-storage-user/lusitian \
 --image=registry.h.pjlab.org.cn/ailab/pytorch:2.7.1-cuda12.8-cudnn9-devel \
--P 2 \
+-P 4 \
 --custom-resources rdma/mlnx_shared=8 \
 -e DISTRIBUTED_JOB=true \
 --host-network=true \

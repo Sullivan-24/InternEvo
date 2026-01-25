@@ -836,11 +836,11 @@ def initialize_llm_profile(profiling: bool = False, start_time: str = None):
     """Initialize and return the profiler context manager instance."""
 
     if profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        schedule_config = {"wait": 1, "warmup": 1, "active": 1, "repeat": 1, "skip_first": 3}
+        schedule_config = {"wait": 1, "warmup": 1, "active": 1, "repeat": 1, "skip_first": 4}
         trace_path = (
-            f"RUN/{gpc.config.JOB_NAME}/{start_time}/traces/rank{gpc.get_global_rank()}_"
+            f"RUN/seq{gpc.config.SEQ_LEN}/M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_mb{gpc.config.data.micro_num}/dp{gpc.get_world_size(ParallelMode.DATA)}_tp{gpc.get_world_size(ParallelMode.TENSOR)}_pp{gpc.get_world_size(ParallelMode.PIPELINE)}/traces/rank{gpc.get_global_rank()}_"
             f"dp{gpc.get_local_rank(ParallelMode.DATA)}_"
-            f"wp{gpc.get_local_rank(ParallelMode.WEIGHT)}_"
+            f"pp{gpc.get_local_rank(ParallelMode.PIPELINE)}_"
             f"tp{gpc.get_local_rank(ParallelMode.TENSOR)}"
         )
         if internlm_accelerator.get_accelerator_backend() == AcceleratorType.NPU:
@@ -876,6 +876,41 @@ def initialize_llm_profile(profiling: bool = False, start_time: str = None):
 
     return llm_profile
 
+def number_to_string(num, units=None, precision=2):
+    '''
+    Convert a number to a string with appropriate units. From DeepSpeed.
+    '''
+    if units is None:
+        if num >= 1e12:
+            magnitude, units = 1e12, "T"
+        elif num >= 1e9:
+            magnitude, units = 1e9, "G"
+        elif num >= 1e6:
+            magnitude, units = 1e6, "M"
+        elif num >= 1e3:
+            magnitude, units = 1e3, "K"
+        elif num >= 1 or num == 0:
+            magnitude, units = 1, ""
+        elif num >= 1e-3:
+            magnitude, units = 1e-3, "m"
+        else:
+            magnitude, units = 1e-6, "u"
+    else:
+        if units == "T":
+            magnitude = 1e12
+        elif units == "G":
+            magnitude = 1e9
+        elif units == "M":
+            magnitude = 1e6
+        elif units == "K":
+            magnitude = 1e3
+        elif units == "m":
+            magnitude = 1e-3
+        elif units == "u":
+            magnitude = 1e-6
+        else:
+            magnitude = 1
+    return f"{round(num / magnitude, precision):g} {units}"
 
 @llm_timeout(func_name="record_current_batch_training_metrics")
 def record_current_batch_training_metrics(
@@ -1011,16 +1046,39 @@ def record_current_batch_training_metrics(
         infos["fwd_bwd_time"] = fwd_bwd_time
         bwd_time = round(timer("bwd").elapsed(), 2)
         infos["bwd_time"] = bwd_time
+        if gpc.config.flops_profiling == True :
+        # and os.environ.get("CUDA_LAUNCH_BLOCKING", "0") == "1":
+            flops = round(float(gpc.flops) / 1e12, 3)
+            attn_time = round(timer("attn_time").elapsed(), 3)
+        else:
+            flops = 0.0
+            attn_time = 0.0
         
         # caclulate average fwd_bwd_time and bwd_time (add)
         total_step = tgs_statistic["sum_step"]
-        tgs_statistic["sum_fwd_bwd_time"] += fwd_bwd_time
-        tgs_statistic["sum_bwd_time"] += bwd_time
-        fwd_bwd_time_avg = round(tgs_statistic["sum_fwd_bwd_time"] / total_step, 2)
-        bwd_time_avg = round(tgs_statistic["sum_bwd_time"] / total_step, 2)
+        if batch_count != 0 :
+            tgs_statistic["sum_fwd_bwd_time"] += fwd_bwd_time
+            tgs_statistic["sum_bwd_time"] += bwd_time
+            tgs_statistic["attn_time"] += attn_time
+            fwd_bwd_time_avg = round(tgs_statistic["sum_fwd_bwd_time"] / (total_step - 1), 2)
+            bwd_time_avg = round(tgs_statistic["sum_bwd_time"] / (total_step - 1), 2)
+            attn_time_avg = round(tgs_statistic["attn_time"] / (total_step - 1), 3)
+        else:
+            tgs_statistic["sum_fwd_bwd_time"] += 0
+            tgs_statistic["sum_bwd_time"] += 0
+            tgs_statistic["attn_time"] += 0.0
+            fwd_bwd_time_avg = 0.0
+            bwd_time_avg = 0.0
+            attn_time_avg = 0.0
         
+        tgs_statistic["attn_flops"] = flops
         infos["fwd_bwd_avg"] = fwd_bwd_time_avg
         infos["bwd_avg"] = bwd_time_avg
+        infos["sum_fwd_bwd_time"] = round(tgs_statistic["sum_fwd_bwd_time"], 2)
+        infos["sum_bwd_time"] = round(tgs_statistic["sum_bwd_time"], 2)
+        infos["attn_flops"] = flops
+        infos["attn_time"] = attn_time
+        infos["attn_time_avg"] = attn_time_avg
         
 
         for key, value in acc_perplex.items():

@@ -440,6 +440,7 @@ class Llama2(BaseModel):
                     uniform_(std=out_head_init_std)(param)
 
     def forward(self, hidden_states=None, input_ids=None, **kwargs):
+        # import pdb; pdb.set_trace()
         # attention_mask: compute attention on the places where the value is 1
         if hasattr(self, "tok_embeddings") and input_ids is not None:
             hidden_states = self.tok_embeddings(input_ids)
@@ -449,6 +450,7 @@ class Llama2(BaseModel):
                 )
 
         for _, block in enumerate(self.layers):
+            # print(f"{hidden_states.size=}")
             hidden_states = block(hidden_states, residual=None, **kwargs)
 
         if hasattr(self, "norm"):

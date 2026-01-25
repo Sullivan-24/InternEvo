@@ -577,9 +577,9 @@ while the new restart use less samples ({self.num_samples})"
         if self.enable_bucket_balance and len(self.bucket_to_datasets) > 1:
             if self.bucket_rotation_mode == "round_robin":
                 indices = self._generate_round_robin_indices(len(old_indices))
-            elif self.bucket_rotation_mode in ["U", "U0.5"]:
+            elif self.bucket_rotation_mode in ["U", "U0.5", "UR", "UL"]:
                 indices = self._generate_U_indices(len(old_indices))
-            else:
+            else: # eg. "random"
                 indices = self._generate_bucket_balanced_indices(len(old_indices))
         else:
             # Original random shuffling
@@ -665,6 +665,44 @@ while the new restart use less samples ({self.num_samples})"
                 for i in range(total_round):
                     all_indices.extend(min_bucket_samples[i*n:(i+1)*n].tolist())
                     all_indices.extend(max_bucket_samples[i*m:(i+1)*m].tolist())
+        elif self.bucket_rotation_mode == "UL": # sample from the shortest bucket until exhausted
+            while len(min_bucket_samples) >= 0:
+                n = min(block_size, len(min_bucket_samples))
+                m = block_size - n
+                
+                if n == 0:
+                    break  # Cannot form a complete batch
+                
+                batch_indices = []
+                if n > 0: 
+                    batch_indices.extend(min_bucket_samples[:n].tolist())
+                    min_bucket_samples = min_bucket_samples[n:]
+                if m > 0:
+                    batch_indices.extend(max_bucket_samples[:m].tolist())
+                    max_bucket_samples = max_bucket_samples[m:]
+    
+                self.rng.shuffle(batch_indices)
+                all_indices.extend(batch_indices)
+                count += 1
+        elif self.bucket_rotation_mode == "UR": # sample from the longest bucket until exhausted
+            while len(max_bucket_samples) >= 0:
+                m = min(block_size, len(max_bucket_samples))
+                n = block_size - m
+                
+                if m == 0:
+                    break  # Cannot form a complete batch
+                
+                batch_indices = []
+                if n > 0: 
+                    batch_indices.extend(min_bucket_samples[:n].tolist())
+                    min_bucket_samples = min_bucket_samples[n:]
+                if m > 0:
+                    batch_indices.extend(max_bucket_samples[:m].tolist())
+                    max_bucket_samples = max_bucket_samples[m:]
+    
+                self.rng.shuffle(batch_indices)
+                all_indices.extend(batch_indices)
+                count += 1
         elif self.bucket_rotation_mode == "U":
             while len(min_bucket_samples) >= 0 and len(max_bucket_samples) >= 0:
                 # Determine n (count from A) and m (count from B)

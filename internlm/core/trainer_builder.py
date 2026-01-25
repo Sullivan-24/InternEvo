@@ -1,6 +1,7 @@
 import gc
 import logging
 import time
+import os
 from functools import partial
 from typing import Dict, List, Optional, Union
 
@@ -44,6 +45,8 @@ from internlm.utils.parallel import get_parallel_log_file_name
 from internlm.utils.simple_memory_profiler import SimpleMemoryProfiler
 from internlm.utils.utils import DataType
 from internlm.utils.writer import Writer
+from profiler import FlopsProfiler
+
 
 # global llm logger
 logger = logging.getLogger(__file__)
@@ -158,6 +161,10 @@ class TrainerBuilder(Trainer):
         )
 
         super().__init__(engine, scheduler)
+        
+        # initialize flops profiler
+        # if gpc.config.flops_profiling is True:
+        #     self.flops_profiler = self._initialize_flops_profiler(flops_profiling=gpc.config.flops_profiling)
 
     def _setup_time_and_logging(self) -> str:
         current_time = launch_time()
@@ -248,6 +255,13 @@ class TrainerBuilder(Trainer):
             skip_batches = streaming_simple_resume(train_state)
         return BatchSkipper(skip_batches)
 
+    def _initialize_flops_profiler(self, flops_profiling) -> Optional[FlopsProfiler]:
+        if flops_profiling is True and self.engine is not None:
+            flops_profiler = FlopsProfiler(model=self.engine.model)
+            return flops_profiler
+        else:
+            return None
+
     def _set_attributes(self, profiling, train_dl, val_dls, train_state, optimizer, beta2_scheduler, isp_communicator):
         self.profiling = profiling
         self.train_dl = train_dl
@@ -283,10 +297,38 @@ class TrainerBuilder(Trainer):
                 logger.info(f"Skip batch count:`{batch_count}`...")
             timer("one-batch").stop()
             return False
-
+            
+        # start flops profiling
+        # if gpc.config.flops_profiling is True and self.flops_profiler is not None and batch_count == 3:
+        #     if gpc.is_rank_for_log():
+        #         logger.info(f"Start FLOPS profiling for step {batch_count}...")
+        #     self.flops_profiler.start_profile()
+            
         # timer("fwd-bwd").start()
         loss, moe_loss = self._forward_backward(batch)
         # timer("fwd-bwd").stop()
+
+        # if gpc.config.flops_profiling is True and self.flops_profiler is not None and batch_count == 3:
+        #     flops = self.flops_profiler.get_total_flops()
+        #     macs = self.flops_profiler.get_total_macs()
+        #     params = self.flops_profiler.get_total_params()
+            
+        #     output_dir = os.path.join("./flops_record", gpc.config.data.data_name, f"M{gpc.config.data.bucket_rotation_mode}_B{gpc.config.data.bucket_size}_seq{gpc.config.SEQ_LEN}_mb{gpc.config.data.micro_num}", f'S{gpc.batch_count}')
+        #     # os.makedirs(output_dir, exist_ok=True)
+            
+        #     self.flops_profiler.print_model_profile(
+        #         profile_step=batch_count,
+        #         output_file=output_dir
+        #         + f"rank{gpc.get_global_rank()}_"
+        #         + f"dp{gpc.get_local_rank(ParallelMode.DATA)}_"
+        #         + f"wp{gpc.get_local_rank(ParallelMode.PIPELINE)}_"
+        #         + f"tp{gpc.get_local_rank(ParallelMode.TENSOR)}.txt",
+        #     )
+        #     self.flops_profiler.end_profile()
+        #     if gpc.is_rank_for_log():
+        #         logger.info(
+        #             f"Ending Flops profile for step {batch_count}: {flops} FLOPS, {macs} MACS, {params} PARAMS."
+        #         )
 
         success_update, grad_norm_groups = self._update_parameters()
         self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)

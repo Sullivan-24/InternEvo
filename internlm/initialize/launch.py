@@ -339,10 +339,10 @@ def args_sanity_check():
     model = gpc.config.model
     if "enable_qkv_fusion" not in model:
         model._add_item("enable_qkv_fusion", True)
-
+    # import pdb; pdb.set_trace()
     if "dtype" not in model:
         logger.warning("dtype is not set, use torch.float16 by defalut!")
-        model._add_item("dtype", torch.float16)
+        model._add_item("dtype", torch.bfloat16)
     else:
         if gpc.config.model.dtype == "torch.bfloat16":
             gpc.config.model.dtype = torch.bfloat16

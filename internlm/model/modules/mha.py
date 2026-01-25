@@ -511,9 +511,11 @@ class GQA(nn.Module):
                 k, offsets=indexes, max_seqlen=max_seqlen_k, cache_type="key", interleaved=self.interleaved
             )
 
+        # print(f"""q shape: {q.shape}, k shape: {k.shape}, v shape: {v.shape}""")
         kv = torch.concat([k.unsqueeze(2), v.unsqueeze(2)], dim=2)
 
-        if gpc.config.data.use_packed_dataset is False or self.training is False:
+        # if gpc.config.data.use_packed_dataset is False or self.training is False:
+        if gpc.config.data.use_packed_dataset is False:
             kwargs.pop("max_seqlen_q", None)
             kwargs.pop("max_seqlen_k", None)
 
@@ -628,6 +630,7 @@ class GQA(nn.Module):
         # attention
         if attention_mask is None:
             context = self.inner_cross_attn(q, kv)
+            print(f"use cross attention = {attention_mask is None}")
         else:
             if sequence_len_offset == 0:  # First entrance, attnmask (bs*seqlen*seqlen)
                 attn_mask = attention_mask[:, None, ...]

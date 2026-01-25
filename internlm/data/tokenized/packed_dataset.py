@@ -529,7 +529,14 @@ def get_packed_dataset_without_short_length(
             logger.info(f"Reading {root}...")
         num_token_in_folder = 0
 
-        for fn in tqdm(sorted(files), total=len(files), leave=False, disable=not show_progress):
+        # all_files = sorted(files)
+        # half_count = len(all_files) // 2
+        # use_files = all_files[:half_count]
+        
+        if gpc.is_rank_for_log():
+            logger.info(f"Found {len(files)} files in {root}, using first half {len(files)} files.")
+
+        for fn in tqdm(files, total=len(files), leave=False, disable=not show_progress):
             if fn.endswith(".bin"):
                 fp = os.path.join(root, fn)
                 catch_ml_keys = []
