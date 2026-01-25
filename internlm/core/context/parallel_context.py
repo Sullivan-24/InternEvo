@@ -170,6 +170,7 @@ class ParallelContext(metaclass=SingletonMeta):
         self._expert_parallel_group_names = []
         self.is_evaluating = False
         self.v_shape = False
+        self.batch_count = 1
 
     @property
     def config(self):
@@ -403,7 +404,26 @@ class ParallelContext(metaclass=SingletonMeta):
            use_cpu (bool): whether to set up cpu process group.
         """
         # initialize the default process group
-        init_method = f"tcp://[{host}]:{port}"
+        # init_method = f"tcp://[{host}]:{port}"\
+        import socket
+        import ipaddress
+
+        def resolve_ip_if_needed(host):
+            try:
+                # 检查是否已是合法的 IPv4 或 IPv6 地址
+                ipaddress.ip_address(host)
+                return host  # 已是 IP，直接返回
+            except ValueError:
+                try:
+                    # 尝试通过 DNS 解析主机名
+                    resolved_ip = socket.gethostbyname(host)
+                    return resolved_ip
+                except socket.gaierror:
+                    raise ValueError(f"Could not resolve hostname '{host}' to an IP address.")
+        host = resolve_ip_if_needed(host)
+
+        # init_method = f"tcp://[{host}]:{port}"
+        init_method = f"tcp://{host}:{port}"
         dist.init_process_group(
             rank=rank,
             world_size=world_size,
@@ -497,7 +517,7 @@ class ParallelContext(metaclass=SingletonMeta):
 
     def init_parallel_groups(self):
         """Initializes the parallel groups."""
-
+        
         # get rank and world size
         rank = self.get_global_rank()
         world_size = self.get_world_size(ParallelMode.GLOBAL)

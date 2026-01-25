@@ -2,16 +2,24 @@ import argparse
 import json
 import os
 import sys
-
+from transformers import AutoTokenizer
 import numpy as np
+import tqdm
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(current_dir, "tokenizer_internlm.model")
 sys.path.append(os.path.join(current_dir, "../transformers"))
-from internlm_model import InternLMTokenizer  # noqa: E402 # pylint: disable=C0413
+# from internlm_model import InternLMTokenizer  # noqa: E402 # pylint: disable=C0413
 
-tokenizer = InternLMTokenizer(vocab_file=model_path, add_bos_token=True, add_eos_token=True)
-
+tokenizer_path = "/mnt/shared-storage-user/ailab-sys/lusitian/workspace/InternEvo/tokenizer/llama2" # Internlm2分词器
+try:
+    print("loading tokenizer------")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True, use_fast=True)
+    # tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+except Exception as e:
+    print(f"fail to load tokenizer, exit. error: {e}")
+    exit()
+    
 
 def write_bin(context: str, bin_file) -> None:
     """
@@ -47,6 +55,8 @@ def prepare_meta(bin_output_path: str):
     """
     meta = []
     cur = 0
+    new_index = 0
+    print('writing meta information------')
     with open(bin_output_path, "rb") as f:
         while True:
             # read lines
@@ -59,17 +69,20 @@ def prepare_meta(bin_output_path: str):
             # meta is a list of tuple(cur, length)
             # cur: the start index of each line
             # length: the token amount of each line
-            meta.append((cur, length))
+            # assert new_index < len(raw_index_list), f"new_index {new_index} out of range {len(raw_index_list)} "
+            # raw_index = raw_index_list[new_index]
+            meta.append((cur, length, new_index))
             # update the cur to generate the meta information of next line
             cur += len(line)
+            new_index += 1
 
     # define path of the generated meta file
     meta_fp = bin_output_path + ".meta"
     # save the generated meta information
     with open(meta_fp, "wb") as f:
-        meta = np.array(meta, dtype=np.int32)
+        meta = np.array(meta, dtype=np.int64)
         np.save(f, meta)
-
+    print(f"{new_index}=")
 
 def text2bin(text_input_path: str, bin_output_path: str):
     """
@@ -88,10 +101,11 @@ def text2bin(text_input_path: str, bin_output_path: str):
     assert file_format in ["txt", "json", "jsonl"], print(
         "Invalid input file type. Currently support `txt`, `json` and `jsonl`."
     )
-
+    index = []
+    
     with open(text_input_path, "r") as text_file, open(bin_output_path, "ab") as bin_file:
         if file_format == "txt":
-            for line in text_file:
+            for line in tqdm(text_file, desc="Processing lines"):   
                 # Strip any leading/trailing whitespace
                 stripped_line = line.strip()
                 if stripped_line:
@@ -100,17 +114,30 @@ def text2bin(text_input_path: str, bin_output_path: str):
 
         elif file_format == "json":
             data = json.load(text_file)
+            index = 10
             # assuming data is a list of dictionaries
-            for record in data:
-                # the type of record is dict, transfer the dict into str
-                context = json.dumps(record)
-                # encode the str and write into bin
-                write_bin(context, bin_file)
+            for record in tqdm(data, desc="Processing records"):
+                if index <=0:
+                    break
+                else:
+                    # the type of record is dict, transfer the dict into str
+                    context = json.dumps(record)
+                    # encode the str and write into bin
+                    write_bin(context, bin_file)
+                    index -= 1
+                
 
         elif file_format == "jsonl":
-            for line in text_file:
-                # encode the str and write into bin
-                write_bin(line, bin_file)
+            for i, line in enumerate(tqdm.tqdm(text_file, desc="Processing lines")):   
+                # if i >= 10000:
+                #     break
+                # else:
+                line = json.loads(line)
+                # import pdb
+                # pdb.set_trace()
+                write_bin(line['code'], bin_file)
+                # index.append(line["id"])
+    return index
 
 
 def parse_args():
@@ -138,5 +165,8 @@ def main():
     print(f"Successfully generated {args.bin_output_path}.meta")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
+
+bin_output_path = '/mnt/shared-storage-user/lusitian/data/data_jsonl/github/tokenized_llama2/output.bin'
+prepare_meta(bin_output_path)
