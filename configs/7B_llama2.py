@@ -1,5 +1,5 @@
 from configs.ppopp_configs.base import *
-JOB_NAME = "7b_llama2_train_DP2_PP4_TP2"
+JOB_NAME = "7b_llama2_train_DP2_PP2_TP2"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -48,7 +48,7 @@ ckpt = dict(
 
 TRAIN_FOLDER = None #"/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
 VALID_FOLDER = None  # "/path/to/dataset"
-TRAIN_FOLDER = "/mnt/petrelfs/xuhaoran/tenghui/Datasets/Skylion007/openwebtext"
+# TRAIN_FOLDER = "/mnt/petrelfs/xuhaoran/tenghui/Datasets/Skylion007/openwebtext"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
@@ -74,8 +74,8 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    type="streaming",
-    tokenizer_path="/mnt/petrelfs/xuhaoran/tenghui/Tokenizer/hf-llama2-tokenizer",
+    # type="streaming",
+    # tokenizer_path="/mnt/petrelfs/xuhaoran/tenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(

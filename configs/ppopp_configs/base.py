@@ -15,9 +15,9 @@ layerwise = False
 split_backward = False
 
 SEQ_LEN = 4096
-DP_SIZE = 1
-PP_SIZE = 16
-TP_SIZE = 4
+DP_SIZE = 2
+PP_SIZE = 2
+TP_SIZE = 2
 SCHEDULE = 3
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
@@ -142,7 +142,7 @@ with open("/mnt/petrelfs/xuhaoran/tenghui/InternEvo/executor_config/partition.tx
     content = f.read().strip()
     layer_partition = eval(content)
     layer_partition = [8]*16
-    layer_partition[0]=7
+    layer_partition[0]= 7
     layer_partition[-1] = 7 
 
 per_stage_layer_num = 16 #!!!
