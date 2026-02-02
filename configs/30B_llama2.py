@@ -1,5 +1,5 @@
 from configs.ppopp_configs.base_copy import *
-JOB_NAME = "30b_llama2_train_DP2_PP8_TP2"
+JOB_NAME = "30b_llama2_train_DP2_PP8_TP4"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -74,7 +74,7 @@ ckpt = dict(
 )
 
 # TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
-TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
+TRAIN_FOLDER = "Datasets/Skylion007/openwebtext"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     seq_len=SEQ_LEN,
@@ -102,7 +102,7 @@ data = dict(
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
     type="streaming",
-    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
+    tokenizer_path="Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(

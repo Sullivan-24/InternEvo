@@ -183,24 +183,32 @@ def partition_uniform(num_items: int, pipeline_parallel_size: int, num_chunks: i
     ), "Layer length should be divided by the number of chunks, otherwise parameter method is recomended"
 
     parts = [[] for _ in range(pipeline_parallel_size)]
-    partition_items = num_items // num_chunks
-    for idx in range(num_chunks):
-        base_idx = idx * partition_items
-        chunk_size = partition_items // pipeline_parallel_size
-        left = pipeline_parallel_size - partition_items % pipeline_parallel_size
-        if chunk_size == 0:
-            raise ValueError("Some nodes in Pipeline have no requests")
+    if gpc.config.get("_405B",False):
+        start = 0
+        partition = gpc.config.get("layer_partition")
+        for length in partition:
+            end = start + length
+            parts.append([(start, end)])
+            start = end
+    else:
+        partition_items = num_items // num_chunks
+        for idx in range(num_chunks):
+            base_idx = idx * partition_items
+            chunk_size = partition_items // pipeline_parallel_size
+            left = pipeline_parallel_size - partition_items % pipeline_parallel_size
+            if chunk_size == 0:
+                raise ValueError("Some nodes in Pipeline have no requests")
 
-        if getattr(gpc.config.parallel["pipeline"], "mode", "1F1B").upper() == "ZBV" and idx == 1:
-            for p in range(pipeline_parallel_size - 1, -1, -1):
-                st = base_idx
-                base_idx += chunk_size + ((pipeline_parallel_size - p - 1) >= left)
-                parts[p].append((st, base_idx))
-        else:
-            for p in range(pipeline_parallel_size):
-                st = base_idx
-                base_idx += chunk_size + (p >= left)
-                parts[p].append((st, base_idx))
+            if getattr(gpc.config.parallel["pipeline"], "mode", "1F1B").upper() == "ZBV" and idx == 1:
+                for p in range(pipeline_parallel_size - 1, -1, -1):
+                    st = base_idx
+                    base_idx += chunk_size + ((pipeline_parallel_size - p - 1) >= left)
+                    parts[p].append((st, base_idx))
+            else:
+                for p in range(pipeline_parallel_size):
+                    st = base_idx
+                    base_idx += chunk_size + (p >= left)
+                    parts[p].append((st, base_idx))
 
     if gpc.config.get("ALPA",False):
         parts = []

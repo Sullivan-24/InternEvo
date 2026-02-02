@@ -17,8 +17,8 @@ split_backward = False
 SEQ_LEN = 4096
 DP_SIZE = 2
 PP_SIZE = 8
-TP_SIZE = 2
-SCHEDULE = 0
+TP_SIZE = 4
+SCHEDULE = 3
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
@@ -26,7 +26,7 @@ if SCHEDULE not in (0, 1, 2, 3, 4):
 MICRO_NUM = PP_SIZE
 
 FALCON = False
-HETER= True
+HETER= False
 HETER_GLOBAL_RANKS = []
 Heter_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 Heter_ranks_info = []
@@ -49,7 +49,7 @@ slow_ratio_map[1][3] = 2
 # # # slow_ratio_map[1][13]=2
 # slow_ratio_map[0][8]=1
 # slow_ratio_map[1][14]=0.5
-FAILURE = True
+FAILURE = False
 FAILURE_GLOBAL_RANKS = []
 Failure_ranks_info = []
 Failure_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
@@ -137,9 +137,9 @@ if FALCON:
 #70B[[50,115],[50,90,25]]
 
 layer_partition = []
-with open("InternEvo/executor_config/partition.txt", "r") as f:
-    content = f.read().strip()
-    layer_partition = eval(content)
+# with open("InternEvo/executor_config/partition.txt", "r") as f:
+#     content = f.read().strip()
+#     layer_partition = eval(content)
 per_stage_layer_num = 8
 SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[60,150],[60,120,30]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]

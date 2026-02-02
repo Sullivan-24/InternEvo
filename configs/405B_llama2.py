@@ -1,16 +1,17 @@
 from configs.ppopp_configs.base import *
-JOB_NAME = "70b_llama2_train_nmb16_DP1_PP16_TP4_profile"
+JOB_NAME = "405b_llama2_train_nmb16_DP1_PP16_TP8_profile"
 model_type = "LLAMA2"
 DO_ALERT = False
-
+_405B = True
+# 405B 规模参考配置
 VOCAB_SIZE = 128256
-HIDDEN_SIZE = 8192
-NUM_ATTENTION_HEAD = 64
-NUM_KV_ATTENTION_HEAD = 8
-MLP_RATIO = 3.5
-NUM_LAYER = 80
-CHUNK_NUM = 1
-
+HIDDEN_SIZE = 16384
+NUM_ATTENTION_HEAD = 128
+NUM_KV_ATTENTION_HEAD = 8  # 开启 GQA
+MLP_RATIO = 3.25           # 即 intermediate_size = 53248
+NUM_LAYER = 126
+MAX_POSITION_EMBEDDINGS = 131072 # 通常伴随长文本支持
+CHUNK_NUM =1
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, \
       DP_SIZE:{DP_SIZE}, PP_SIZE:{PP_SIZE}, TP_SIZE:{TP_SIZE}, MICRO_NUM:{MICRO_NUM}")
