@@ -15,15 +15,15 @@ layerwise = False
 split_backward = False
 
 SEQ_LEN = 4096
-DP_SIZE = 4
-PP_SIZE = 16
+DP_SIZE = 2
+PP_SIZE = 2
 TP_SIZE = 4
 SCHEDULE = 0
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 # MICRO_BSZ = int(8/DP_SIZE) # maintain the same global bsz, global_batch_size=gpc.config.data.micro_bsz* gpc.config.data.micro_num* gpc.get_world_size(ParallelMode.DATA)
-MICRO_NUM = 16
+MICRO_NUM = 8
 
 FALCON = False
 HETER= True
@@ -33,81 +33,16 @@ Heter_ranks_info = []
 slow_ratio_dict={}
 slow_ratio_map = [[0 for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 
-# Heter_ranks_map[0][10] = [0]
-# slow_ratio_map[0][10] = 2
+slow_ratio_map[0][1] = 0.5
+slow_ratio_map[1][0] = 0.5
+slow_ratio_map[1][1]= 2
+slow_ratio_map[0][0] = 2
 
-# Heter_ranks_map[1][4] = [0]
-# Heter_ranks_map[2][7] = [0]
-# # Heter_ranks_map[3][12] = [0]
-# # slow_ratio_map[1][4] = 2
-# slow_ratio_map[2][7] = 2
-# # slow_ratio_map[3][12] = 2
+for dp_index in range(len(slow_ratio_map)):
+    for pp_index in range(len(slow_ratio_map[dp_index])):
+        if slow_ratio_map[dp_index][pp_index]>0:
+            Heter_ranks_map[dp_index][pp_index] = [0]
 
-# # Heter_ranks_map[0][2] = [0]
-# # Heter_ranks_map[0][9] = [0]
-# # Heter_ranks_map[3][1] = [0]
-# Heter_ranks_map[3][7] = [0]
-# # slow_ratio_map[0][2] = 2
-# # slow_ratio_map[0][9] = 2
-# # slow_ratio_map[3][1] = 2
-# slow_ratio_map[3][7] = 2
-
-# Heter_ranks_map[0][4] = [0]
-# # # Heter_ranks_map[1][11] = [0]
-# slow_ratio_map[0][4] = 0.65
-# # # slow_ratio_map[1][11] = 0.65
-
-# # Heter_ranks_map[2][11] = [0]
-# # Heter_ranks_map[3][11] = [0]
-# # Heter_ranks_map[0][13] = [0]
-# # Heter_ranks_map[0][1] = [0]
-# Heter_ranks_map[1][9] = [0]
-# Heter_ranks_map[1][1] = [0]
-# # slow_ratio_map[2][11] = 0.65
-# # slow_ratio_map[3][11] = 0.65
-# # slow_ratio_map[0][13] = 0.65
-# # slow_ratio_map[0][1] = 0.65
-# slow_ratio_map[1][9] = 0.65
-# slow_ratio_map[1][1] = 0.65
-
-
-# # Heter_ranks_map[0][11] = [0]
-# Heter_ranks_map[1][4] = [0]
-# Heter_ranks_map[2][9] = [0]
-# # Heter_ranks_map[3][12] = [0]
-# # Heter_ranks_map[0][2] = [0]
-# # Heter_ranks_map[0][14] = [0]
-# Heter_ranks_map[2][1] = [0]
-# # Heter_ranks_map[3][6] = [0]
-# # slow_ratio_map[0][11] = 2
-# # slow_ratio_map[1][4] = 2
-# # slow_ratio_map[2][9] = 2
-# # slow_ratio_map[3][12] = 2
-# # slow_ratio_map[0][2] = 2
-# # slow_ratio_map[0][14] = 2
-# # slow_ratio_map[2][1] = 2
-# # slow_ratio_map[3][6] = 2
-
-# # Heter_ranks_map[0][7] = [0]
-# # Heter_ranks_map[1][12] = [0]
-# Heter_ranks_map[2][15] = [0]
-# Heter_ranks_map[3][10] = [0]
-# # slow_ratio_map[0][7] = 2
-# # slow_ratio_map[1][12] = 2
-# slow_ratio_map[2][15] = 2
-# slow_ratio_map[3][10] = 2
-
-# # Heter_ranks_map[0][0] = [0]
-# # Heter_ranks_map[1][2] = [0]
-# # Heter_ranks_map[2][3] = [0]
-# Heter_ranks_map[3][4] = [0]
-# # slow_ratio_map[0][0] = 0.5
-# # slow_ratio_map[1][2] = 0.5
-# # slow_ratio_map[2][3] = 0.5
-# slow_ratio_map[3][4] = 0.5
-
-Heter_ranks_map[0][15] = [0]
-slow_ratio_map[0][15] = 3
 FAILURE = True
 FAILURE_GLOBAL_RANKS = []
 Failure_ranks_info = []
@@ -170,17 +105,15 @@ if SCHEDULE == 0:
 if FALCON:
     DP_Transfer = True
     MICRO_NUM = num_microbatches_per_dp*DP_SIZE
-#13B[[50,85],[50,80,5]] 40/4
-#70B[[50,115],[50,90,25]] 80/16 layers
-#30B[[60,150],[60,120,30]] 64/8
-#7B [[120,180],[120,160,20]]] 32/2
+#13B[[50,85],[50,80,5]]
+#70B[[50,115],[50,90,25]]
+
 layer_partition = []
 with open("/mnt/petrelfs/xuhaoran/tenghui/InternEvo/executor_config/partition.txt", "r") as f:
     content = f.read().strip()
     layer_partition = eval(content)
-
-per_stage_layer_num = 5 #!!!
-SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[65,145],[65,95,50]]] #per stage sleep time profile, we need compute per layer sleep time
+per_stage_layer_num = 16
+SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[110,195],[110,160,35]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]

@@ -1,5 +1,5 @@
-from configs.ppopp_configs.base import *
-JOB_NAME = "13b_llama2_train_DP2_PP8_TP2"
+from configs.ppopp_configs.base_13B import *
+JOB_NAME = "13b_llama2_train_DP2_PP4_TP4_fail-stop&slow"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -76,7 +76,7 @@ ckpt = dict(
 # TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
 # TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 VALID_FOLDER = None  # "/path/to/dataset"
-TRAIN_FOLDER = None
+TRAIN_FOLDER = "/mnt/petrelfs/xuhaoran/tenghui/Datasets/Skylion007/openwebtext"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
@@ -88,7 +88,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=26,
+    total_steps=15,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -102,8 +102,8 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    # type="streaming",
-    # tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
+    type="streaming",
+    tokenizer_path="/mnt/petrelfs/xuhaoran/tenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(

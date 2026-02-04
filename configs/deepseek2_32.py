@@ -1,4 +1,4 @@
-from configs.ppopp_configs.base_copy import *
+from InternEvo.configs.ppopp_configs.base_30B import *
 
 if "JOB_NAME" in os.environ:
     JOB_NAME = os.environ["JOB_NAME"]

@@ -16,68 +16,46 @@ split_backward = False
 
 SEQ_LEN = 4096
 DP_SIZE = 2
-PP_SIZE = 8
+PP_SIZE = 4
 TP_SIZE = 4
-SCHEDULE = 3
+SCHEDULE = 0
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
 # MICRO_BSZ = int(8/DP_SIZE) # maintain the same global bsz, global_batch_size=gpc.config.data.micro_bsz* gpc.config.data.micro_num* gpc.get_world_size(ParallelMode.DATA)
-MICRO_NUM = PP_SIZE
+MICRO_NUM = 8
 
 FALCON = False
-HETER= False
+HETER= True
 HETER_GLOBAL_RANKS = []
 Heter_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 Heter_ranks_info = []
 slow_ratio_dict={}
 slow_ratio_map = [[0 for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
-Heter_ranks_map[0][3] = [0]
-Heter_ranks_map[1][3] = [0]
-slow_ratio_map[0][3] = 2
-slow_ratio_map[1][3] = 2
-# # Heter_ranks_map[1][3] = [0]
-# # Heter_ranks_map[1][9] = [0]
-# Heter_ranks_map[0][2] = [0]
-# # Heter_ranks_map[1][13]= [0]
-# Heter_ranks_map[0][8] = [0]
-# Heter_ranks_map[1][14] = [0]
 
-# # # slow_ratio_map[1][3] = 1
-# # # slow_ratio_map[1][9] = 0.5
-# slow_ratio_map[0][2] = 2
-# # # slow_ratio_map[1][13]=2
-# slow_ratio_map[0][8]=1
-# slow_ratio_map[1][14]=0.5
-FAILURE = False
+# slow_ratio_map[1][2] = 0.5
+# slow_ratio_map[0][0] = 2
+# slow_ratio_map[0][3] = 2
+
+slow_ratio_map[0][1] = 0.5
+slow_ratio_map[1][2] = 0.5
+slow_ratio_map[0][0] = 2
+slow_ratio_map[0][2] = 2
+slow_ratio_map[0][3] = 2
+slow_ratio_map[1][1] = 2
+
+for dp_index in range(len(slow_ratio_map)):
+    for pp_index in range(len(slow_ratio_map[dp_index])):
+        if slow_ratio_map[dp_index][pp_index]>0:
+            Heter_ranks_map[dp_index][pp_index] = [0]
+
+FAILURE = True
 FAILURE_GLOBAL_RANKS = []
 Failure_ranks_info = []
 Failure_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 Available_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 
 if FAILURE:
-    # Failure_ranks_map[0][2] = [1,2]
-    # Failure_ranks_map[1][2] = [0,1]
-    # Failure_ranks_map[2][3] = [0,1]
-    # Failure_ranks_map[3][0] = [0,1]
-    # Failure_ranks_map[1][3] = [0,1]
-    # Failure_ranks_map[2][1] = [0,1]
-    # Failure_ranks_map[3][1] = [0,1]
-
-    # Failure_ranks_map[0][6] = [0,1]
-    # # Failure_ranks_map[0][6] = [0,1]
-    # Failure_ranks_map[1][5] = [0,1]
-    # Failure_ranks_map[0][14] = [0,1]
-
-    # Failure_ranks_map[0][1] = [0,1]
-    # # Failure_ranks_map[0][4] = [0,1]
-    # Failure_ranks_map[0][5] = [0,1]
-    # # Failure_ranks_map[0][3] = [0,1]
-    # # Failure_ranks_map[0][7] = [0,1]
-    # Failure_ranks_map[1][2] = [0,1]
-    # # Failure_ranks_map[1][0] = [0,1]
-    # Failure_ranks_map[1][6] = [0,1]
-
     for dp_index, pp_ranks in enumerate(Failure_ranks_map):
         for pp_index, failure_tp_ranks in enumerate(pp_ranks):
             TPGroup = [i for i in range(TP_SIZE)]
@@ -133,15 +111,13 @@ if SCHEDULE == 0:
 if FALCON:
     DP_Transfer = True
     MICRO_NUM = num_microbatches_per_dp*DP_SIZE
-#13B[[50,85],[50,80,5]]
-#70B[[50,115],[50,90,25]]
 
 layer_partition = []
-# with open("InternEvo/executor_config/partition.txt", "r") as f:
-#     content = f.read().strip()
-#     layer_partition = eval(content)
-per_stage_layer_num = 8
-SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[60,150],[60,120,30]]] #per stage sleep time profile, we need compute per layer sleep time
+with open("/mnt/petrelfs/xuhaoran/tenghui/InternEvo/executor_config/partition.txt", "r") as f:
+    content = f.read().strip()
+    layer_partition = eval(content)
+per_stage_layer_num = 10
+SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[70,150],[70,120,30]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]
