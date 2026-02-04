@@ -389,7 +389,6 @@ class PipelineScheduler(BaseScheduler):
             Union[torch.Tensor, List[torch.Tensor]]: Gradient of input tensor.
         """
 
-        torch.autograd.set_detect_anomaly(True)
         with torch.profiler.record_function(f"SCH-backward_step-{step_id}"):
             # Retain the grad on the input_obj.
             if input_obj is not None:

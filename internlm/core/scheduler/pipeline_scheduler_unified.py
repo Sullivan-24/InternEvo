@@ -162,7 +162,7 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         self.send_forward_result = [None for __ in range(self.num_microbatches)]
         self.send_backward_result = [None for __ in range(self.num_microbatches)]
 
-        file_path = f"InternEvo/jsonResult/async/pp{gpc.pipeline_parallel_size}_mb{self.num_microbatches}/DP{self.local_dp_rank}"
+        file_path = f"/mnt/petrelfs/xuhaoran/tenghui/InternEvo/Runtime_PP/PP{gpc.pipeline_parallel_size}_mb{self.num_microbatches}/DP{self.local_dp_rank}"
         os.makedirs(file_path, exist_ok=True)
         gpc._config['jsonpath'] = file_path+f"/PP{self.local_pp_rank}_TP{self.local_tp_rank}workloads.json"
 
@@ -179,7 +179,8 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
             else:
                 match_global_rank = match_pp_rank*(self.dp_size*self.tp_size)+match_dp_rank*self.tp_size+self.local_tp_rank#gpc.get_global_rank_by_local_rank(ParallelMode.PIPELINE, match_pp_rank)+match_dp_rank-self.local_dp_rank
             assert match_global_rank is not None
-
+            index_tp = ""
+            scale_factor = ""
             if gpc.config.get("FAILURE",False):
                 Available_ranks_map = gpc.config.get("Available_ranks_map", None)
                 assert Available_ranks_map is not None
