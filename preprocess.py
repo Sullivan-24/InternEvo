@@ -418,10 +418,10 @@ def generate_comm_graph(comp_graph, stage_placement, max_end_time, send_immediat
     # print(f"wrong comm order:{find_mismatch(comm_matrix)}")
     return comm_graph
 
-def generate_():
+def generate_(model_name):
     stage_placement = ""
     input_str=""
-    file_path = 'InternEvo/executor_config'
+    file_path = '/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/schedule_results'
     # os.makedirs(file_path,exist_ok=True)
     with open(file_path+'/placement.txt', 'r', encoding='utf-8') as file:
         stage_placement = file.read()

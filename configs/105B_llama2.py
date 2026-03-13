@@ -1,22 +1,22 @@
-from configs.ppopp_configs.base_7B import *
-JOB_NAME = "7b_llama2_train_DP2_PP2_TP4"
+from configs.ppopp_configs.base_105B import *
+JOB_NAME = "105b_llama2_train_nmb16_DP2_PP16_TP4"
 model_type = "LLAMA2"
 DO_ALERT = False
 
-VOCAB_SIZE = 32000
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 32
+VOCAB_SIZE = 128256
+HIDDEN_SIZE = 8192
+NUM_ATTENTION_HEAD = 64
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 3.5
+NUM_LAYER = 112 #98b
 CHUNK_NUM = 1
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
-print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, \
+      DP_SIZE:{DP_SIZE}, PP_SIZE:{PP_SIZE}, TP_SIZE:{TP_SIZE}, MICRO_NUM:{MICRO_NUM}")
 CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
                 DP_SIZE{DP_SIZE}, PP_SIZE{PP_SIZE}, TP_SIZE{TP_SIZE}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
                 layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
-opti_methods = ""
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
@@ -46,7 +46,7 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = None #"/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
+TRAIN_FOLDER = None
 VALID_FOLDER = None  # "/path/to/dataset"
 TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 data = dict(
@@ -60,7 +60,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=2,
+    total_steps=1,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between

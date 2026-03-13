@@ -4,10 +4,12 @@
 
 import argparse
 import os
+import time
 from pathlib import Path
 from typing import Dict, Union
 
 import torch
+import torch.distributed as dist
 
 from internlm.accelerator import AcceleratorType, get_accelerator
 from internlm.core.context import Config
@@ -31,6 +33,34 @@ else:
 
 logger = get_logger(__file__)
 internlm_accelerator = get_accelerator()
+
+
+def _get_dist_timing_device() -> torch.device:
+    if dist.is_available() and dist.is_initialized() and dist.get_backend() == "nccl" and internlm_accelerator.is_available():
+        return torch.device(f"{internlm_accelerator.current_device_name()}")
+    return torch.device("cpu")
+
+
+def _get_distributed_timing_stats(local_time: float):
+    if not (dist.is_available() and dist.is_initialized()):
+        return local_time, local_time, local_time
+
+    dev = _get_dist_timing_device()
+    max_t = torch.tensor(local_time, dtype=torch.float64, device=dev)
+    min_t = max_t.clone()
+    sum_t = max_t.clone()
+
+    dist.all_reduce(max_t, op=dist.ReduceOp.MAX)
+    dist.all_reduce(min_t, op=dist.ReduceOp.MIN)
+    dist.all_reduce(sum_t, op=dist.ReduceOp.SUM)
+
+    avg_t = (sum_t / dist.get_world_size()).item()
+    return min_t.item(), max_t.item(), avg_t
+
+
+def _dist_barrier():
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
 
 
 def get_default_parser():
@@ -665,8 +695,12 @@ def launch(
     gpc.init_global_dist(rank, world_size, backend, host, port)
 
     # init process groups for different parallel modes from config
+    _dist_barrier()
+    t0 = time.perf_counter()
     gpc.init_parallel_groups()
-
+    _dist_barrier()
+    parallel_group_elapsed = time.perf_counter() - t0
+    print(f"init_parallel_groups local={parallel_group_elapsed:.4f}")
     # set cuda device
     if internlm_accelerator.is_available():
         # if local rank is not given, calculate automatically
@@ -677,6 +711,10 @@ def launch(
     warmup_process_group()
 
     if gpc.is_rank_for_log():
+        logger.info(
+            # f"Process group init timing (s): init_global_dist local={global_dist_elapsed:.4f}, "
+            f"init_parallel_groups local={parallel_group_elapsed:.4f}, "
+        )
         logger.info(
             f"Distributed environment is initialized, "
             f"data parallel size: {gpc.data_parallel_size}, pipeline parallel size: {gpc.pipeline_parallel_size}, "

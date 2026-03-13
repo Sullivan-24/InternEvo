@@ -7,18 +7,18 @@ DO_ALERT = False
 HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 
-evaluation = True
+evaluation = False
 profile_all_rank = False
 profile_fwd_bwd = False
 DP_Transfer = False
 layerwise = False
 split_backward = False
 
-SEQ_LEN = 4096
+SEQ_LEN = 4096*2
 DP_SIZE = 2
 PP_SIZE = 2
 TP_SIZE = 2
-SCHEDULE = 0
+SCHEDULE = 1
 if SCHEDULE not in (0, 1, 2, 3, 4):
     print("Note: Env PP_MODE not set, set PP_MODE to default 1 (1f1b).")
     SCHEDULE = 1
@@ -26,16 +26,16 @@ if SCHEDULE not in (0, 1, 2, 3, 4):
 MICRO_NUM = 8
 
 FALCON = False
-HETER= True
+HETER= False
 HETER_GLOBAL_RANKS = []
 Heter_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
 Heter_ranks_info = []
 slow_ratio_dict={}
 slow_ratio_map = [[0 for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
-Heter_ranks_map[0][0] = [0]
-Heter_ranks_map[1][1] = [0]
-slow_ratio_map[0][0] = 2
-slow_ratio_map[1][1] = 2
+# Heter_ranks_map[0][0] = [0]
+# Heter_ranks_map[1][1] = [0]
+# slow_ratio_map[0][0] = 2
+# slow_ratio_map[1][1] = 2
 # # Heter_ranks_map[1][3]   = [0]
 # # Heter_ranks_map[1][9] = [0]
 # Heter_ranks_map[0][2] = [0]
@@ -49,7 +49,7 @@ slow_ratio_map[1][1] = 2
 # # # slow_ratio_map[1][13]=2
 # slow_ratio_map[0][8]=1
 # slow_ratio_map[1][14]=0.5
-FAILURE = True
+FAILURE = False
 FAILURE_GLOBAL_RANKS = []
 Failure_ranks_info = []
 Failure_ranks_map = [[[] for _ in range(PP_SIZE) ] for _ in range(DP_SIZE)]
@@ -138,7 +138,7 @@ if FALCON:
 #30B[[60,150],[60,120,30]] 64/8
 #7B [[120,180],[120,160,20]]] 32/2
 layer_partition = []
-with open("InternEvo/executor_config/partition.txt", "r") as f:
+with open("/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/schedule_results/partition.txt", "r") as f:
     content = f.read().strip()
     layer_partition = eval(content)
 per_stage_layer_num = 16 #!!!

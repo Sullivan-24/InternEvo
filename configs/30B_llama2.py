@@ -1,33 +1,7 @@
-from configs.ppopp_configs.base_copy import *
-JOB_NAME = "30b_llama2_train_DP2_PP8_TP2"
+from configs.ppopp_configs.base_30B import *
+JOB_NAME = "30b_llama2_train_DP2_PP8_TP4"
 model_type = "LLAMA2"
 DO_ALERT = False
-
-# {
-#   "_name_or_path": "meta-llama/Llama-2-13b-hf",
-#   "architectures": [
-#     "LlamaForCausalLM"
-#   ],
-#   "bos_token_id": 1,
-#   "eos_token_id": 2,
-#   "hidden_act": "silu",
-#   "hidden_size": 5120,
-#   "initializer_range": 0.02,
-#   "intermediate_size": 13824,
-#   "max_position_embeddings": 4096,
-#   "model_type": "llama",
-#   "num_attention_heads": 40,
-#   "num_hidden_layers": 40,
-#   "num_key_value_heads": 40,
-#   "pretraining_tp": 1,
-#   "rms_norm_eps": 1e-05,
-#   "rope_scaling": null,
-#   "tie_word_embeddings": false,
-#   "torch_dtype": "float16",
-#   "transformers_version": "4.32.0.dev0",
-#   "use_cache": true,
-#   "vocab_size": 32000
-# }
 
 VOCAB_SIZE = 32000
 HIDDEN_SIZE = 6656         # 增加
@@ -87,7 +61,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=26,
+    total_steps=2,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between

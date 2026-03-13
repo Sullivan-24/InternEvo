@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-
+import json
 from internlm.core.context import global_context as gpc
 from internlm.core.trainer_builder import TrainerBuilder
 from internlm.data import (
@@ -56,9 +56,10 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-
     # Initialize distributed environment
+    # init_time = time.time()
     initialize_distributed_env(config=args.config, launcher=args.launcher, master_port=args.port, seed=args.seed)
+    # print(f"Initialized distributed environment in {time.time() - init_time:.2f} seconds.",flush=True)
     assert hasattr(gpc, "config") and gpc.config is not None
 
     # Run the main function with parsed arguments

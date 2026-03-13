@@ -1,34 +1,7 @@
-from configs.ppopp_configs.base import *
-JOB_NAME = "13b_llama2_train_DP2_PP4_TP2"
+from configs.ppopp_configs.base_13B import *
+JOB_NAME = "13b_llama2_train_DP2_PP4_TP4"
 model_type = "LLAMA2"
 DO_ALERT = False
-
-# {
-#   "_name_or_path": "meta-llama/Llama-2-13b-hf",
-#   "architectures": [
-#     "LlamaForCausalLM"
-#   ],
-#   "bos_token_id": 1,
-#   "eos_token_id": 2,
-#   "hidden_act": "silu",
-#   "hidden_size": 5120,
-#   "initializer_range": 0.02,
-#   "intermediate_size": 13824,
-#   "max_position_embeddings": 4096,
-#   "model_type": "llama",
-#   "num_attention_heads": 40,
-#   "num_hidden_layers": 40,
-#   "num_key_value_heads": 40,
-#   "pretraining_tp": 1,
-#   "rms_norm_eps": 1e-05,
-#   "rope_scaling": null,
-#   "tie_word_embeddings": false,
-#   "torch_dtype": "float16",
-#   "transformers_version": "4.32.0.dev0",
-#   "use_cache": true,
-#   "vocab_size": 32000
-# }
-
 
 VOCAB_SIZE = 32000
 HIDDEN_SIZE = 5120
@@ -38,10 +11,10 @@ MLP_RATIO = 2.7
 NUM_LAYER = 40
 CHUNK_NUM = 1
 
-PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=PP_SIZE, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=pp_size, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}, profile_fwd_bwd:{profile_fwd_bwd}")
 CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
-                DP_SIZE{DP_SIZE}, PP_SIZE{PP_SIZE}, TP_SIZE{TP_SIZE}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
+                dp_size{dp_size}, pp_size{pp_size}, tp_size{tp_size}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
                 layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
 opti_methods = ""
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
@@ -87,7 +60,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=26,
+    total_steps=25,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -218,8 +191,8 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=TP_SIZE, mode="mtp"),
-    pipeline=dict(size=PP_SIZE, mode=PP_MODE, interleaved_overlap=True),
+    tensor=dict(size=tp_size, mode="mtp"),
+    pipeline=dict(size=pp_size, mode=PP_MODE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 

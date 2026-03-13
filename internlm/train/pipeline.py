@@ -914,7 +914,7 @@ def record_current_batch_training_metrics(
             step_count=batch_count,
             cur_step_loss=loss.item(),
         )
-        if gpc.config.get("evaluation",False) and batch_count > 5:
+        if gpc.config.get("evaluation",False):
             output_dir = os.path.join("./InternEvo/results/evaluation", gpc.config.model_type, gpc.config.JOB_NAME, gpc.config.timestamp)
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"evaluation.json")
@@ -940,13 +940,16 @@ def record_current_batch_training_metrics(
             history["fwd_bwd_time"].append(fwd_bwd_time)
             from collections import OrderedDict
             data = OrderedDict()
-            # 4. 更新平均值
+
             data["configs"]=gpc.config.get("CONFIG_INFOS","")
             data["opti_methods"]= gpc.config.get("opti_methods","")
-            data["avg_iter_time"] = round(sum(history["iter_time"]) / len(history["iter_time"]),2)
-            data["avg_fwd_bwd_time"] = sum(history["fwd_bwd_time"]) / len(history["fwd_bwd_time"])
-            data["avg_update_parameters_time"] = sum(history["update_parameters_time"]) / len(history["update_parameters_time"])
-            data["avg_tgs"] = int(sum(history["tgs"]) / len(history["tgs"]))
+            # 4. 更新平均值
+            if len(history["tgs"])>6:
+                data["avg_iter_time"] = round(sum(history["iter_time"][6:]) / (len(history["iter_time"])-6),2)
+                data["avg_fwd_bwd_time"] = sum(history["fwd_bwd_time"][6:]) / (len(history["fwd_bwd_time"])-6)
+                data["avg_update_parameters_time"] = sum(history["update_parameters_time"][6:]) / (len(history["update_parameters_time"])-6)
+                data["avg_tgs"] = int(sum(history["tgs"][6:]) / (len(history["tgs"])-6))
+                # data["avg_tgs"] = int(sum(history["tgs"]) / len(history["tgs"]))
 
             data["tgs"] = history["tgs"]
             data["iter_time"] = history["iter_time"]
