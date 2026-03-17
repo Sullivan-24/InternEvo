@@ -278,10 +278,10 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                         )
                     recv_b_buffer.start()
                     self.recv_backward_buffer[microbatch_id] = recv_b_buffer
-            json_content = {"global_rank":self.global_rank , "microbatch_id":microbatch_id, "comm_type":op_type, "local_pp_rank": gpc.get_local_rank(ParallelMode.PIPELINE),
-                            "success":True, "match_global_ranks":match_global_ranks, "index_tp":index_tp, "scale_factor":scale_factor, "split_size":split_size
-                            }
-            write_json(gpc._config['jsonpath'], json_content)
+            # json_content = {"global_rank":self.global_rank , "microbatch_id":microbatch_id, "comm_type":op_type, "local_pp_rank": gpc.get_local_rank(ParallelMode.PIPELINE),
+            #                 "success":True, "match_global_ranks":match_global_ranks, "index_tp":index_tp, "scale_factor":scale_factor, "split_size":split_size
+            #                 }
+            # write_json(gpc._config['jsonpath'], json_content)
     def _forward_backward_step(self, engine, return_loss=True, return_output_label=True):
         """
         This function schedules the forward and backward computation of microbatches in the pipeline in a 1F1B manner.
@@ -345,6 +345,15 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
         num_workloads = len(workloads)
         jsonpath = gpc._config['jsonpath']
         global_rank = self.global_rank
+
+        # DP_Transfer: count actual forward/backward workloads for this rank
+        from internlm.utils.utils import WorkloadType as _WLType
+        num_forward_workloads = sum(1 for w in workloads if w["workload_type"] == _WLType.FORWARD.value)
+        num_backward_workloads = sum(1 for w in workloads if w["workload_type"] == _WLType.BACKWARD.value)
+        if gpc.config.get("DP_Transfer", False):
+            self.num_microbatches = num_forward_workloads
+        backward_count = 0
+
         # print(gpc.get_global_rank(), "start _forward_backward_step with num_workloads:", num_workloads)
         for s in range(num_workloads):
             workload = workloads[s]
@@ -426,9 +435,15 @@ class UnifiedSingleChunkPipelineScheduler(PipelineScheduler):
                     output_obj_grad = None
             
                 #start_time = time.perf_counter()
+                if gpc.config.get("DP_Transfer", False):
+                    backward_count += 1
+                    _is_last_bwd = (backward_count == num_backward_workloads)
+                else:
+                    _is_last_bwd = None
                 with torch.profiler.record_function(f"SCH-backward_workload-{microbatch_id}"):
                     input_obj_grad = self._backward_step(
-                        engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss, dp_size=self.dp_size,
+                        engine, microbatch_id, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss,
+                        dp_size=self.dp_size, is_last_backward=_is_last_bwd,
                     )
                 self.send_backward_result[microbatch_id] = input_obj_grad
                 #end_time = time.perf_counter()

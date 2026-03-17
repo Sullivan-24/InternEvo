@@ -1,6 +1,4 @@
 from datetime import datetime
-import math
-import os
 import json
 def set_pp_mode(JOB_NAME, pp_size, layer_num, chunk_num, seq_len):
     adap_partition = False
@@ -61,30 +59,28 @@ HETER_GLOBAL_RANKS = runtime_info.get("HETER_GLOBAL_RANKS")
 Heter_ranks_map = runtime_info.get("Heter_ranks_map")
 Heter_ranks_info = runtime_info.get("Heter_ranks_info")
 slow_ratio_dict = runtime_info.get("slow_ratio_dict")
+slow_ratio_dict = {int(k): v for k, v in slow_ratio_dict.items()}
 per_stage_layer_num = runtime_info.get("per_stage_layer_num")
-SCHEDULE = -1
-if FALCON or FAILURE or DP_Transfer:
-    SCHEDULE = 0
-    MICRO_NUM = num_microbatches*dp_size
 timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
 DO_ALERT = False
 HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
-
+MICRO_NUM = num_microbatches
 evaluation = True
-profile_all_rank = False
+profile_all_rank = True
 profile_fwd_bwd = False
 layerwise = False
-split_backward = False
 
-# SCHEDULE = 3
-# HETER =False
-# FAILURE = False
+SCHEDULE = 0
+HETER =False
+FAILURE = False
+if SCHEDULE == 0:
+    DP_Transfer=True
+    MICRO_NUM = num_microbatches*dp_size
+else:
+    DP_Transfer = False 
 
-if SCHEDULE != 0:
-    DP_Transfer = False
-    MICRO_NUM = num_microbatches
-SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[50,95],[50,80,15]]] #per stage sleep time profile, we need compute per layer sleep time
+SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[],[]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]

@@ -245,6 +245,19 @@ class PipelineScheduler(BaseScheduler):
 
         return move_to_device(micro_batch_data)
 
+    def load_micro_batch_by_id(self, microbatch_id):
+        """Load a specific microbatch by its ID instead of sequential offset."""
+        offset = microbatch_id * self.bsz_stride
+        micro_batch_data, micro_batch_label = self._load_micro_batch(
+            data=self.batch_data, label=self.batch_label, offset=offset, bsz_stride=self.bsz_stride
+        )
+
+        if self.data_process_func:
+            micro_batch_data, micro_batch_label = self.data_process_func(micro_batch_data, micro_batch_label)
+
+        micro_batch_data["label"] = micro_batch_label
+        return move_to_device(micro_batch_data)
+
     def _get_data_label_for_current_step(self, stage_output, micro_batch_data):
         if isinstance(micro_batch_data, (tuple, list)):
             assert not self._config.parallel["pipeline"].get("mode", "1F1B") == "ZBV"
@@ -306,11 +319,11 @@ class PipelineScheduler(BaseScheduler):
                 pipeline stage.
         """
         # with torch.profiler.record_function(f"SCH-forward_step-{microbatch_id}"):
-        micro_batch_data = self.load_micro_batch()
+        if microbatch_id is not None and gpc.config.get("DP_Transfer", False):
+            micro_batch_data = self.load_micro_batch_by_id(microbatch_id)
+        else:
+            micro_batch_data = self.load_micro_batch()
         data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data)
-        # write_json(gpc._config['jsonpath'], f'micro_batch_data:{micro_batch_data} and shape is {micro_batch_data["input_ids"].shape}, label:{label} and shape is {label.shape}')
-        if gpc.config.get("DP_Transfer",False):
-            self.num_microbatches = gpc.config.num_microbatches_per_dp
         self._call_hooks("before_forward", data)
         if hasattr(gpc.config.model, "num_experts"):
             # moe is used
@@ -371,7 +384,7 @@ class PipelineScheduler(BaseScheduler):
 
         return output_obj, moe_loss, moe_z_loss
 
-    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None, dp_size=1):
+    def _backward_step(self, engine, step_id, input_obj, output_obj, output_obj_grad, moe_loss=None, moe_z_loss=None, dp_size=1, is_last_backward=None):
         """
         Backward step through the passed-in output tensor. If it is the last stage, the
         output_obj_grad is None, otherwise it is the gradients with respect to stage's output tensor.
@@ -402,9 +415,12 @@ class PipelineScheduler(BaseScheduler):
             # Backward pass.
 
             # Only the last microbatch does syncing grad.
-            if gpc.config.get("DP_Transfer",False):
-                self.num_microbatches = gpc.config.num_microbatches_per_dp
-            skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
+            if is_last_backward is not None:
+                skip_grad_sync = not is_last_backward
+            else:
+                if gpc.config.get("DP_Transfer",False):
+                    self.num_microbatches = gpc.config.num_microbatches_per_dp
+                skip_grad_sync = self._get_current_microbatch_id(step_id%self.num_microbatches) != self.num_microbatches - 1
 
             self._call_hooks("before_backward", output_obj, output_obj_grad)
             with switch_optimizer_grad_sync_skip_mode(engine.optimizer, skip_grad_sync):
