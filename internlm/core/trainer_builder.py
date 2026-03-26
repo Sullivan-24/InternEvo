@@ -46,6 +46,12 @@ from internlm.utils.simple_memory_profiler import SimpleMemoryProfiler
 from internlm.utils.utils import DataType
 from internlm.utils.writer import Writer
 
+try:
+    from internlm.ft.training import ft_fit
+    _FT_AVAILABLE = True
+except ImportError:
+    _FT_AVAILABLE = False
+
 # global llm logger
 logger = logging.getLogger(__file__)
 
@@ -260,7 +266,17 @@ class TrainerBuilder(Trainer):
 
     def fit(self):
         """
-        Run InternEvo training loop.
+        Run InternEvo training loop (with optional fault tolerance).
+        """
+        ft_cfg = gpc.config.get('ft', None)
+        if _FT_AVAILABLE and ft_cfg and ft_cfg.get('enabled', False):
+            ft_fit(self)
+            return
+        self._original_fit()
+
+    def _original_fit(self):
+        """
+        Original InternEvo training loop.
         """
         do_next = True
         if gpc.config.get("FAILURE",False):

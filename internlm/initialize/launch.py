@@ -800,6 +800,35 @@ def launch_from_torch(
     )
 
 
+
+def init_fault_tolerance():
+    """Initialize fault tolerance if configured."""
+    ft_config = gpc.config.get('ft', None)
+    if ft_config is None or not ft_config.get('enabled', False):
+        return
+    try:
+        from internlm.ft.manager import FTManager
+        from internlm.core.context.process_group_initializer import ParallelMode
+        ft_mgr = FTManager(ft_config)
+        # Use global rank/world_size - torchft Manager handles ManagerServer
+        # creation internally (only rank 0 creates it)
+        import os
+        global_rank = int(os.environ.get('RANK', gpc.get_global_rank()))
+        world_size = int(os.environ.get('WORLD_SIZE', gpc.get_world_size(ParallelMode.DATA)))
+        ft_mgr.initialize(
+            rank=global_rank,
+            world_size=world_size,
+        )
+        if gpc.is_rank_for_log():
+            logger.info('Fault tolerance initialized successfully')
+    except ImportError:
+        if gpc.is_rank_for_log():
+            logger.warning('torchft not installed, fault tolerance disabled')
+    except Exception as e:
+        if gpc.is_rank_for_log():
+            logger.error(f'Fault tolerance init failed: {e}')
+
+
 @llm_timeout(func_name="initialize_distributed_env")
 def initialize_distributed_env(
     config: str,
@@ -834,6 +863,8 @@ def initialize_distributed_env(
 
     if args_check:
         args_sanity_check()
+
+    init_fault_tolerance()
 
 
 def get_config_value(config, key, defalut):

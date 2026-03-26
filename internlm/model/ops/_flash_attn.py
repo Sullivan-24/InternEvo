@@ -133,6 +133,131 @@ class FlashAttnVarlenKVPackedFunc_V263(torch.autograd.Function):
         return dq, dkv, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
+
+class FlashAttnVarlenKVPackedFunc_V283(torch.autograd.Function):
+    """
+    Varlen KVPacked Func from Flash Attn v2.8.3.
+    In v2.8.3, window_size tuple is replaced by window_size_left and window_size_right.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        q,
+        kv,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        max_seqlen_q,
+        max_seqlen_k,
+        dropout_p,
+        softmax_scale,
+        causal,
+        window_size,
+        softcap,
+        alibi_slopes,
+        deterministic,
+        return_softmax,
+        layer_idx,
+    ):
+        if softmax_scale is None:
+            softmax_scale = q.shape[-1] ** (-0.5)
+
+        k, v = kv[:, 0], kv[:, 1]
+
+        _ckpt_block_num = int(gpc.config.model.checkpoint * gpc.config.isp_num_layers)
+
+        # Convert window_size tuple to separate args for v2.8.3
+        if isinstance(window_size, (tuple, list)):
+            ws_left, ws_right = window_size
+        else:
+            ws_left, ws_right = window_size, window_size
+
+        if gpc.is_forward is False and gpc.config.selective_checkpoint and layer_idx < _ckpt_block_num:
+            out, softmax_lse, S_dmask, rng_state = get_offload_manager().get_fa_output_with_layer(layer_idx)
+        else:
+            # v2.8.3 returns (out, softmax_lse, S_dmask, rng_state) - 4 values
+            (
+                out,
+                softmax_lse,
+                S_dmask,
+                rng_state,
+            ) = _flash_attn_varlen_forward(
+                q,
+                k,
+                v,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                max_seqlen_q,
+                max_seqlen_k,
+                dropout_p,
+                softmax_scale,
+                causal=causal,
+                window_size_left=ws_left,
+                window_size_right=ws_right,
+                softcap=softcap,
+                alibi_slopes=alibi_slopes,
+                return_softmax=return_softmax and dropout_p > 0,
+                block_table=None,
+            )
+
+        if gpc.is_forward and gpc.config.selective_checkpoint and layer_idx < _ckpt_block_num:
+            get_offload_manager().insert_fa_output_with_layer(
+                layer_idx=layer_idx, output=(out, softmax_lse, S_dmask, rng_state)
+            )
+
+        ctx.save_for_backward(q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_k, rng_state)
+        ctx.dropout_p = dropout_p
+        ctx.max_seqlen_q = max_seqlen_q
+        ctx.max_seqlen_k = max_seqlen_k
+        ctx.softmax_scale = softmax_scale
+        ctx.causal = causal
+        ctx.window_size = window_size
+        ctx.softcap = softcap
+        ctx.alibi_slopes = alibi_slopes
+        ctx.deterministic = deterministic
+        return out if not return_softmax else (out, softmax_lse, S_dmask)
+
+    @staticmethod
+    def backward(ctx, dout, *args):
+        q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_k, rng_state = ctx.saved_tensors
+        dq = torch.empty_like(q)
+        kv_shape = k.shape[:-2] + (2, *k.shape[-2:])
+        dkv = torch.empty(kv_shape, dtype=k.dtype, device=k.device)
+
+        if isinstance(ctx.window_size, (tuple, list)):
+            ws_left, ws_right = ctx.window_size
+        else:
+            ws_left, ws_right = ctx.window_size, ctx.window_size
+
+        _flash_attn_varlen_backward(
+            dout,
+            q,
+            k,
+            v,
+            out,
+            softmax_lse,
+            dq,
+            dkv[:, 0],
+            dkv[:, 1],
+            cu_seqlens_q,
+            cu_seqlens_k,
+            ctx.max_seqlen_q,
+            ctx.max_seqlen_k,
+            ctx.dropout_p,
+            ctx.softmax_scale,
+            ctx.causal,
+            window_size_left=ws_left,
+            window_size_right=ws_right,
+            softcap=ctx.softcap,
+            alibi_slopes=ctx.alibi_slopes,
+            deterministic=ctx.deterministic,
+            rng_state=rng_state,
+        )
+        dq = dq[..., : dout.shape[-1]]
+        dkv = dkv[..., : dout.shape[-1]]
+        return dq, dkv, None, None, None, None, None, None, None, None, None, None, None, None, None
+
+
 class FlashAttnVarlenKVPackedFunc_V221(torch.autograd.Function):
     """
     Varlen KVPacked Func from Flash Attn v2.2.1.
@@ -294,7 +419,7 @@ def flash_attn_varlen_kvpacked_func(
 
     assert gpu_flash_attn_impl is True and flash_attn.__version__ in [
         "2.2.1",
-        "2.6.3",
+        "2.6.3", "2.8.3",
     ], "flash-attn should be installed and version must be v2.2.1 or v2.6.3"
 
     if flash_attn.__version__ == "2.2.1":
@@ -308,6 +433,25 @@ def flash_attn_varlen_kvpacked_func(
             dropout_p,
             softmax_scale,
             causal,
+            return_attn_probs,
+            layer_idx,
+        )
+
+    if flash_attn.__version__.startswith("2.8"):
+        return FlashAttnVarlenKVPackedFunc_V283.apply(
+            q,
+            kv,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            causal,
+            window_size,
+            softcap,
+            alibi_slopes,
+            deterministic,
             return_attn_probs,
             layer_idx,
         )
