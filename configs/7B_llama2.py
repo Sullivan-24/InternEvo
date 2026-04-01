@@ -1,5 +1,5 @@
 from configs.ppopp_configs.base_7B import *
-JOB_NAME = "7b_llama2_train_DP2_PP2_TP1"
+JOB_NAME = "7b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 
@@ -60,7 +60,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=500,
+    total_steps=16,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between

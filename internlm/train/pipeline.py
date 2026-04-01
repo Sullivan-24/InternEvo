@@ -695,7 +695,7 @@ def load_new_batch(train_dl: DataLoader, train_iter: Iterable, train_state: Trai
 
 def initialize_llm_profile(profiling: bool = False, start_time: str = None):
     """Initialize and return the profiler context manager instance."""
-    if profiling and ((gpc.config.profile_all_rank) or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0)):
+    if profiling and (gpc.config.profile_all_rank or (gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0)):
     # if profiling and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
         schedule_config = {"wait": 1, "warmup": 1, "active": 1, "repeat": 1, "skip_first": 3}
         file_name = (
@@ -776,6 +776,52 @@ def record_current_batch_training_metrics(
             train_state.num_consumed_tokens += batch[1].nelement() * gpc.get_world_size(ParallelMode.DATA)
     if gpc.is_no_pp_or_last_stage():
         acc_perplex = metric.get_metric()
+
+
+    # if gpc.config.get("evaluation",False):
+    #     fwd_bwd_time = round(timer("fwd-bwd").elapsed(), 2)
+    #     bwd_time = round(timer("bwd").elapsed(), 2)
+    #     update_parameters_time = round(timer("update-parameters").elapsed(), 2)
+    #     iter_time = round(timer("one-batch").elapsed(), 2)
+    #     output_dir = os.path.join("./results/evaluation", gpc.config.model_type, gpc.config.JOB_NAME, \
+    #                                 'cuda_launch_block',f"HETER_{gpc.config.HETER}", f"DP{gpc.get_local_rank(ParallelMode.DATA)}_PP{gpc.get_local_rank(ParallelMode.PIPELINE)}_TP{gpc.get_local_rank(ParallelMode.TENSOR)}")#gpc.config.timestamp)
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     output_file = os.path.join(output_dir, f"evaluation.json")
+    #     history = {
+    #         "iter_time": [],
+    #         "fwd_bwd_time":[],
+    #         "update_parameters_time": [],
+    #     }
+    #     # 2. 如果文件存在，则读取旧数据
+    #     if os.path.exists(output_file):
+    #         with open(output_file, 'r') as f:
+    #             try:
+    #                 history = json.load(f)
+    #             except json.JSONDecodeError:
+    #                 pass  # 文件为空或损坏则跳过
+    #     # 3. 追加新数据
+
+    #     history["iter_time"].append(iter_time)
+    #     history["update_parameters_time"].append(update_parameters_time)
+    #     history["fwd_bwd_time"].append(fwd_bwd_time)
+    #     from collections import OrderedDict
+    #     data = OrderedDict()
+
+    #     data["configs"]=gpc.config.get("CONFIG_INFOS","")
+    #     data["opti_methods"]= gpc.config.get("opti_methods","")
+    #     # 4. 更新平均值
+    #     if len(history["iter_time"])>6:
+    #         data["avg_iter_time"] = round(sum(history["iter_time"][6:]) / (len(history["iter_time"])-6),2)
+    #         data["avg_fwd_bwd_time"] = sum(history["fwd_bwd_time"][6:]) / (len(history["fwd_bwd_time"])-6)
+    #         data["avg_update_parameters_time"] = sum(history["update_parameters_time"][6:]) / (len(history["update_parameters_time"])-6)
+
+    #     data["iter_time"] = history["iter_time"]
+    #     data["fwd_bwd_time"] = history["fwd_bwd_time"]
+    #     data["update_parameters_time"] = history["update_parameters_time"]
+
+    #     # 5. 写回文件
+    #     with open(output_file, 'w') as f:
+    #         json.dump(data, f, indent=4)
 
     if success_update and gpc.is_rank_for_log():
         lr = optimizer.param_groups[0]["lr"]

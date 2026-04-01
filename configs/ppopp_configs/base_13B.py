@@ -71,7 +71,7 @@ profile_all_rank = True
 profile_fwd_bwd = False
 layerwise = False
 
-SCHEDULE = 3
+SCHEDULE = 0
 HETER =False
 FAILURE = False
 if SCHEDULE == 0:
