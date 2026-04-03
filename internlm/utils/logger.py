@@ -58,12 +58,27 @@ def get_logger(
         log_filepath = os.path.join(log_folder, file_name)
         try:
             os.makedirs(log_folder, exist_ok=True)
-        except FileExistsError:
+            # Set full permissions on the created directory
+            try:
+                os.chmod(log_folder, 0o777)
+            except:
+                pass
+        except (FileExistsError, PermissionError, OSError):
+            # Ignore if directory already exists or permission denied
+            # Multiple ranks may try to create concurrently
             pass
-        filehandler = logging.FileHandler(log_filepath)
-        filehandler.setLevel(logging_level)
-        filehandler.setFormatter(logging.Formatter(LOGGER_FORMAT))
-        logger.addHandler(filehandler)
+
+        try:
+            # Small delay to ensure directory is visible across all processes
+            import time
+            time.sleep(0.5)
+            filehandler = logging.FileHandler(log_filepath)
+            filehandler.setLevel(logging_level)
+            filehandler.setFormatter(logging.Formatter(LOGGER_FORMAT))
+            logger.addHandler(filehandler)
+        except (FileNotFoundError, PermissionError, OSError):
+            # If file creation fails, just use console logging
+            pass
 
         std_logger = logger
 

@@ -1,6 +1,5 @@
 import gc
 import logging
-import signal
 import time
 from functools import partial
 from typing import Dict, List, Optional, Union
@@ -8,11 +7,6 @@ from typing import Dict, List, Optional, Union
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
-
-try:
-    import redis
-except ImportError:
-    redis = None
 
 from internlm.checkpoint.checkpoint_manager import CheckpointManager
 from internlm.core.context import global_context as gpc
@@ -54,18 +48,6 @@ from internlm.utils.writer import Writer
 
 # global llm logger
 logger = logging.getLogger(__file__)
-
-# Greyhound fail-slow detection integration
-_CHECK_PAUSE = False
-
-def _failslow_pause_handler(signum, frame):
-    """Handler for SIGUSR1 signal from Greyhound L2 control plane."""
-    global _CHECK_PAUSE
-    _CHECK_PAUSE = True
-    if logger:
-        logger.info(f"[Greyhound] Rank {gpc.get_global_rank()}: Received fail-slow signal, pausing at next iteration")
-
-signal.signal(signal.SIGUSR1, _failslow_pause_handler)
 
 
 class TrainerBuilder(Trainer):
@@ -297,42 +279,6 @@ class TrainerBuilder(Trainer):
         self.ckpt_manager.wait_async_upload_finish()
 
     def _process_batch(self, batch_count: int, train_iter, prof) -> bool:
-        global _CHECK_PAUSE
-
-        # Greyhound fail-slow detection: pause if signaled
-        if _CHECK_PAUSE:
-            _CHECK_PAUSE = False
-            pause_duration = 0
-            max_pause_duration = 300  # max 5 minutes
-
-            if gpc.is_rank_for_log():
-                logger.warning(f"[Greyhound] Batch {batch_count}: Detected fail-slow, pausing training for recovery...")
-
-            # Wait for control plane to signal recovery via Redis
-            if redis:
-                try:
-                    client = redis.StrictRedis(host="localhost", port=6379, db=0)
-                    rank = gpc.get_global_rank()
-                    pause_key = f"failslow_pause_rank_{rank}"
-
-                    while pause_duration < max_pause_duration:
-                        pause_flag = client.get(pause_key)
-                        if pause_flag is None or pause_flag == b"false":
-                            break
-                        time.sleep(1)
-                        pause_duration += 1
-
-                    if pause_duration >= max_pause_duration:
-                        logger.error(f"[Greyhound] Rank {rank}: Pause timeout, resuming anyway")
-                    else:
-                        logger.info(f"[Greyhound] Rank {rank}: Recovery complete after {pause_duration}s, resuming")
-                except Exception as e:
-                    logger.warning(f"[Greyhound] Redis pause check failed: {e}, resuming anyway")
-            else:
-                # Fallback: simple sleep if redis not available
-                time.sleep(2)
-                logger.info(f"[Greyhound] Batch {batch_count}: Resumed (redis unavailable, used simple sleep)")
-
         empty_cache_and_diag(batch_count, interval=gpc.config.data.empty_cache_and_diag_interval)
         start_time = time.time()
         start_time_ = time.perf_counter()
