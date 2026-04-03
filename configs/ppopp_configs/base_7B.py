@@ -68,10 +68,10 @@ OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 MICRO_NUM = num_microbatches
 evaluation = True
 profile_all_rank = False
-profile_fwd_bwd = False
+profile_fwd_bwd = True
 layerwise = False
 
-SCHEDULE = 0
+SCHEDULE = 3
 HETER =False
 FAILURE = False
 if SCHEDULE == 0:

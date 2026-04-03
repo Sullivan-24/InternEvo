@@ -2,7 +2,6 @@ import gc
 import logging
 import signal
 import time
-import os
 from functools import partial
 from typing import Dict, List, Optional, Union
 
@@ -352,33 +351,11 @@ class TrainerBuilder(Trainer):
         timer("fwd-bwd").stop()
         #TODO, how chimera do this
         timer("update-parameters").start()
-        weight_update_start = time.time()
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 1")
         success_update, grad_norm_groups = self._update_parameters()
-        weight_update_time = time.time() - weight_update_start
+        # print(f"TENGHUI>>>>>>>>>RANK:{gpc.get_global_rank()}, device:{get_current_device()}, 1E")
         timer("update-parameters").stop()
         timer("one-batch").stop()
-
-        # Append weight_update_time to profiling JSON if enabled
-        if getattr(gpc.config, 'profile_fwd_bwd', False) and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            import json
-            output_dir = os.path.join("InternEvo/results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
-            output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
-            if os.path.exists(output_file):
-                try:
-                    with open(output_file, 'r') as _f:
-                        data = json.load(_f)
-                    # Append weight_update_time to latest iteration
-                    if "iterations" in data and len(data["iterations"]) > 0:
-                        data["iterations"][-1]["weight_update_time"] = weight_update_time
-                    if "weight_update_times" not in data:
-                        data["weight_update_times"] = []
-                    data["weight_update_times"].append(weight_update_time)
-                    data["avg_weight_update"] = sum(data["weight_update_times"]) / len(data["weight_update_times"])
-                    with open(output_file, 'w') as _f:
-                        json.dump(data, _f, indent=4)
-                except Exception:
-                    pass
-
         self._record_metrics(batch_count, batch, start_time, loss, moe_loss, success_update, grad_norm_groups)
         if self._should_evaluate():
             self._evaluate()

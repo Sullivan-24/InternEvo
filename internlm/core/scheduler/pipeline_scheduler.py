@@ -356,6 +356,37 @@ class PipelineScheduler(BaseScheduler):
             micro_batch_data, micro_batch_label = self.data_process_func(micro_batch_data, micro_batch_label)
 
         micro_batch_data["label"] = micro_batch_label
+
+        # Track packed-sequence info for profiling
+        if getattr(gpc.config, 'profile_fwd_bwd', False):
+            if not hasattr(self, '_micro_batch_seq_info'):
+                self._micro_batch_seq_info = []
+            cu_seqlens = micro_batch_data.get("cu_seqlens", None)
+            if cu_seqlens is not None:
+                import torch as _torch
+                if isinstance(cu_seqlens, _torch.Tensor):
+                    # shape: [1, num_seqs+1] or [num_seqs+1]
+                    cs = cu_seqlens.squeeze().tolist()
+                    if isinstance(cs, (int, float)):
+                        cs = [0, int(cs)]
+                    seq_lens = [int(cs[j+1] - cs[j]) for j in range(len(cs)-1)]
+                elif isinstance(cu_seqlens, (list, tuple)):
+                    if isinstance(cu_seqlens[0], _torch.Tensor):
+                        cs = cu_seqlens[0].tolist()
+                    else:
+                        cs = list(cu_seqlens)
+                    seq_lens = [int(cs[j+1] - cs[j]) for j in range(len(cs)-1)]
+                else:
+                    seq_lens = []
+                self._micro_batch_seq_info.append({
+                    "num_seqs": len(seq_lens),
+                    "seq_lens": seq_lens,
+                    "max_seq_len": max(seq_lens) if seq_lens else 0,
+                    "total_tokens": sum(seq_lens),
+                })
+            else:
+                self._micro_batch_seq_info.append(None)
+
         self.microbatch_offset += self.bsz_stride
 
         return move_to_device(micro_batch_data)
@@ -703,6 +734,12 @@ class PipelineScheduler(BaseScheduler):
         backward_recv_shapes = None
         need_forward_meta = self.tensor_shape is None
 
+        import time
+        import os
+        import json
+        fwd_times = []
+        bwd_times = []
+
         # Run warmup forward passes.
         for i in range(num_warmup_microsteps):
             # Receive the input from the previous stage
@@ -718,6 +755,7 @@ class PipelineScheduler(BaseScheduler):
                 input_obj = None
 
             # Perform forward computation
+            start_time = time.time()
             output_obj, moe_loss, moe_z_loss = self._forward_step(
                 engine,
                 input_obj,
@@ -727,6 +765,7 @@ class PipelineScheduler(BaseScheduler):
                 accum_moe_loss=accum_moe_loss,
                 accum_moe_z_loss=accum_moe_z_loss,
             )
+            fwd_times.append(time.time() - start_time)
 
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
                 if isinstance(output_obj, torch.Tensor):
@@ -764,12 +803,6 @@ class PipelineScheduler(BaseScheduler):
                 input_obj = None
 
         # Run 1F1B in steady state.
-        fwd_times = []
-        bwd_times = []
-        import time
-        import os
-        import json
-
         for i in range(num_1f1b_micropairs):
             # Perform forward computation
             start_time = time.time()
@@ -832,47 +865,71 @@ class PipelineScheduler(BaseScheduler):
                         scatter_gather_tensors=self.scatter_gather_tensors,
                     )
 
-        if gpc.config.profile_fwd_bwd and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+        if getattr(gpc.config, 'profile_fwd_bwd', False) and os.environ.get("CUDA_LAUNCH_BLOCKING") == "1" and gpc.get_local_rank(ParallelMode.DATA) == 0 and gpc.get_local_rank(ParallelMode.TENSOR) == 0:
             output_dir = os.path.join("InternEvo/results/fwd_bwd_time", gpc.config.model_type, f"{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}", gpc.config.timestamp)
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"PP_rank_{gpc.get_local_rank(ParallelMode.PIPELINE)}.json")
 
             history = {
+                "iterations": [],
                 "fwd_times": [],
                 "bwd_times": [],
+                "seq_info": [],
             }
 
-            # 2. 如果文件存在，则读取旧数据
             if os.path.exists(output_file):
                 with open(output_file, 'r') as f:
                     try:
-                        history = json.load(f)
+                        old_data = json.load(f)
+                        if "iterations" in old_data:
+                            history = old_data
+                        else:
+                            # Migrate old format
+                            for key in ["fwd_times", "bwd_times"]:
+                                if key in old_data:
+                                    history[key] = old_data[key]
                     except json.JSONDecodeError:
-                        pass  # 文件为空或损坏则跳过
+                        pass
 
-            # 3. 追加新数据
-            history["fwd_times"].extend(fwd_times)
-            history["bwd_times"].extend(bwd_times)
+            # Collect packed-sequence info for this iteration
+            seq_info_this_iter = getattr(self, '_micro_batch_seq_info', [])
+
+            # Per-iteration record
+            iter_data = {
+                    "fwd_times": fwd_times,
+                    "bwd_times": bwd_times,
+                    "seq_info": seq_info_this_iter,
+            }
+            history["iterations"].append(iter_data)
+            history["fwd_times"].append(fwd_times)
+            history["bwd_times"].append(bwd_times)
+            history["seq_info"].append(seq_info_this_iter)
 
             from collections import OrderedDict
             data = OrderedDict()
-            # 4. 更新平均值
-            data["configs"]=f"PPMODE{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}_DPSIZE{gpc.config.DP_SIZE}_PPSIZE{gpc.config.PP_SIZE}_TPSIZE{gpc.config.TP_SIZE}_FAILURE{gpc.config.FAILURE}_HETER{gpc.config.HETER}_FALCON{gpc.config.FALCON}_DPTransfer:{gpc.config.DP_Transfer}"
-            data["avg_fwd"] = sum(history["fwd_times"]) / len(history["fwd_times"])
-            data["avg_bwd"] = sum(history["bwd_times"]) / len(history["bwd_times"])
-            data["min_fwd"] = min(history["fwd_times"])
-            data["max_fwd"] = max(history["fwd_times"])
-            data["min_bwd"] = min(history["bwd_times"])
-            data["max_bwd"] = max(history["bwd_times"])         
-            f_f = round(data["avg_fwd"]/data["avg_fwd"],3)
-            b_f = round(data["avg_bwd"]/data["avg_fwd"],3)
-            data["f_b_w"] = (f_f, b_f)
+            data["configs"] = f"PPMODE{gpc.config.PP_MODE}_l{gpc.config.NUM_LAYER}_hid{gpc.config.HIDDEN_SIZE}_seq{gpc.config.SEQ_LEN}_voc{gpc.config.VOCAB_SIZE}_mb{gpc.config.MICRO_NUM}_DPSIZE{gpc.config.dp_size}_PPSIZE{gpc.config.pp_size}_TPSIZE{gpc.config.tp_size}"
+            data["num_iterations"] = len(history["iterations"])
+
+            all_fwd = [t for iteration in history["fwd_times"] for t in iteration]
+            all_bwd = [t for iteration in history["bwd_times"] for t in iteration]
+            data["all_avg_fwd"] = sum(all_fwd) / len(all_fwd) if all_fwd else 0
+            data["all_avg_bwd"] = sum(all_bwd) / len(all_bwd) if all_bwd else 0
+            data["f_b_ratio"] = (1.0, round(data["all_avg_bwd"]/data["all_avg_fwd"], 3) if data["all_avg_fwd"] > 0 else 0)
+
+            # Latest iteration summary
+            data["latest_iteration"] = iter_data
+
+            # Full history
+            data["iterations"] = history["iterations"]
             data["fwd_times"] = history["fwd_times"]
             data["bwd_times"] = history["bwd_times"]
-            
-            # 5. 写回文件
+            data["seq_info"] = history["seq_info"]
+
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=4)
+
+            # Reset seq info for next iteration
+            self._micro_batch_seq_info = []
                 
         # Run cooldown backward passes.
         for i in range(num_warmup_microsteps):
@@ -890,9 +947,11 @@ class PipelineScheduler(BaseScheduler):
             else:
                 output_obj_grad = None
 
+            start_time = time.time()
             input_obj_grad = self._backward_step(
                 engine, num_1f1b_micropairs + i, input_obj, output_obj, output_obj_grad, moe_loss, moe_z_loss
             )
+            bwd_times.append(time.time() - start_time)
 
             if not gpc.is_first_rank(ParallelMode.PIPELINE):
                 comm.send_backward(input_obj_grad, scatter_gather_tensors=self.scatter_gather_tensors)
