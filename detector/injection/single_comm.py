@@ -52,7 +52,7 @@ def main():
     t0 = time.time()
     running_time = 0
     while running_time < duration:
-        send_recv(rank, tensor_size=tensor_size, repeat=1500)
+        send_recv(rank, tensor_size=tensor_size, repeat=1500, device=device)
         running_time = time.time() - t0
 
 

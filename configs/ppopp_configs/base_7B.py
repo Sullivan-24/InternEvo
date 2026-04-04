@@ -69,11 +69,11 @@ OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 MICRO_NUM = num_microbatches
 evaluation = True
 profile_all_rank = False
-profile_fwd_bwd = True
+profile_fwd_bwd = False
 layerwise = False
 
-SCHEDULE = 3
-HETER = False
+SCHEDULE = 0
+HETER = True
 FAILURE = False
 if SCHEDULE == 0:
     DP_Transfer=True
@@ -81,7 +81,7 @@ if SCHEDULE == 0:
 else:
     DP_Transfer = False 
 
-SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[95,150],[95,120,30]]] #per stage sleep time profile, we need compute per layer sleep time
+SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[100,155],[100,125,30]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]

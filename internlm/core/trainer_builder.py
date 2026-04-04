@@ -68,6 +68,58 @@ def _failslow_pause_handler(signum, frame):
 
 signal.signal(signal.SIGUSR1, _failslow_pause_handler)
 
+class FailSlowHook:
+    """Redis-based fail-slow injection hook for InternEvo.
+
+    Mirrors Greyhound/Megatron's ClientWrapper: every iteration reads
+    delay_time_{rank} from Redis and sleeps that many seconds, simulating
+    a computation straggler.  Gracefully no-ops when Redis is unavailable.
+    """
+
+    def __init__(self, check_interval: int = 1):
+        self.delay_time: float = 0.0
+        self.rank = None
+        self.client = None
+        self.check_interval = check_interval
+        self.count = 0
+        self._init_redis()
+
+    def _init_redis(self):
+        if redis is None:
+            return
+        try:
+            master_addr = os.environ.get("MASTER_ADDR", "localhost")
+            self.client = redis.StrictRedis(host=master_addr, port=6379, db=0)
+            self.client.ping()
+        except Exception:
+            self.client = None
+
+    def check(self):
+        """Poll Redis for delay update, then sleep if delay is active.
+
+        Call once per training iteration (before forward-backward).
+        """
+        self.count += 1
+        if self.client is not None and self.count % self.check_interval == 0:
+            if self.rank is None:
+                self.rank = gpc.get_global_rank()
+            try:
+                val = self.client.get(f"delay_time_{self.rank}")
+                if val is not None:
+                    new_delay = float(val.decode())
+                    if new_delay != self.delay_time:
+                        logger.info(
+                            f"[FailSlowHook] Rank {self.rank}: delay_time "                            f"{self.delay_time:.4f}s -> {new_delay:.4f}s"
+                        )
+                        self.delay_time = new_delay
+            except Exception:
+                pass
+
+        if self.delay_time > 0:
+            time.sleep(self.delay_time)
+
+
+
 
 class TrainerBuilder(Trainer):
     """
@@ -179,6 +231,9 @@ class TrainerBuilder(Trainer):
         )
 
         super().__init__(engine, scheduler)
+
+        # Greyhound fail-slow injection hook (reads delay_time_{rank} from Redis)
+        self.failslow_hook = FailSlowHook()
 
     def _setup_time_and_logging(self) -> str:
         current_time = launch_time()
@@ -333,6 +388,9 @@ class TrainerBuilder(Trainer):
                 # Fallback: simple sleep if redis not available
                 time.sleep(2)
                 logger.info(f"[Greyhound] Batch {batch_count}: Resumed (redis unavailable, used simple sleep)")
+
+        # Greyhound fail-slow injection: apply per-iteration compute delay if set
+        self.failslow_hook.check()
 
         empty_cache_and_diag(batch_count, interval=gpc.config.data.empty_cache_and_diag_interval)
         start_time = time.time()
