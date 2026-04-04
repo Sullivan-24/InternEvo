@@ -1,14 +1,23 @@
+from configs.ppopp_configs.base_7B import *
 JOB_NAME = "7b_qwen2_train"
 model_type = "QWEN2"
 DO_ALERT = False
 
 VOCAB_SIZE = 152064
-SEQ_LEN = 2048
+SEQ_LEN = 4096
 HIDDEN_SIZE = 3584
 NUM_ATTENTION_HEAD = 28
 NUM_KV_ATTENTION_HEAD = 4
 MLP_RATIO = 5.25
 NUM_LAYER = 28
+CHUNK_NUM = 1
+
+PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=pp_size, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
+print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
+CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
+                dp_size{dp_size}, pp_size{pp_size}, tp_size{tp_size}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
+                layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
+opti_methods = ""
 
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts_qwen2/xxxx/"
@@ -23,14 +32,14 @@ SAVE_CKPT_FOLDER = "local:llm_ckpts_qwen2"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
-    enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
+    # enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
     # 'load_ckpt_info' setting guide:
     # 1. the 'path' indicate ckpt path,
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
     # load function such as "llama"
-    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -45,12 +54,13 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = None
+TRAIN_FOLDER = None #"/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/hf-TinyStories"
 VALID_FOLDER = None  # "/path/to/dataset"
+TRAIN_FOLDER = "/mnt/shared-storage-user/ailab-sys/matenghui/Datasets/Skylion007/openwebtext"
 data = dict(
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
-    micro_num=4,
+    micro_num=MICRO_NUM,
     # packed_length = micro_bsz * SEQ_LEN
     micro_bsz=1,
     # defaults to the value of micro_num
@@ -58,7 +68,7 @@ data = dict(
     # defaults to 0, means disable evaluate
     valid_every=0,
     pack_sample_into_one=False,
-    total_steps=20,
+    total_steps=16,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
@@ -72,6 +82,8 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
+    type="streaming",
+    tokenizer_path="/mnt/shared-storage-user/ailab-sys/matenghui/Tokenizer/hf-llama2-tokenizer",
 )
 
 grad_scaler = dict(
@@ -95,7 +107,7 @@ grad_scaler = dict(
 
 hybrid_zero_optimizer = dict(
     # Enable low_level_optimzer overlap_communication
-    overlap_sync_grad=True,
+    overlap_sync_grad=OVERLAP_SYNC_GRAD,
     overlap_sync_param=False,
     # bucket size for nccl communication params
     reduce_bucket_size=512 * 1024 * 1024,
@@ -133,7 +145,7 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=False,
-    num_chunks=1,
+    num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
     num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     embed_split_hidden=True,
@@ -190,8 +202,8 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
-    pipeline=dict(size=1, interleaved_overlap=True),
+    tensor=dict(size=tp_size, mode="mtp"),
+    pipeline=dict(size=pp_size, mode=PP_MODE, interleaved_overlap=True),
     weight=dict(size=1, overlap=True),
 )
 

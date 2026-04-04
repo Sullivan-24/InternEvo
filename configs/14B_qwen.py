@@ -1,40 +1,45 @@
-from configs.ppopp_configs.base_7B import *
-JOB_NAME = "7b_llama2_train"
-model_type = "LLAMA2"
+from configs.ppopp_configs.base_13B import *
+JOB_NAME = "14b_qwen2_train"
+model_type = "QWEN2"
 DO_ALERT = False
 
-VOCAB_SIZE = 32000
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-NUM_KV_ATTENTION_HEAD = 32
-MLP_RATIO = 2.6875
-NUM_LAYER = 32
+VOCAB_SIZE = 152064
+SEQ_LEN = 4096
+HIDDEN_SIZE = 5120
+NUM_ATTENTION_HEAD = 40
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 2.7
+NUM_LAYER = 48
 CHUNK_NUM = 1
-SEQ_LEN = 8192
-dp_size=2
-pp_size=2
-tp_size=2
+
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=pp_size, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
 print(f"PP_MODE:{PP_MODE}, HETER:{HETER} , FALCON:{FALCON}, FAILURE:{FAILURE}, DP_Transfer:{DP_Transfer}")
 CONFIG_INFOS = f"PPMODE:{PP_MODE}, l{NUM_LAYER}, hid{HIDDEN_SIZE}, seq{SEQ_LEN}, voc{VOCAB_SIZE}, mb{MICRO_NUM}, \
                 dp_size{dp_size}, pp_size{pp_size}, tp_size{tp_size}, FAILURE{FAILURE}, HETER{HETER}, FALCON{FALCON}, DPTransfer:{DP_Transfer}, \
                 layer_partition:{layer_partition}, Failure_ranks_info{Failure_ranks_info}, Heter_ranks_info:{Heter_ranks_info}"
 opti_methods = ""
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
+
+
+MODEL_ONLY_FOLDER = "local:llm_ckpts_qwen2/xxxx/"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
-LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
+SAVE_CKPT_FOLDER = "local:llm_ckpts_qwen2"
 
 # boto3 Ckpt folder format:
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-# LOAD_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm/snapshot/1/"
 CHECKPOINT_EVERY = 50
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
+    # enable_internevo2hf_ckpt=False, # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
+    # 'load_ckpt_info' setting guide:
+    # 1. the 'path' indicate ckpt path,
+    # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
+    # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "hf", or other custom-defined
+    # load function such as "llama"
+    # load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -142,19 +147,20 @@ model = dict(
     checkpoint=False,
     num_chunks=CHUNK_NUM,
     num_attention_heads=NUM_ATTENTION_HEAD,
+    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
     embed_split_hidden=True,
     vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
     parallel_output=True,
     hidden_size=HIDDEN_SIZE,
     num_layers=NUM_LAYER,
-    no_bias=True,
+    qkv_bias=True,
+    o_bias=False,
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-5,
-    num_kv_attention_heads=NUM_KV_ATTENTION_HEAD,
+    layer_norm_epsilon=1e-6,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -164,8 +170,10 @@ model = dict(
     # qk_interleaved = True: q[-1] = [q1,q2,q3,q4,q5,q6,...], k[-1] = [k1,k2,k3,k4,k5,k6,...]
     # qk_interleaved = False: q[-1] = [q1,q3,q5,...,q2,q4,q6,...], k[-1] = [k1,k3,k5,...,k2,k4,k6,...]
     qk_interleaved=False,
-    mlp_layer_fusion=True,
-    enable_qkv_fusion=True,
+    rope_base=1000000,
+    use_sliding_window=False,
+    sliding_window=131072,
+    max_window_layers=70,
 )
 
 """
@@ -218,3 +226,18 @@ monitor = dict(
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics
 # metric_dtype = "fp32"
+
+generation = dict(
+    ckpt_folder="/path/to/saved/ckpt",
+    output_folder="/path/to/save/generation",
+    batch_size=1,
+    eos_id=[2, 0],
+    bos_id=1,
+    max_length=100,
+    do_sample=True,
+    temperature=1.0,
+    top_k=50,
+    top_p=1.0,
+    repetition_penalty=1,
+    length_penalty=1.0,
+)
