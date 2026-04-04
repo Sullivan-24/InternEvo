@@ -1,15 +1,15 @@
-from configs.ppopp_configs.base_7B import *
-JOB_NAME = "7b_qwen2_train"
+from configs.ppopp_configs.base_13B import *
+JOB_NAME = "14b_qwen2_train"
 model_type = "QWEN2"
 DO_ALERT = False
 
 VOCAB_SIZE = 152064
 SEQ_LEN = 4096
-HIDDEN_SIZE = 3584
-NUM_ATTENTION_HEAD = 28
-NUM_KV_ATTENTION_HEAD = 4
-MLP_RATIO = 5.25
-NUM_LAYER = 28
+HIDDEN_SIZE = 5120
+NUM_ATTENTION_HEAD = 40
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 2.7
+NUM_LAYER = 48
 CHUNK_NUM = 1
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=pp_size, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
@@ -172,8 +172,8 @@ model = dict(
     qk_interleaved=False,
     rope_base=1000000,
     use_sliding_window=False,
-    sliding_window=32768,
-    max_window_layers=28,
+    sliding_window=131072,
+    max_window_layers=70,
 )
 
 """

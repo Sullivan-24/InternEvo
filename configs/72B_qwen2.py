@@ -1,15 +1,16 @@
-from configs.ppopp_configs.base_7B import *
-JOB_NAME = "7b_qwen2_train"
+from configs.ppopp_configs.base_70B import *
+JOB_NAME = "72b_qwen2_train"
 model_type = "QWEN2"
 DO_ALERT = False
 
+
 VOCAB_SIZE = 152064
 SEQ_LEN = 4096
-HIDDEN_SIZE = 3584
-NUM_ATTENTION_HEAD = 28
-NUM_KV_ATTENTION_HEAD = 4
-MLP_RATIO = 5.25
-NUM_LAYER = 28
+HIDDEN_SIZE = 8192
+NUM_ATTENTION_HEAD = 64
+NUM_KV_ATTENTION_HEAD = 8
+MLP_RATIO = 3.61
+NUM_LAYER = 80
 CHUNK_NUM = 1
 
 PP_MODE, CHUNK_NUM, ALPA = set_pp_mode(JOB_NAME=JOB_NAME, pp_size=pp_size, layer_num=NUM_LAYER, chunk_num=CHUNK_NUM, seq_len=SEQ_LEN)
@@ -160,7 +161,7 @@ model = dict(
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",
     norm_type="rmsnorm",
-    layer_norm_epsilon=1e-6,
+    layer_norm_epsilon=1e-5,
     use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
@@ -172,8 +173,8 @@ model = dict(
     qk_interleaved=False,
     rope_base=1000000,
     use_sliding_window=False,
-    sliding_window=32768,
-    max_window_layers=28,
+    sliding_window=131072,
+    max_window_layers=80,
 )
 
 """
