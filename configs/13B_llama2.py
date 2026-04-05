@@ -1,5 +1,5 @@
 from configs.ppopp_configs.base_13B import *
-JOB_NAME = "13b_llama2_train_DP2_PP4_TP2"
+JOB_NAME = "13b_llama2_train"
 model_type = "LLAMA2"
 DO_ALERT = False
 

@@ -21,8 +21,8 @@ def set_pp_mode(JOB_NAME, pp_size, layer_num, chunk_num, seq_len):
     print(f"{JOB_NAME}, {seq_len}, {flag}{pp_mode}, {chunk_num}, Ada Model Partition: {adap_partition}")
     return pp_mode, chunk_num, adap_partition
 
-# MODEL_NAME = "7B_llama2"
-MODEL_NAME = "7B_qwen2"
+MODEL_NAME = "7B_llama2"
+# MODEL_NAME = "7B_qwen2"
 file_path = f'/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/PipelineSimulator/schedule_results/{MODEL_NAME}/runtime.json'
 with open(file_path, 'r', encoding='utf-8') as f:
     runtime_info = json.load(f)
@@ -69,11 +69,11 @@ OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 MICRO_NUM = num_microbatches
 evaluation = True
 profile_all_rank = False
-profile_fwd_bwd = True
+profile_fwd_bwd = False
 layerwise = False
 
-SCHEDULE = 0
-HETER = True
+SCHEDULE = 3
+HETER = False
 FAILURE = False
 if SCHEDULE == 0:
     DP_Transfer=True

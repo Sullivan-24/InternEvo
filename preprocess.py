@@ -25,7 +25,7 @@ def busy_wait_kernel(time):
         a = torch.rand(N, N, device='cuda')
         b = torch.rand(N, N, device='cuda')
         # GPU矩阵乘法
-        for __ in range(25):
+        for __ in range(65):
             torch.matmul(a, b)
     return
 

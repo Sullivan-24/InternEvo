@@ -22,6 +22,7 @@ def set_pp_mode(JOB_NAME, pp_size, layer_num, chunk_num, seq_len):
     return pp_mode, chunk_num, adap_partition
 
 MODEL_NAME = "13B_llama2"
+# MODEL_NAME = "14B_qwen2"
 file_path = f'/mnt/shared-storage-user/ailab-sys/matenghui/InternEvo/PipelineSimulator/schedule_results/{MODEL_NAME}/runtime.json'
 with open(file_path, 'r', encoding='utf-8') as f:
     runtime_info = json.load(f)
@@ -67,12 +68,12 @@ HID_FAC = 1
 OVERLAP_SYNC_GRAD = False # should be disabled when enable zerobubble
 MICRO_NUM = num_microbatches
 evaluation = True
-profile_all_rank = True
+profile_all_rank = False
 profile_fwd_bwd = False
 layerwise = False
 
-SCHEDULE = 0
-HETER =False
+SCHEDULE = 3
+HETER = False
 FAILURE = False
 if SCHEDULE == 0:
     DP_Transfer=True
@@ -80,8 +81,7 @@ if SCHEDULE == 0:
 else:
     DP_Transfer = False 
 
-SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[60,110],[60,90,20]]] #per stage sleep time profile, we need compute per layer sleep time
+SLEEP_TIME_Profiles = [[x / per_stage_layer_num for x in sublist] for sublist in [[45,70],[45,70,20]]] #per stage sleep time profile, we need compute per layer sleep time
 SLEEP_TIME = SLEEP_TIME_Profiles[0]
 if SCHEDULE == 3 or (SCHEDULE == 0 and split_backward):
     SLEEP_TIME=SLEEP_TIME_Profiles[1]
-print(SLEEP_TIME)
